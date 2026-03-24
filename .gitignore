@@ -1,0 +1,23 @@
+# Virtual environment
+.venv/
+venv/
+env/
+ 
+# NBA API cache files — large binary pickles, regenerated automatically
+game_log_cache.pkl
+tech_cache.pkl
+ 
+# Generated output — not source, reproduced by running main.py
+durant_rankings_*.csv
+ 
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+ 
+# macOS
+.DS_Store
+ 
+# VS Code
+.vscode/
+ 

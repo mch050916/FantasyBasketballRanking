@@ -1,0 +1,135 @@
+"""
+main.py — Run the DURANT ranking pipeline
+==========================================
+This is the entry point. Run it with:
+
+    python main.py
+
+To update for a new season:
+  1. Download new Basketball Reference totals CSV and add to this folder
+  2. Update BBR_FILES below to include the new season (most recent first)
+  3. Update game_log_seasons in config.py
+  4. Delete game_log_cache.pkl and tech_cache.pkl to force a fresh API fetch
+  5. Run python main.py
+
+Everything else is automatic.
+"""
+
+from pathlib import Path
+
+from config   import LEAGUE_CONFIG
+from data     import load_bbr_csv, filter_qualified, fetch_game_logs, \
+                     fetch_tech_per_game, derive_stats_from_logs
+from model    import project_stats, compute_tau, compute_g_scores
+from output   import format_rankings, save_rankings
+from validate import validate
+
+
+# ── Season data files — update this list each season ────────────────────────
+# Most recent season first. Must match game_log_seasons in config.py.
+BBR_FILES = [
+    "basketball_reference_2024_25_total_stats.csv",
+    "basketball_reference_2023_24_total_stats.csv",
+]
+
+OUTPUT_FILE     = "durant_rankings_2025_26.csv"
+VALIDATION_FILE = "actual_9cat_24_25.csv"   # set to None to skip validation
+
+
+def main() -> None:
+    print("DURANT Fantasy Basketball Ranker")
+    print("=" * 60)
+
+    config = LEAGUE_CONFIG
+
+    # ── 1. Load BBR season data ──────────────────────────────────────────
+    print("\n[1/5] Loading Basketball Reference season data...")
+
+    raw_weights = config["season_weights"][:len(BBR_FILES)]
+    total_w     = sum(raw_weights)
+    weights     = [w / total_w for w in raw_weights]   # renormalise to sum=1
+
+    season_dfs = []
+    for path in BBR_FILES:
+        df = load_bbr_csv(path)
+        df = filter_qualified(df, config)
+        season_dfs.append(df)
+        print(f"   {path}: {len(df)} qualified players")
+
+    # ── 2. Fetch game logs ───────────────────────────────────────────────
+    print("\n[2/5] Fetching game logs (NBA API)...")
+
+    # Only fetch logs for the top N players by minutes — the draftable pool.
+    # Fetching all 400+ qualified players takes ~25 min and is unnecessary.
+    limit      = config["game_log_player_limit"]
+    top_recent = season_dfs[0].nlargest(limit, "MIN")["PLAYER_NAME"].tolist()
+
+    # Add up to 20 players from the older season who may have missed last year
+    # (e.g. injury returnees who are back for 2025-26)
+    if len(season_dfs) > 1:
+        older = season_dfs[1].nlargest(limit, "MIN")["PLAYER_NAME"].tolist()
+        seen  = set(top_recent)
+        extra = [n for n in older if n not in seen][:20]
+    else:
+        extra = []
+
+    game_log_players = top_recent + extra
+    print(f"   Fetching logs for {len(game_log_players)} players "
+          f"(top {limit} by MIN + {len(extra)} returnees)")
+
+    game_logs = fetch_game_logs(
+        player_names=game_log_players,
+        seasons=config["game_log_seasons"],
+        cache_file=config["game_log_cache"],
+    )
+
+    # ── 3. Derive DD and TD from game logs ───────────────────────────────
+    print("\n[3/5] Deriving DD/TD from game logs...")
+    derived_stats = derive_stats_from_logs(game_logs)
+    dd_count = sum(1 for v in derived_stats.values() if "DD" in v)
+    print(f"   DD/TD derived for {dd_count} players")
+
+    # ── 4. Fetch TECH + compute tau ──────────────────────────────────────
+    print("\n[4/5] Fetching TECH stats + computing tau...")
+
+    tech_per_game = fetch_tech_per_game(
+        seasons=config["game_log_seasons"],
+        cache_file=config["tech_cache"],
+        season_weights=weights,
+    )
+
+    cat_names              = list(config["categories"].keys())
+    player_tau, league_tau = compute_tau(game_logs, cat_names, weights)
+
+    print(f"   Tau computed for {len(player_tau)} players")
+    print(f"   League median tau per category:")
+    for cat, tau in sorted(league_tau.items()):
+        print(f"     {cat:<6} {tau:.3f}")
+
+    # ── 5. Project stats and compute G-scores ────────────────────────────
+    print("\n[5/5] Projecting stats and computing G-scores...")
+
+    projected = project_stats(season_dfs, weights, derived_stats, tech_per_game)
+    projected = projected.dropna(subset=["PTS"])
+    print(f"   {len(projected)} players with projections")
+
+    rankings = compute_g_scores(projected, player_tau, league_tau, config)
+
+    # ── Output ───────────────────────────────────────────────────────────
+    pool_size = config["num_teams"] * config["roster_size"]
+    print(f"\n\nTOP 30 PLAYERS — 2025-26 PROJECTIONS")
+    print(f"(pool: {pool_size} players | {config['num_teams']} teams × "
+          f"{config['roster_size']} roster spots)")
+    print(format_rankings(rankings, config, top_n=30))
+
+    save_rankings(rankings, OUTPUT_FILE)
+
+    # ── Validation ───────────────────────────────────────────────────────
+    if VALIDATION_FILE and Path(VALIDATION_FILE).exists():
+        validate(rankings, VALIDATION_FILE)
+    elif VALIDATION_FILE:
+        print(f"\n[skip] Validation file not found: {VALIDATION_FILE}")
+
+
+if __name__ == "__main__":
+    main()
