@@ -17,15 +17,50 @@ rankings. This means the comparison is directional only — it confirms
 whether our model broadly agrees on player value, not exact rank matching.
 """
 
+import re
+import unicodedata
 import pandas as pd
 from pathlib import Path
 
 
+def normalize_player_name(name: str) -> str:
+    """Normalize player names so minor formatting/accent differences still match."""
+    ascii_name = unicodedata.normalize("NFKD", str(name)).encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9]", "", ascii_name.lower())
+
+
+def build_player_name(df: pd.DataFrame, name_col: str | list[str]) -> pd.Series:
+    """Build a comparable player-name column from one or more source columns."""
+    if isinstance(name_col, str):
+        return df[name_col].fillna("").astype(str).str.strip()
+
+    parts = [df[col].fillna("").astype(str).str.strip() for col in name_col]
+    combined = parts[0]
+    for part in parts[1:]:
+        combined = combined.str.cat(part, sep=" ")
+    return combined.str.replace(r"\s+", " ", regex=True).str.strip()
+
+
+def build_rank_series(df: pd.DataFrame,
+                      rank_col: str,
+                      rank_from_metric: bool = False,
+                      ascending: bool = True) -> pd.Series:
+    """Return a comparable rank series from either explicit ranks or a sortable metric."""
+    series = pd.to_numeric(df[rank_col], errors="coerce")
+    if not rank_from_metric:
+        return series
+    return series.rank(method="first", ascending=ascending)
+
+
 def validate(df: pd.DataFrame,
              known_csv: str,
-             name_col: str = "Player Name",
+             name_col: str | list[str] = "Player Name",
              rank_col: str = "Rank",
-             top_n_misses: int = 10) -> dict:
+             rank_from_metric: bool = False,
+             rank_metric_ascending: bool = True,
+             top_n_misses: int = 10,
+             label: str | None = None,
+             note: str | None = None) -> dict:
     """
     Compare our rankings to a ground-truth CSV.
 
@@ -43,10 +78,28 @@ def validate(df: pd.DataFrame,
     """
     from scipy.stats import spearmanr
 
-    known = pd.read_csv(known_csv)[[name_col, rank_col]].rename(
-        columns={name_col: "PLAYER_NAME", rank_col: "ACTUAL_RANK"}
+    predicted = df[["PLAYER_NAME", "RANK"]].copy()
+    predicted["PLAYER_KEY"] = predicted["PLAYER_NAME"].map(normalize_player_name)
+
+    known_df = pd.read_csv(known_csv)
+    required_cols = [rank_col] + ([name_col] if isinstance(name_col, str) else list(name_col))
+    known = known_df[required_cols].copy()
+    known["ACTUAL_PLAYER_NAME"] = build_player_name(known, name_col)
+    known["ACTUAL_RANK"] = build_rank_series(
+        known,
+        rank_col,
+        rank_from_metric=rank_from_metric,
+        ascending=rank_metric_ascending,
     )
-    merged = pd.merge(df[["PLAYER_NAME", "RANK"]], known, on="PLAYER_NAME")
+    known = known[["ACTUAL_PLAYER_NAME", "ACTUAL_RANK"]].dropna(subset=["ACTUAL_RANK"])
+    known["PLAYER_KEY"] = known["ACTUAL_PLAYER_NAME"].map(normalize_player_name)
+
+    merged = pd.merge(
+        predicted,
+        known,
+        on="PLAYER_KEY",
+        how="inner",
+    )
 
     if merged.empty:
         print("No matching players found for validation.")
@@ -58,8 +111,9 @@ def validate(df: pd.DataFrame,
     mae      = delta.abs().mean()
 
     print(f"\n{'='*60}")
-    print(f"Validation vs {Path(known_csv).name}")
-    print(f"  Note: 14-cat model vs 9-cat actual — directional comparison only")
+    print(f"Validation vs {label or Path(known_csv).name}")
+    if note:
+        print(f"  Note: {note}")
     print(f"{'='*60}")
     print(f"  Players matched : {len(merged)}")
     print(f"  Spearman r      : {corr:.3f}  (1.0 = perfect, 0 = random)")
@@ -81,5 +135,6 @@ def validate(df: pd.DataFrame,
         "spearman": corr,
         "hit_rate": hit_rate,
         "mae":      mae,
+        "matched_players": len(merged),
         "details":  merged,
     }

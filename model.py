@@ -15,10 +15,13 @@ Where:
     tau   = player's own week-to-week variance (their consistency)
     kappa = roster-size scaling factor (1 + 1/roster_size)
 
-This beats a plain z-score because tau penalises volatile players —
-a player who scores 30 one week and 8 the next has the same average as
-a consistent 19-point scorer, but the volatile one is less valuable in
-weekly H2H because that 8-point week likely loses you the category.
+Key modelling decisions:
+    - Projections are GP-adjusted so injury-prone players are discounted
+      automatically — no player names hardcoded anywhere.
+    - Season weights are trend-adjusted per player: breakout players get
+      more recent-season weight, declining players get less.
+    - Tau uses weekly per-game averages to measure true consistency,
+      not games-played-driven variance.
 """
 
 import pandas as pd
@@ -26,36 +29,175 @@ import numpy as np
 from scipy.stats import boxcox
 
 
-# ── Kappa ────────────────────────────────────────────────────────────────────
+# ── Kappa ─────────────────────────────────────────────────────────────────────
 
 def compute_kappa(roster_size: int) -> float:
     """
     Roster-size scaling factor for the variance penalty.
-    Larger rosters → more players absorb variance → smaller kappa → smaller penalty.
+    Larger rosters → more players absorb variance → smaller kappa.
     Formula: kappa = 1 + 1/roster_size
     """
     return 1.0 + (1.0 / roster_size)
 
 
-# ── Projection ───────────────────────────────────────────────────────────────
+# ── Trend detection ───────────────────────────────────────────────────────────
+
+def compute_trend_weights(player_season_stats: dict[str, pd.Series],
+                           available_seasons: list[str],
+                           base_weights: list[float],
+                           trend_threshold: float = 0.15,
+                           trend_boost: float = 0.15) -> list[float]:
+    """
+    Adjust season weights based on a player's performance trajectory.
+
+    Logic:
+      - Compute a baseline projection using the base weights as-is.
+      - Compare the most recent season's PTS to that baseline.
+      - If improved by >trend_threshold (default 15%): boost recent weight.
+        Catches breakout players like Jalen Johnson, Payton Pritchard.
+      - If declined by >trend_threshold: reduce recent weight.
+        Trusts multi-year average more for declining vets.
+      - Stable players use base weights unchanged.
+
+    Returns renormalised weights that sum to 1.0.
+    """
+    if len(available_seasons) < 2:
+        return base_weights   # already normalised, nothing to adjust
+
+    # Baseline weighted PTS
+    pts_vals, pts_wts = [], []
+    for season, w in zip(available_seasons, base_weights):
+        pts = player_season_stats[season].get("PTS", np.nan)
+        if pd.notna(pts):
+            pts_vals.append(pts)
+            pts_wts.append(w)
+
+    if not pts_vals:
+        return base_weights
+
+    total_w  = sum(pts_wts)
+    baseline = sum(v * w for v, w in zip(pts_vals, pts_wts)) / total_w
+
+    recent_pts = player_season_stats[available_seasons[0]].get("PTS", np.nan)
+    if pd.isna(recent_pts) or baseline == 0:
+        return base_weights
+
+    pct_change = (recent_pts - baseline) / baseline
+
+    adjusted = list(base_weights)
+    if pct_change > trend_threshold:
+        # Breakout — trust recent season more
+        adjusted[0] = min(adjusted[0] + trend_boost, 0.80)
+    elif pct_change < -trend_threshold:
+        # Declining — trust multi-year average more
+        adjusted[0] = max(adjusted[0] - trend_boost, 0.30)
+
+    total = sum(adjusted)
+    return [w / total for w in adjusted]
+
+
+# ── GP adjustment ─────────────────────────────────────────────────────────────
+
+def compute_gp_factor(player_season_stats: dict[str, pd.Series],
+                       available_seasons: list[str],
+                       weights: list[float],
+                       full_season_games: int = 82) -> float:
+    """
+    Compute a games-played availability factor for a player.
+
+    Converts per-game projections into draft-day expected value by accounting
+    for how often a player historically suits up. Injury-prone players
+    discount themselves through their own data — no names hardcoded.
+
+    Examples with typical historical GPs:
+      Kawhi Leonard  (~45 GP/season avg) → factor ~0.55
+      Joel Embiid    (~55 GP/season avg) → factor ~0.67
+      Nikola Jokić   (~73 GP/season avg) → factor ~0.89
+      SGA            (~73 GP/season avg) → factor ~0.89
+
+    Capped at [0.50, 1.0] — even the most injury-prone players
+    get some credit, and no one can exceed a full season.
+    """
+    gp_vals, gp_wts = [], []
+    for season, w in zip(available_seasons, weights):
+        gp = player_season_stats[season].get("GP", np.nan)
+        if pd.notna(gp) and gp > 0:
+            gp_vals.append(gp)
+            gp_wts.append(w)
+
+    if not gp_vals:
+        return 1.0
+
+    total_w      = sum(gp_wts)
+    weighted_gp  = sum(g * w for g, w in zip(gp_vals, gp_wts)) / total_w
+    availability = weighted_gp / full_season_games
+
+    return float(np.clip(availability, 0.50, 1.0))
+
+
+# ── Percentage helpers ────────────────────────────────────────────────────────
+
+def compute_weighted_fg_pct(player_season_stats: dict[str, pd.Series],
+                            available_seasons: list[str],
+                            weights: list[float]) -> float:
+    """
+    Compute a multi-season FG% projection weighted by shot volume.
+
+    This preserves percentage semantics by blending made shots and attempts,
+    rather than averaging raw percentages or accidentally returning attempts.
+    """
+    weighted_fgm = 0.0
+    weighted_fga = 0.0
+
+    for season, w in zip(available_seasons, weights):
+        fga = player_season_stats[season].get("FGA", np.nan)
+        pct = player_season_stats[season].get("FG%", np.nan)
+        if pd.notna(fga) and pd.notna(pct) and fga > 0:
+            weighted_fga += fga * w
+            weighted_fgm += fga * pct * w
+
+    if weighted_fga <= 0:
+        return np.nan
+
+    return weighted_fgm / weighted_fga
+
+
+# ── Projection ────────────────────────────────────────────────────────────────
 
 def project_stats(season_dfs: list[pd.DataFrame],
                   weights: list[float],
                   derived_stats: dict[str, dict[str, float]],
-                  tech_per_game: dict[str, float]) -> pd.DataFrame:
+                  tech_per_game: dict[str, float],
+                  seasons: list[str] | None = None) -> pd.DataFrame:
     """
-    Compute weighted per-game projections for each player across seasons.
+    Compute GP-adjusted, trend-aware per-game projections for each player.
 
-    Players missing from older seasons have their weights renormalised
-    automatically — no manual 'young player' flags needed. A rookie with
-    only one season of data gets full weight on that one season.
+    Two improvements over a flat weighted average:
 
-    FG% is weighted by FGA volume to avoid distortion from low-attempt seasons.
+    1. Trend-aware weights: each player's season weights shift based on their
+       trajectory. Breakout players get more recent-season weight; declining
+       players get less. Detected from PTS change vs weighted baseline.
 
-    DD, TD, and TECH come from game logs and the foul stats fetch — not BBR.
+    2. GP adjustment: all counting stats multiplied by (weighted_GP / 82).
+       Converts per-game value into expected season contribution, naturally
+       discounting injury-prone players without any hardcoding.
+
+    Percentage categories (FG%) are not GP-adjusted — they're ratios
+    independent of games played.
     """
-    cats = ["FGM", "FGA", "FG%", "3PTM", "FTM", "PTS", "REB",
-            "AST", "ST", "BLK", "TO", "PF"]
+    if seasons is None:
+        seasons = [f"season_{i}" for i in range(len(season_dfs))]
+
+    counting_cats = ["FGM", "FGA", "3PTM", "FTM", "PTS", "REB",
+                     "AST", "ST", "BLK", "TO", "PF"]
+
+    # Build season lookup for fast access
+    season_lookup: dict[str, dict[str, pd.Series]] = {}
+    for season, df in zip(seasons, season_dfs):
+        season_lookup[season] = {
+            row["PLAYER_NAME"]: row
+            for _, row in df.iterrows()
+        }
 
     all_players: set[str] = set()
     for df in season_dfs:
@@ -63,61 +205,80 @@ def project_stats(season_dfs: list[pd.DataFrame],
 
     rows = []
     for player in all_players:
-        row = {"PLAYER_NAME": player}
 
-        for cat in cats:
+        # Collect stats for seasons this player appeared in
+        player_season_stats: dict[str, pd.Series] = {
+            s: season_lookup[s][player]
+            for s in seasons
+            if player in season_lookup.get(s, {})
+        }
+        if not player_season_stats:
+            continue
+
+        available_seasons = [s for s in seasons if s in player_season_stats]
+        raw_weights       = [weights[seasons.index(s)] for s in available_seasons]
+        total_w           = sum(raw_weights)
+        norm_weights      = [w / total_w for w in raw_weights]
+
+        # Step 1: trend-aware weight adjustment
+        final_weights = compute_trend_weights(
+            player_season_stats=player_season_stats,
+            available_seasons=available_seasons,
+            base_weights=norm_weights,
+        )
+
+        # Step 2: GP availability factor
+        gp_factor = compute_gp_factor(
+            player_season_stats=player_season_stats,
+            available_seasons=available_seasons,
+            weights=final_weights,
+        )
+
+        row = {"PLAYER_NAME": player, "GP_FACTOR": round(gp_factor, 3)}
+
+        # ── Counting categories — GP-adjusted ───────────────────────────
+        for cat in counting_cats:
             vals, wts = [], []
-            for df, w in zip(season_dfs, weights):
-                match = df[df["PLAYER_NAME"] == player]
-                if not match.empty:
-                    v = match.iloc[0].get(cat, np.nan)
-                    if pd.notna(v):
-                        vals.append(v)
-                        wts.append(w)
+            for season, w in zip(available_seasons, final_weights):
+                v = player_season_stats[season].get(cat, np.nan)
+                if pd.notna(v):
+                    vals.append(v)
+                    wts.append(w)
 
             if not vals:
                 row[cat] = np.nan
                 continue
 
-            total_w = sum(wts)
+            wt        = sum(wts)
+            projected = sum(v * w for v, w in zip(vals, wts)) / wt
+            row[cat]  = projected * gp_factor   # GP adjustment applied here
 
-            if cat == "FG%":
-                # Weight FG% by FGA so a low-attempt season doesn't distort
-                fga_vals, fga_wts = [], []
-                for df, w in zip(season_dfs, weights):
-                    match = df[df["PLAYER_NAME"] == player]
-                    if not match.empty:
-                        fga = match.iloc[0].get("FGA", np.nan)
-                        pct = match.iloc[0].get("FG%", np.nan)
-                        if pd.notna(fga) and pd.notna(pct) and fga > 0:
-                            fga_vals.append(fga * w)
-                            fga_wts.append(w)
-                row[cat] = sum(fga_vals) / sum(fga_wts) if fga_vals else np.nan
-            else:
-                row[cat] = sum(v * w for v, w in zip(vals, wts)) / total_w
+        # ── FG% — volume-weighted, no GP adjustment ──────────────────────
+        row["FG%"] = compute_weighted_fg_pct(
+            player_season_stats=player_season_stats,
+            available_seasons=available_seasons,
+            weights=final_weights,
+        )
 
-        # DD and TD from game logs (most recent season takes precedence)
+        # ── DD and TD — GP-adjusted ──────────────────────────────────────
         player_derived = derived_stats.get(player, {})
-        row["DD"]   = player_derived.get("DD", 0.0)
-        row["TD"]   = player_derived.get("TD", 0.0)
+        row["DD"] = player_derived.get("DD", 0.0) * gp_factor
+        row["TD"] = player_derived.get("TD", 0.0) * gp_factor
 
-        # TECH estimated from foul rate (0.012 × PF as proxy)
-        row["TECH"] = tech_per_game.get(player, 0.05)
+        # ── TECH — GP-adjusted ───────────────────────────────────────────
+        row["TECH"] = tech_per_game.get(player, 0.05) * gp_factor
 
-        # GP and MIN from most recent season only
-        for df in season_dfs:
-            match = df[df["PLAYER_NAME"] == player]
-            if not match.empty:
-                row["GP"]  = match.iloc[0].get("GP", np.nan)
-                row["MIN"] = match.iloc[0].get("MIN", np.nan)
-                break
+        # ── GP and MIN — raw, for filtering and display ──────────────────
+        first = available_seasons[0]
+        row["GP"]  = player_season_stats[first].get("GP", np.nan)
+        row["MIN"] = player_season_stats[first].get("MIN", np.nan)
 
         rows.append(row)
 
     return pd.DataFrame(rows)
 
 
-# ── Tau (weekly variance) ────────────────────────────────────────────────────
+# ── Tau (weekly variance) ─────────────────────────────────────────────────────
 
 def compute_tau(game_logs: dict[str, dict[str, pd.DataFrame]],
                 categories: list[str],
@@ -125,18 +286,17 @@ def compute_tau(game_logs: dict[str, dict[str, pd.DataFrame]],
     """
     Compute each player's weekly variance (tau) per category from game logs.
 
-    Uses weekly per-game averages (not weekly totals). This is important:
-    if we used totals, a player who plays 4 games in a week would naturally
-    show higher totals than one who plays 2 — making tau a proxy for
-    games-played variance rather than true performance variance. Averages
-    correctly isolate night-to-night consistency.
+    Uses weekly per-game averages (not totals) to measure true consistency,
+    decoupled from how many games happened to be scheduled that week.
+
+    TECH is proxied from weekly PF rate using the same relationship as the
+    projection layer (TECH ~= 0.012 x PF/game), so its variance is no longer
+    an arbitrary fallback for every player.
 
     Returns:
         player_tau : { player_name -> { category -> tau } }
         league_tau : { category -> median tau across all players }
-                     Used as fallback for players with insufficient data.
     """
-    # NBA API column name → our internal category name mapping
     API_COL_MAP = {
         "ST":   "STL",
         "TO":   "TOV",
@@ -146,7 +306,7 @@ def compute_tau(game_logs: dict[str, dict[str, pd.DataFrame]],
         "TD":   "TD3",
     }
 
-    seasons     = list(game_logs.keys())
+    seasons    = list(game_logs.keys())
     all_weekly: dict[str, dict[str, list]] = {}
 
     for i, season in enumerate(seasons):
@@ -166,26 +326,30 @@ def compute_tau(game_logs: dict[str, dict[str, pd.DataFrame]],
                 all_weekly[player_name] = {cat: [] for cat in categories}
 
             for cat in categories:
-                api_col = API_COL_MAP.get(cat, cat)
-                if api_col not in logs.columns:
-                    continue
+                if cat == "TECH":
+                    if "PF" not in logs.columns:
+                        continue
+                    weekly_avg = logs.groupby("WEEK_KEY")["PF"].mean() * 0.012
+                    weekly_avg = weekly_avg.clip(lower=0.01)
+                    played_weeks = logs.groupby("WEEK_KEY")["PF"].count()
+                else:
+                    api_col = API_COL_MAP.get(cat, cat)
+                    if api_col not in logs.columns:
+                        continue
+                    weekly_avg = logs.groupby("WEEK_KEY")[api_col].mean()
+                    played_weeks = logs.groupby("WEEK_KEY")[api_col].count()
 
-                # Per-game average within each week — decouples tau from
-                # how many games happened to be scheduled that week
-                weekly_avg   = logs.groupby("WEEK_KEY")[api_col].mean()
-                played_weeks = logs.groupby("WEEK_KEY")[api_col].count()
                 weekly_avg   = weekly_avg[played_weeks >= 1]
 
                 all_weekly[player_name][cat].extend(
                     [(val, w) for val in weekly_avg.values]
                 )
 
-    # Compute player-specific tau as weighted standard deviation
     player_tau: dict[str, dict[str, float]] = {}
     for player_name, cat_data in all_weekly.items():
         player_tau[player_name] = {}
         for cat, weighted_vals in cat_data.items():
-            if len(weighted_vals) < 4:   # need at least 4 weeks for reliable variance
+            if len(weighted_vals) < 4:
                 continue
             vals = np.array([v for v, _ in weighted_vals])
             wts  = np.array([w for _, w in weighted_vals])
@@ -194,7 +358,6 @@ def compute_tau(game_logs: dict[str, dict[str, pd.DataFrame]],
             var  = np.average((vals - mean) ** 2, weights=wts)
             player_tau[player_name][cat] = float(np.sqrt(var))
 
-    # League-wide median tau as fallback for players with insufficient log data
     league_tau: dict[str, float] = {}
     for cat in categories:
         all_vals = [v[cat] for v in player_tau.values() if cat in v]
@@ -203,7 +366,7 @@ def compute_tau(game_logs: dict[str, dict[str, pd.DataFrame]],
     return player_tau, league_tau
 
 
-# ── G-score formula ──────────────────────────────────────────────────────────
+# ── G-score formula ───────────────────────────────────────────────────────────
 
 def compute_g_scores(projected: pd.DataFrame,
                      player_tau: dict[str, dict[str, float]],
@@ -212,14 +375,14 @@ def compute_g_scores(projected: pd.DataFrame,
     """
     Apply the DURANT formula to produce per-category G-scores and total value.
 
-    For each category:
-      1. Box-Cox transform the distribution (handles skew in counting stats)
+    Steps per category:
+      1. Box-Cox transform (handles skew in counting stats)
       2. Compute league mean and sigma on transformed values
-      3. Look up each player's tau (player-specific, or league median fallback)
+      3. Player tau lookup (player-specific → league median fallback)
       4. G = (player_transformed - mean) / sqrt(sigma^2 + kappa * tau^2)
       5. Flip sign for 'low is better' categories
-      6. For FG%: multiply by (player_FGA / league_avg_FGA) — volume weighting
-      7. Clip to ±3.5 to prevent extreme outliers compressing everyone else
+      6. FG%: multiply by (player_FGA / league_avg_FGA) — volume weighting
+      7. Clip to ±3.5 — prevents one outlier compressing everyone else
       8. Multiply by category weight
     """
     epsilon = 0.05
@@ -227,7 +390,6 @@ def compute_g_scores(projected: pd.DataFrame,
     cats    = config["categories"]
     weights = config["category_weights"]
 
-    # Restrict to the realistic draft pool
     pool_size = config["num_teams"] * config["roster_size"]
     df = projected.dropna(subset=["PTS"]).copy()
     df = df.nlargest(pool_size, "MIN").reset_index(drop=True)
@@ -253,7 +415,6 @@ def compute_g_scores(projected: pd.DataFrame,
         league_sigma = transformed.std()
 
         if league_sigma < 1e-8:
-            # All players identical in this category — contributes nothing
             df[f"{cat}_G"] = 0.0
             continue
 

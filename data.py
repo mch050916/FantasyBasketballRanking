@@ -15,6 +15,8 @@ import pandas as pd
 import numpy as np
 import time
 import pickle
+import re
+import unicodedata
 from pathlib import Path
 
 
@@ -106,6 +108,57 @@ def filter_qualified(df: pd.DataFrame, config: dict) -> pd.DataFrame:
 
 # ── NBA API: game log fetching ───────────────────────────────────────────────
 
+def normalize_player_name(name: str) -> str:
+    """Normalize names so accents/punctuation differences do not break lookups."""
+    ascii_name = unicodedata.normalize("NFKD", str(name)).encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9]", "", ascii_name.lower())
+
+
+def build_nba_player_lookups(all_players: list[dict]) -> tuple[dict[str, int], dict[str, int]]:
+    """Create exact and normalized name lookup tables for NBA API players."""
+    exact = {p["full_name"]: p["id"] for p in all_players}
+    normalized: dict[str, int] = {}
+    for player in all_players:
+        normalized.setdefault(normalize_player_name(player["full_name"]), player["id"])
+    return exact, normalized
+
+
+def resolve_player_id(player_name: str,
+                      exact_lookup: dict[str, int],
+                      normalized_lookup: dict[str, int]) -> int | None:
+    """Resolve a Basketball Reference-style player name to an NBA API player id."""
+    player_id = exact_lookup.get(player_name)
+    if player_id is not None:
+        return player_id
+    return normalized_lookup.get(normalize_player_name(player_name))
+
+
+def _empty_game_log_result(seasons: list[str]) -> dict[str, dict[str, pd.DataFrame]]:
+    return {season: {} for season in seasons}
+
+
+def _load_cached_game_logs(cache_path: Path, seasons: list[str]) -> dict[str, dict[str, pd.DataFrame]]:
+    if not cache_path.exists():
+        return _empty_game_log_result(seasons)
+    with open(cache_path, "rb") as f:
+        cached = pickle.load(f)
+    result = _empty_game_log_result(seasons)
+    for season in seasons:
+        season_logs = cached.get(season, {}) if isinstance(cached, dict) else {}
+        result[season].update(season_logs)
+    return result
+
+
+def _missing_game_log_pairs(game_logs: dict[str, dict[str, pd.DataFrame]],
+                            player_names: list[str],
+                            seasons: list[str]) -> list[tuple[str, str]]:
+    missing: list[tuple[str, str]] = []
+    for player_name in player_names:
+        for season in seasons:
+            if player_name not in game_logs.get(season, {}):
+                missing.append((player_name, season))
+    return missing
+
 def fetch_game_logs(player_names: list[str],
                     seasons: list[str],
                     cache_file: str) -> dict[str, dict[str, pd.DataFrame]]:
@@ -118,61 +171,55 @@ def fetch_game_logs(player_names: list[str],
     Uses retry logic with exponential backoff to handle NBA API rate limiting.
     """
     cache_path = Path(cache_file)
+    result = _load_cached_game_logs(cache_path, seasons)
+    missing_pairs = _missing_game_log_pairs(result, player_names, seasons)
     if cache_path.exists():
         print(f"   Loading game logs from cache: {cache_file}")
-        with open(cache_path, "rb") as f:
-            return pickle.load(f)
-
-    print(f"   No cache found — fetching from NBA API (~6-8 min for 150 players)...")
-    print(f"   This only runs once. Results saved to {cache_file}")
+        if not missing_pairs:
+            return result
+        print(f"   Cache missing {len(missing_pairs)} player-season logs — backfilling now...")
+    else:
+        print(f"   No cache found — fetching from NBA API (~6-8 min for 150 players)...")
+        print(f"   This only runs once. Results saved to {cache_file}")
 
     from nba_api.stats.static import players as nba_players
     from nba_api.stats.endpoints import playergamelogs
 
     all_players = nba_players.get_players()
-    name_to_id  = {p["full_name"]: p["id"] for p in all_players}
+    exact_lookup, normalized_lookup = build_nba_player_lookups(all_players)
 
-    result = {season: {} for season in seasons}
-    total  = len(player_names) * len(seasons)
+    total  = len(missing_pairs)
     done   = 0
 
-    for player_name in player_names:
-        player_id = name_to_id.get(player_name)
+    for player_name, season in missing_pairs:
+        player_id = resolve_player_id(player_name, exact_lookup, normalized_lookup)
+        done += 1
+        pct = done / total * 100 if total else 100
 
         if player_id is None:
-            # Try case-insensitive match for name variations (accents, etc.)
-            lower   = player_name.lower()
-            matches = [p for p in all_players if p["full_name"].lower() == lower]
-            if matches:
-                player_id = matches[0]["id"]
-            else:
-                done += len(seasons)
-                continue
+            print(f"\n   [skip] {player_name} {season}: no NBA API player id match")
+            continue
 
-        for season in seasons:
-            done += 1
-            pct = done / total * 100
+        for attempt in range(3):
+            try:
+                time.sleep(1.5 + attempt * 3)   # 1.5s → 4.5s → 7.5s
+                logs = playergamelogs.PlayerGameLogs(
+                    player_id_nullable=player_id,
+                    season_nullable=season,
+                )
+                df = logs.get_data_frames()[0]
+                if not df.empty:
+                    result[season][player_name] = df
+                print(f"   [{pct:4.0f}%] {player_name} {season}   ", end="\r")
+                break
 
-            for attempt in range(3):
-                try:
-                    time.sleep(1.5 + attempt * 3)   # 1.5s → 4.5s → 7.5s
-                    logs = playergamelogs.PlayerGameLogs(
-                        player_id_nullable=player_id,
-                        season_nullable=season,
-                    )
-                    df = logs.get_data_frames()[0]
-                    if not df.empty:
-                        result[season][player_name] = df
-                    print(f"   [{pct:4.0f}%] {player_name} {season}   ", end="\r")
-                    break
-
-                except Exception as e:
-                    if attempt < 2:
-                        wait = 5 + attempt * 5   # 5s → 10s between retries
-                        print(f"\n   [retry {attempt+1}] {player_name} {season} — waiting {wait}s...")
-                        time.sleep(wait)
-                    else:
-                        print(f"\n   [skip] {player_name} {season}: failed after 3 attempts")
+            except Exception:
+                if attempt < 2:
+                    wait = 5 + attempt * 5   # 5s → 10s between retries
+                    print(f"\n   [retry {attempt+1}] {player_name} {season} — waiting {wait}s...")
+                    time.sleep(wait)
+                else:
+                    print(f"\n   [skip] {player_name} {season}: failed after 3 attempts")
 
     print()
 

@@ -1,0 +1,64 @@
+import tempfile
+import unittest
+from pathlib import Path
+
+import pandas as pd
+
+from validate import build_player_name, build_rank_series, normalize_player_name, validate
+
+
+class ValidateTests(unittest.TestCase):
+    def test_normalize_player_name_strips_accents_and_punctuation(self) -> None:
+        self.assertEqual(normalize_player_name("Luka Dončić"), "lukadoncic")
+        self.assertEqual(normalize_player_name("Nikola Jokić"), "nikolajokic")
+
+    def test_validate_matches_normalized_player_names(self) -> None:
+        rankings = pd.DataFrame(
+            [
+                {"PLAYER_NAME": "Luka Dončić", "RANK": 4},
+                {"PLAYER_NAME": "Nikola Jokić", "RANK": 1},
+            ]
+        )
+        known = pd.DataFrame(
+            [
+                {"Player Name": "Luka Doncic", "Rank": 5},
+                {"Player Name": "Nikola Jokic", "Rank": 2},
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            csv_path = Path(tmpdir) / "known.csv"
+            known.to_csv(csv_path, index=False)
+            result = validate(rankings, str(csv_path))
+
+        self.assertEqual(result["matched_players"], 2)
+
+    def test_build_player_name_supports_split_columns(self) -> None:
+        known = pd.DataFrame(
+            [
+                {"First Name": "Luka", "Last Name": "Dončić"},
+                {"First Name": "Shai", "Last Name": "Gilgeous-Alexander"},
+            ]
+        )
+
+        built = build_player_name(known, ["First Name", "Last Name"])
+
+        self.assertEqual(built.iloc[0], "Luka Dončić")
+        self.assertEqual(built.iloc[1], "Shai Gilgeous-Alexander")
+
+    def test_build_rank_series_supports_metric_based_ordering(self) -> None:
+        known = pd.DataFrame(
+            [
+                {"Avg. Pick": 3.2},
+                {"Avg. Pick": 1.7},
+                {"Avg. Pick": 8.4},
+            ]
+        )
+
+        ranks = build_rank_series(known, "Avg. Pick", rank_from_metric=True, ascending=True)
+
+        self.assertEqual(ranks.tolist(), [2.0, 1.0, 3.0])
+
+
+if __name__ == "__main__":
+    unittest.main()

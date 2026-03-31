@@ -33,7 +33,45 @@ BBR_FILES = [
 ]
 
 OUTPUT_FILE     = "durant_rankings_2025_26.csv"
-VALIDATION_FILE = "actual_9cat_24_25.csv"   # set to None to skip validation
+VALIDATION_TARGETS = [
+    {
+        "path": "actual_14cat_24_25_snapshot.csv",
+        "label": "actual_14cat_24_25_snapshot.csv",
+        "name_col": "Player Name",
+        "rank_col": "Rank",
+        "note": "14-cat exact-league validation snapshot for 2024-25",
+    },
+    {
+        "path": "actual_14cat_23_24_snapshot.csv",
+        "label": "actual_14cat_23_24_snapshot.csv",
+        "name_col": "Player Name",
+        "rank_col": "Rank",
+        "note": "14-cat exact-league validation snapshot for 2023-24",
+    },
+    {
+        "path": "yahoo_25_26_market_export.csv",
+        "label": "yahoo_25_26_adp_proxy",
+        "name_col": ["First Name", "Last Name"],
+        "rank_col": "Avg. Pick",
+        "rank_from_metric": True,
+        "rank_metric_ascending": True,
+        "note": "Market comparison only — lower Yahoo Avg. Pick is treated as a better preseason rank",
+    },
+    {
+        "path": "yahoo_25_26_market_export.csv",
+        "label": "yahoo_25_26_live_snapshot",
+        "name_col": ["First Name", "Last Name"],
+        "rank_col": "OR",
+        "note": "Live Yahoo season-to-date rank snapshot from the export's OR column",
+    },
+    {
+        "path": "actual_9cat_24_25.csv",
+        "label": "actual_9cat_24_25.csv",
+        "name_col": "Player Name",
+        "rank_col": "Rank",
+        "note": "14-cat model vs 9-cat actual — directional comparison only",
+    },
+]
 
 
 def main() -> None:
@@ -109,7 +147,7 @@ def main() -> None:
     # ── 5. Project stats and compute G-scores ────────────────────────────
     print("\n[5/5] Projecting stats and computing G-scores...")
 
-    projected = project_stats(season_dfs, weights, derived_stats, tech_per_game)
+    projected = project_stats(season_dfs, weights, derived_stats, tech_per_game, seasons=BBR_FILES)
     projected = projected.dropna(subset=["PTS"])
     print(f"   {len(projected)} players with projections")
 
@@ -125,10 +163,21 @@ def main() -> None:
     save_rankings(rankings, OUTPUT_FILE)
 
     # ── Validation ───────────────────────────────────────────────────────
-    if VALIDATION_FILE and Path(VALIDATION_FILE).exists():
-        validate(rankings, VALIDATION_FILE)
-    elif VALIDATION_FILE:
-        print(f"\n[skip] Validation file not found: {VALIDATION_FILE}")
+    for target in VALIDATION_TARGETS:
+        path = target["path"]
+        if Path(path).exists():
+            validate(
+                rankings,
+                path,
+                name_col=target.get("name_col", "Player Name"),
+                rank_col=target.get("rank_col", "Rank"),
+                rank_from_metric=target.get("rank_from_metric", False),
+                rank_metric_ascending=target.get("rank_metric_ascending", True),
+                label=target.get("label"),
+                note=target.get("note"),
+            )
+        else:
+            print(f"\n[skip] Validation file not found: {path}")
 
 
 if __name__ == "__main__":
