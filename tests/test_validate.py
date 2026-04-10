@@ -32,6 +32,7 @@ class ValidateTests(unittest.TestCase):
             result = validate(rankings, str(csv_path))
 
         self.assertEqual(result["matched_players"], 2)
+        self.assertEqual(result["status"], "weak_matches")
 
     def test_build_player_name_supports_split_columns(self) -> None:
         known = pd.DataFrame(
@@ -58,6 +59,18 @@ class ValidateTests(unittest.TestCase):
         ranks = build_rank_series(known, "Avg. Pick", rank_from_metric=True, ascending=True)
 
         self.assertEqual(ranks.tolist(), [2.0, 1.0, 3.0])
+
+    def test_validate_returns_no_matches_health_state(self) -> None:
+        rankings = pd.DataFrame([{"PLAYER_NAME": "Nikola Jokić", "RANK": 1}])
+        known = pd.DataFrame([{"Player Name": "Someone Else", "Rank": 9}])
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            csv_path = Path(tmpdir) / "known.csv"
+            known.to_csv(csv_path, index=False)
+            result = validate(rankings, str(csv_path))
+
+        self.assertEqual(result["status"], "no_matches")
+        self.assertEqual(result["matched_players"], 0)
 
 
 if __name__ == "__main__":

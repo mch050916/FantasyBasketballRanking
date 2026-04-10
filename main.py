@@ -74,6 +74,43 @@ VALIDATION_TARGETS = [
 ]
 
 
+def print_run_health_summary(game_log_health: dict[str, object],
+                             validation_results: list[dict[str, object]]) -> None:
+    print(f"\n{'='*60}")
+    print("Run Health Summary")
+    print(f"{'='*60}")
+
+    if game_log_health["degraded"]:
+        print("  Game-log fetch  : DEGRADED")
+        print(f"  Missing pairs   : {game_log_health['missing_pair_count']} / {game_log_health['requested_pair_count']}")
+        for player_name, season in game_log_health["missing_pairs"][:10]:
+            print(f"    - {player_name} ({season})")
+        extra = game_log_health["missing_pair_count"] - min(len(game_log_health["missing_pairs"]), 10)
+        if extra > 0:
+            print(f"    ... plus {extra} more missing pair(s)")
+    else:
+        print("  Game-log fetch  : OK")
+        print(f"  Missing pairs   : 0 / {game_log_health['requested_pair_count']}")
+
+    ok_labels = [r["label"] for r in validation_results if r["status"] == "ok"]
+    weak_labels = [r["label"] for r in validation_results if r["status"] == "weak_matches"]
+    failed_labels = [r["label"] for r in validation_results if r["status"] == "no_matches"]
+    skipped_labels = [r["label"] for r in validation_results if r["status"] == "missing_file"]
+
+    print("  Validation      :")
+    print(f"    ok            : {len(ok_labels)}")
+    print(f"    weak          : {len(weak_labels)}")
+    print(f"    failed        : {len(failed_labels)}")
+    print(f"    skipped       : {len(skipped_labels)}")
+
+    if weak_labels:
+        print(f"    weak targets  : {', '.join(weak_labels)}")
+    if failed_labels:
+        print(f"    failed targets: {', '.join(failed_labels)}")
+    if skipped_labels:
+        print(f"    skipped files : {', '.join(skipped_labels)}")
+
+
 def main() -> None:
     print("DURANT Fantasy Basketball Ranker")
     print("=" * 60)
@@ -115,10 +152,11 @@ def main() -> None:
     print(f"   Fetching logs for {len(game_log_players)} players "
           f"(top {limit} by MIN + {len(extra)} returnees)")
 
-    game_logs = fetch_game_logs(
+    game_logs, game_log_health = fetch_game_logs(
         player_names=game_log_players,
         seasons=config["game_log_seasons"],
         cache_file=config["game_log_cache"],
+        return_health=True,
     )
 
     # ── 3. Derive DD and TD from game logs ───────────────────────────────
@@ -163,10 +201,11 @@ def main() -> None:
     save_rankings(rankings, OUTPUT_FILE)
 
     # ── Validation ───────────────────────────────────────────────────────
+    validation_results: list[dict[str, object]] = []
     for target in VALIDATION_TARGETS:
         path = target["path"]
         if Path(path).exists():
-            validate(
+            validation_results.append(validate(
                 rankings,
                 path,
                 name_col=target.get("name_col", "Player Name"),
@@ -175,9 +214,18 @@ def main() -> None:
                 rank_metric_ascending=target.get("rank_metric_ascending", True),
                 label=target.get("label"),
                 note=target.get("note"),
-            )
+            ))
         else:
             print(f"\n[skip] Validation file not found: {path}")
+            validation_results.append(
+                {
+                    "label": target.get("label", path),
+                    "status": "missing_file",
+                    "matched_players": 0,
+                }
+            )
+
+    print_run_health_summary(game_log_health, validation_results)
 
 
 if __name__ == "__main__":

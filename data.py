@@ -40,6 +40,8 @@ BBR_COL_MAP = {
     "PTS":    "PTS_T",
 }
 
+CACHE_SCHEMA_VERSION = 1
+
 
 def load_bbr_csv(path: str) -> pd.DataFrame:
     """
@@ -137,16 +139,108 @@ def _empty_game_log_result(seasons: list[str]) -> dict[str, dict[str, pd.DataFra
     return {season: {} for season in seasons}
 
 
-def _load_cached_game_logs(cache_path: Path, seasons: list[str]) -> dict[str, dict[str, pd.DataFrame]]:
+def _normalize_weight_list(season_weights: list[float]) -> list[float]:
+    return [round(float(weight), 12) for weight in season_weights]
+
+
+def _build_cache_envelope(cache_kind: str, payload, metadata: dict) -> dict:
+    return {
+        "schema_version": CACHE_SCHEMA_VERSION,
+        "cache_kind": cache_kind,
+        "metadata": metadata,
+        "payload": payload,
+    }
+
+
+def _write_cache_envelope(cache_path: Path, cache_kind: str, payload, metadata: dict) -> None:
+    with open(cache_path, "wb") as f:
+        pickle.dump(_build_cache_envelope(cache_kind, payload, metadata), f)
+
+
+def _invalid_cache_status(reason: str) -> dict[str, str | bool | None]:
+    return {"valid": False, "reason": reason, "metadata": None}
+
+
+def _valid_cache_status(metadata: dict) -> dict[str, str | bool | dict]:
+    return {"valid": True, "reason": None, "metadata": metadata}
+
+
+def _read_cache_envelope(cache_path: Path, expected_kind: str) -> tuple[object | None, dict[str, str | bool | dict | None]]:
     if not cache_path.exists():
-        return _empty_game_log_result(seasons)
-    with open(cache_path, "rb") as f:
-        cached = pickle.load(f)
+        return None, _invalid_cache_status("cache file missing")
+
+    try:
+        with open(cache_path, "rb") as f:
+            cached = pickle.load(f)
+    except Exception as exc:
+        return None, _invalid_cache_status(f"unreadable cache payload ({exc.__class__.__name__})")
+
+    if not isinstance(cached, dict):
+        return None, _invalid_cache_status("missing cache metadata envelope")
+    if cached.get("schema_version") != CACHE_SCHEMA_VERSION:
+        return None, _invalid_cache_status("missing or unsupported cache schema version")
+    if cached.get("cache_kind") != expected_kind:
+        return None, _invalid_cache_status("wrong cache kind metadata")
+
+    metadata = cached.get("metadata")
+    if not isinstance(metadata, dict):
+        return None, _invalid_cache_status("missing cache metadata")
+    if "payload" not in cached:
+        return None, _invalid_cache_status("missing cache payload")
+
+    return cached["payload"], _valid_cache_status(metadata)
+
+
+def _game_log_cache_metadata(seasons: list[str]) -> dict[str, list[str]]:
+    return {"seasons": list(seasons)}
+
+
+def _tech_cache_metadata(seasons: list[str], season_weights: list[float]) -> dict[str, list]:
+    return {
+        "seasons": list(seasons),
+        "season_weights": _normalize_weight_list(season_weights),
+    }
+
+
+def _load_cached_game_logs(cache_path: Path,
+                           seasons: list[str]) -> tuple[dict[str, dict[str, pd.DataFrame]], dict[str, str | bool | dict | None]]:
+    payload, cache_status = _read_cache_envelope(cache_path, "game_logs")
+    if not cache_status["valid"]:
+        return _empty_game_log_result(seasons), cache_status
+
+    expected_metadata = _game_log_cache_metadata(seasons)
+    metadata = cache_status["metadata"]
+    if metadata != expected_metadata:
+        return _empty_game_log_result(seasons), _invalid_cache_status("game-log cache metadata mismatch")
+    if not isinstance(payload, dict):
+        return _empty_game_log_result(seasons), _invalid_cache_status("game-log cache payload is not a season map")
+
     result = _empty_game_log_result(seasons)
     for season in seasons:
-        season_logs = cached.get(season, {}) if isinstance(cached, dict) else {}
+        season_logs = payload.get(season, {})
+        if not isinstance(season_logs, dict):
+            return _empty_game_log_result(seasons), _invalid_cache_status(
+                f"game-log cache payload for {season} is not a player map"
+            )
         result[season].update(season_logs)
-    return result
+    return result, cache_status
+
+
+def _load_cached_tech_per_game(cache_path: Path,
+                               seasons: list[str],
+                               season_weights: list[float]) -> tuple[dict[str, float] | None, dict[str, str | bool | dict | None]]:
+    payload, cache_status = _read_cache_envelope(cache_path, "tech_per_game")
+    if not cache_status["valid"]:
+        return None, cache_status
+
+    expected_metadata = _tech_cache_metadata(seasons, season_weights)
+    metadata = cache_status["metadata"]
+    if metadata != expected_metadata:
+        return None, _invalid_cache_status("TECH cache metadata mismatch")
+    if not isinstance(payload, dict):
+        return None, _invalid_cache_status("TECH cache payload is not a player map")
+
+    return payload, cache_status
 
 
 def _missing_game_log_pairs(game_logs: dict[str, dict[str, pd.DataFrame]],
@@ -159,9 +253,28 @@ def _missing_game_log_pairs(game_logs: dict[str, dict[str, pd.DataFrame]],
                 missing.append((player_name, season))
     return missing
 
+
+def _requested_game_log_pairs(player_names: list[str],
+                              seasons: list[str]) -> list[tuple[str, str]]:
+    return [(player_name, season) for player_name in player_names for season in seasons]
+
+
+def _build_game_log_fetch_health(player_names: list[str],
+                                 seasons: list[str],
+                                 missing_pairs: list[tuple[str, str]]) -> dict[str, object]:
+    requested_pairs = _requested_game_log_pairs(player_names, seasons)
+    return {
+        "requested_pairs": requested_pairs,
+        "requested_pair_count": len(requested_pairs),
+        "missing_pairs": missing_pairs,
+        "missing_pair_count": len(missing_pairs),
+        "degraded": bool(missing_pairs),
+    }
+
 def fetch_game_logs(player_names: list[str],
                     seasons: list[str],
-                    cache_file: str) -> dict[str, dict[str, pd.DataFrame]]:
+                    cache_file: str,
+                    return_health: bool = False) -> dict[str, dict[str, pd.DataFrame]] | tuple[dict[str, dict[str, pd.DataFrame]], dict[str, object]]:
     """
     Fetch per-game logs for each player for each season from the NBA API.
 
@@ -171,13 +284,19 @@ def fetch_game_logs(player_names: list[str],
     Uses retry logic with exponential backoff to handle NBA API rate limiting.
     """
     cache_path = Path(cache_file)
-    result = _load_cached_game_logs(cache_path, seasons)
+    result, cache_status = _load_cached_game_logs(cache_path, seasons)
     missing_pairs = _missing_game_log_pairs(result, player_names, seasons)
     if cache_path.exists():
-        print(f"   Loading game logs from cache: {cache_file}")
-        if not missing_pairs:
-            return result
-        print(f"   Cache missing {len(missing_pairs)} player-season logs — backfilling now...")
+        if cache_status["valid"]:
+            print(f"   Loading game logs from cache: {cache_file}")
+            if not missing_pairs:
+                health = _build_game_log_fetch_health(player_names, seasons, missing_pairs)
+                if return_health:
+                    return result, health
+                return result
+            print(f"   Cache missing {len(missing_pairs)} player-season logs — backfilling now...")
+        else:
+            print(f"   Rebuilding game-log cache: {cache_status['reason']}")
     else:
         print(f"   No cache found — fetching from NBA API (~6-8 min for 150 players)...")
         print(f"   This only runs once. Results saved to {cache_file}")
@@ -223,10 +342,18 @@ def fetch_game_logs(player_names: list[str],
 
     print()
 
-    with open(cache_path, "wb") as f:
-        pickle.dump(result, f)
+    _write_cache_envelope(
+        cache_path,
+        "game_logs",
+        result,
+        _game_log_cache_metadata(seasons),
+    )
     print(f"   Game logs cached to {cache_file}")
 
+    final_missing_pairs = _missing_game_log_pairs(result, player_names, seasons)
+    health = _build_game_log_fetch_health(player_names, seasons, final_missing_pairs)
+    if return_health:
+        return result, health
     return result
 
 
@@ -250,9 +377,11 @@ def fetch_tech_per_game(seasons: list[str],
     """
     cache_path = Path(cache_file)
     if cache_path.exists():
-        print("   Loading TECH from cache...")
-        with open(cache_path, "rb") as f:
-            return pickle.load(f)
+        cached, cache_status = _load_cached_tech_per_game(cache_path, seasons, season_weights)
+        if cache_status["valid"]:
+            print("   Loading TECH from cache...")
+            return cached
+        print(f"   Rebuilding TECH cache: {cache_status['reason']}")
 
     from nba_api.stats.endpoints import leaguedashplayerstats
 
@@ -289,8 +418,12 @@ def fetch_tech_per_game(seasons: list[str],
         total_w = sum(w for _, w in vals)
         result[name] = sum(v * w for v, w in vals) / total_w if total_w > 0 else 0.05
 
-    with open(cache_path, "wb") as f:
-        pickle.dump(result, f)
+    _write_cache_envelope(
+        cache_path,
+        "tech_per_game",
+        result,
+        _tech_cache_metadata(seasons, season_weights),
+    )
     print(f"   TECH data cached for {len(result)} players")
 
     return result

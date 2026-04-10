@@ -20,6 +20,7 @@ whether our model broadly agrees on player value, not exact rank matching.
 import re
 import unicodedata
 import pandas as pd
+import numpy as np
 from pathlib import Path
 
 
@@ -59,6 +60,7 @@ def validate(df: pd.DataFrame,
              rank_from_metric: bool = False,
              rank_metric_ascending: bool = True,
              top_n_misses: int = 10,
+             min_matched_players: int = 10,
              label: str | None = None,
              note: str | None = None) -> dict:
     """
@@ -101,24 +103,57 @@ def validate(df: pd.DataFrame,
         how="inner",
     )
 
-    if merged.empty:
-        print("No matching players found for validation.")
-        return {}
-
-    corr, _  = spearmanr(merged["RANK"], merged["ACTUAL_RANK"])
-    delta    = merged["RANK"] - merged["ACTUAL_RANK"]
-    hit_rate = (delta.abs() <= 5).mean() * 100
-    mae      = delta.abs().mean()
+    result = {
+        "status": "no_matches",
+        "spearman": None,
+        "hit_rate": None,
+        "mae": None,
+        "matched_players": len(merged),
+        "details": merged,
+        "label": label or Path(known_csv).name,
+    }
 
     print(f"\n{'='*60}")
     print(f"Validation vs {label or Path(known_csv).name}")
     if note:
         print(f"  Note: {note}")
     print(f"{'='*60}")
+
+    if merged.empty:
+        print("  Status          : no_matches")
+        print("  Players matched : 0")
+        print("  Validation did not produce any comparable players.")
+        return result
+
+    corr = np.nan
+    if len(merged) >= 2:
+        corr, _ = spearmanr(merged["RANK"], merged["ACTUAL_RANK"])
+    delta    = merged["RANK"] - merged["ACTUAL_RANK"]
+    hit_rate = (delta.abs() <= 5).mean() * 100
+    mae      = delta.abs().mean()
+
+    status = "ok" if len(merged) >= min_matched_players else "weak_matches"
+    result.update(
+        {
+            "status": status,
+            "spearman": corr,
+            "hit_rate": hit_rate,
+            "mae": mae,
+            "matched_players": len(merged),
+            "details": merged,
+        }
+    )
+
+    print(f"  Status          : {status}")
     print(f"  Players matched : {len(merged)}")
-    print(f"  Spearman r      : {corr:.3f}  (1.0 = perfect, 0 = random)")
+    if np.isnan(corr):
+        print("  Spearman r      : n/a  (need at least 2 matched players)")
+    else:
+        print(f"  Spearman r      : {corr:.3f}  (1.0 = perfect, 0 = random)")
     print(f"  Hit rate (±5)   : {hit_rate:.1f}%")
     print(f"  MAE             : {mae:.1f} ranks")
+    if status == "weak_matches":
+        print(f"  Warning         : matched player count is below the trust threshold ({min_matched_players})")
 
     merged["delta"] = delta
     top_misses = merged.sort_values("delta", key=abs, ascending=False).head(top_n_misses)
@@ -131,10 +166,4 @@ def validate(df: pd.DataFrame,
               f"actual={int(row['ACTUAL_RANK']):>3}  "
               f"{arrow}{abs(int(row['delta']))}")
 
-    return {
-        "spearman": corr,
-        "hit_rate": hit_rate,
-        "mae":      mae,
-        "matched_players": len(merged),
-        "details":  merged,
-    }
+    return result
