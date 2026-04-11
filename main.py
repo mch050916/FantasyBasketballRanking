@@ -37,6 +37,8 @@ VALIDATION_TARGETS = [
     {
         "path": "actual_14cat_24_25_snapshot.csv",
         "label": "actual_14cat_24_25_snapshot.csv",
+        "benchmark_class": "historical_snapshot",
+        "trust_tier": "snapshot_derived",
         "name_col": "Player Name",
         "rank_col": "Rank",
         "note": "14-cat exact-league validation snapshot for 2024-25",
@@ -44,6 +46,8 @@ VALIDATION_TARGETS = [
     {
         "path": "actual_14cat_23_24_snapshot.csv",
         "label": "actual_14cat_23_24_snapshot.csv",
+        "benchmark_class": "historical_snapshot",
+        "trust_tier": "snapshot_derived",
         "name_col": "Player Name",
         "rank_col": "Rank",
         "note": "14-cat exact-league validation snapshot for 2023-24",
@@ -51,6 +55,8 @@ VALIDATION_TARGETS = [
     {
         "path": "yahoo_25_26_market_export.csv",
         "label": "yahoo_25_26_adp_proxy",
+        "benchmark_class": "direct_export_market",
+        "trust_tier": "direct_export",
         "name_col": ["First Name", "Last Name"],
         "rank_col": "Avg. Pick",
         "rank_from_metric": True,
@@ -60,6 +66,8 @@ VALIDATION_TARGETS = [
     {
         "path": "yahoo_25_26_market_export.csv",
         "label": "yahoo_25_26_live_snapshot",
+        "benchmark_class": "direct_export_live",
+        "trust_tier": "direct_export",
         "name_col": ["First Name", "Last Name"],
         "rank_col": "OR",
         "note": "Live Yahoo season-to-date rank snapshot from the export's OR column",
@@ -67,6 +75,8 @@ VALIDATION_TARGETS = [
     {
         "path": "actual_9cat_24_25.csv",
         "label": "actual_9cat_24_25.csv",
+        "benchmark_class": "directional_legacy",
+        "trust_tier": "legacy_directional",
         "name_col": "Player Name",
         "rank_col": "Rank",
         "note": "14-cat model vs 9-cat actual — directional comparison only",
@@ -91,6 +101,8 @@ def print_run_health_summary(game_log_health: dict[str, object],
     else:
         print("  Game-log fetch  : OK")
         print(f"  Missing pairs   : 0 / {game_log_health['requested_pair_count']}")
+    if game_log_health["expected_missing_pair_count"]:
+        print(f"  Expected misses : {game_log_health['expected_missing_pair_count']} suppressed")
 
     ok_labels = [r["label"] for r in validation_results if r["status"] == "ok"]
     weak_labels = [r["label"] for r in validation_results if r["status"] == "weak_matches"]
@@ -125,9 +137,11 @@ def main() -> None:
     weights     = [w / total_w for w in raw_weights]   # renormalise to sum=1
 
     season_dfs = []
+    season_player_sets: list[set[str]] = []
     for path in BBR_FILES:
-        df = load_bbr_csv(path)
-        df = filter_qualified(df, config)
+        raw_df = load_bbr_csv(path)
+        season_player_sets.append(set(raw_df["PLAYER_NAME"]))
+        df = filter_qualified(raw_df, config)
         season_dfs.append(df)
         print(f"   {path}: {len(df)} qualified players")
 
@@ -149,6 +163,13 @@ def main() -> None:
         extra = []
 
     game_log_players = top_recent + extra
+    expected_missing_pairs: set[tuple[str, str]] = set()
+    if season_player_sets:
+        recent_player_set = season_player_sets[0]
+        for season, player_set in zip(config["game_log_seasons"][1:], season_player_sets[1:]):
+            for player_name in game_log_players:
+                if player_name in recent_player_set and player_name not in player_set:
+                    expected_missing_pairs.add((player_name, season))
     print(f"   Fetching logs for {len(game_log_players)} players "
           f"(top {limit} by MIN + {len(extra)} returnees)")
 
@@ -156,6 +177,7 @@ def main() -> None:
         player_names=game_log_players,
         seasons=config["game_log_seasons"],
         cache_file=config["game_log_cache"],
+        expected_missing_pairs=expected_missing_pairs,
         return_health=True,
     )
 
@@ -214,12 +236,16 @@ def main() -> None:
                 rank_metric_ascending=target.get("rank_metric_ascending", True),
                 label=target.get("label"),
                 note=target.get("note"),
+                benchmark_class=target.get("benchmark_class"),
+                trust_tier=target.get("trust_tier"),
             ))
         else:
             print(f"\n[skip] Validation file not found: {path}")
             validation_results.append(
                 {
                     "label": target.get("label", path),
+                    "benchmark_class": target.get("benchmark_class"),
+                    "trust_tier": target.get("trust_tier"),
                     "status": "missing_file",
                     "matched_players": 0,
                 }

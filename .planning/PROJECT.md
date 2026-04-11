@@ -21,8 +21,8 @@ Produce trustworthy pre-draft rankings for this exact league format that are mor
 ### Active
 
 - [ ] Improve projection accuracy by fixing the highest-impact causes of heavy misses one by one.
-- [ ] Make validation outputs trustworthy enough to distinguish historical accuracy from Yahoo-market similarity.
-- [ ] Reduce remaining player-identity gaps and noisy benchmark mismatches so degraded runs are high-signal instead of just honest.
+- [x] Make validation outputs trustworthy enough to distinguish historical accuracy from Yahoo-market similarity.
+- [x] Reduce remaining player-identity gaps and noisy benchmark mismatches so degraded runs are high-signal instead of just honest.
 
 ### Out of Scope
 
@@ -34,7 +34,7 @@ Produce trustworthy pre-draft rankings for this exact league format that are mor
 
 The repo already contains a working CLI pipeline built around `main.py`, `data.py`, `model.py`, `output.py`, and `validate.py`. League settings live in `config.py`, validation inputs now include exact-league 14-cat snapshot CSVs plus Yahoo market exports, and NBA API fetches are cached locally in pickle files for repeat runs.
 
-Recent work improved FG% projection math, TECH variance handling, historical benchmark support, NBA API name matching for accented players like Alperen Sengun/Şengün, and Phase 1 reliability guardrails around cache invalidation, degraded-run reporting, and validation health states. The current investigation is focused on remaining large misses that appear to come from projection logic, identity edge cases, and benchmark noise.
+Recent work improved FG% projection math, TECH variance handling, historical benchmark support, NBA API name matching for accented players like Alperen Sengun/Şengün, and Phase 1 reliability guardrails around cache invalidation, degraded-run reporting, and validation health states. Phase 2 added a shared deterministic identity layer, expected-missing suppression for newer players lacking older seasons, and explicit benchmark trust tiers across exact-league snapshots and Yahoo exports. The current investigation is now focused on remaining large misses that appear to come from projection logic rather than benchmark plumbing.
 
 ## Constraints
 
@@ -51,6 +51,8 @@ Recent work improved FG% projection math, TECH variance handling, historical ben
 | Treat this as a brownfield improvement project | The ranking engine already exists and the current need is iteration, not greenfield ideation | ✓ Good |
 | Use exact-league 14-cat snapshot files alongside Yahoo exports | Historical snapshots and market proxies answer different validation questions and should both be available | ✓ Good |
 | Make degraded runs explicit instead of failing hard | Trustworthy output matters more than pretending every NBA API fetch is complete | ✓ Implemented in Phase 1 |
+| Use one shared deterministic identity layer with explicit overrides and no fuzzy fallback | Trustworthy matching matters more than squeezing out a few ambiguous joins | ✓ Implemented in Phase 2 |
+| Label benchmark files with explicit class and trust tier | Historical snapshots and direct exports are both useful, but they should not look equally authoritative | ✓ Implemented in Phase 2 |
 | Fix heavy misses in significance order | The cleanest path to improvement is to address the strongest failure modes one at a time and measure impact after each fix | — Pending |
 
 ## Evolution
@@ -71,4 +73,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-10 after Phase 1 completion*
+*Last updated: 2026-04-10 after Phase 2 completion*

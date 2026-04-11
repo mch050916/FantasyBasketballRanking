@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from identity import canonical_player_key
 from validate import build_player_name, build_rank_series, normalize_player_name, validate
 
 
@@ -71,6 +72,45 @@ class ValidateTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "no_matches")
         self.assertEqual(result["matched_players"], 0)
+
+    def test_validate_uses_override_backed_deterministic_matching(self) -> None:
+        rankings = pd.DataFrame([{"PLAYER_NAME": "Jimmy Butler", "RANK": 12}])
+        known = pd.DataFrame([{"Player Name": "Jimmy Butler III", "Rank": 11}])
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            csv_path = Path(tmpdir) / "known.csv"
+            known.to_csv(csv_path, index=False)
+            result = validate(
+                rankings,
+                str(csv_path),
+                benchmark_class="historical_snapshot",
+                trust_tier="snapshot_derived",
+            )
+
+        self.assertEqual(result["matched_players"], 1)
+        self.assertEqual(result["benchmark_class"], "historical_snapshot")
+        self.assertEqual(result["trust_tier"], "snapshot_derived")
+        self.assertEqual(canonical_player_key("Jimmy Butler III"), canonical_player_key("Jimmy Butler"))
+
+    def test_validate_preserves_direct_export_metadata(self) -> None:
+        rankings = pd.DataFrame([{"PLAYER_NAME": "Luka Dončić", "RANK": 4}])
+        known = pd.DataFrame([{"First Name": "Luka", "Last Name": "Doncic", "Avg. Pick": 3.2}])
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            csv_path = Path(tmpdir) / "known.csv"
+            known.to_csv(csv_path, index=False)
+            result = validate(
+                rankings,
+                str(csv_path),
+                name_col=["First Name", "Last Name"],
+                rank_col="Avg. Pick",
+                rank_from_metric=True,
+                benchmark_class="direct_export_market",
+                trust_tier="direct_export",
+            )
+
+        self.assertEqual(result["benchmark_class"], "direct_export_market")
+        self.assertEqual(result["trust_tier"], "direct_export")
 
 
 if __name__ == "__main__":

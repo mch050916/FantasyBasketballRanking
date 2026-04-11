@@ -13,7 +13,7 @@ This roadmap treats the existing ranking engine as working brownfield software a
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Reliability Guardrails** - Make stale caches, missing logs, and broken validation impossible to miss. (completed 2026-04-10)
-- [ ] **Phase 2: Identity And Benchmark Fidelity** - Make cross-source player matching and benchmark execution trustworthy.
+- [x] **Phase 2: Identity And Benchmark Fidelity** - Make cross-source player matching and benchmark execution trustworthy. (completed 2026-04-10)
 - [ ] **Phase 3: Miss Diagnostics** - Surface benchmark deltas and biggest misses so each model change is measurable.
 - [ ] **Phase 4: Projection Signal Upgrades** - Improve trend and decline signals that drive the heaviest misses.
 - [ ] **Phase 5: Category Calibration** - Rebalance DD/TD influence against the rest of the multicategory profile.
@@ -45,8 +45,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 02-01: Strengthen player identity resolution and add deterministic fallbacks for known cross-source mismatches.
-- [ ] 02-02: Normalize benchmark target handling so exact-league and Yahoo comparison paths are explicit and consistent.
+- [x] 02-01: Strengthen player identity resolution and add deterministic fallbacks for known cross-source mismatches.
+- [x] 02-02: Normalize benchmark target handling so exact-league and Yahoo comparison paths are explicit and consistent.
 
 ### Phase 3: Miss Diagnostics
 **Goal**: User can see the benchmark impact and largest misses after every run so the next fix is chosen from evidence instead of guesswork.
@@ -98,7 +98,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Reliability Guardrails | 2/2 | Complete    | 2026-04-10 |
-| 2. Identity And Benchmark Fidelity | 0/2 | Not started | - |
+| 2. Identity And Benchmark Fidelity | 2/2 | Complete | 2026-04-10 |
 | 3. Miss Diagnostics | 0/2 | Not started | - |
 | 4. Projection Signal Upgrades | 0/2 | Not started | - |
 | 5. Category Calibration | 0/2 | Not started | - |

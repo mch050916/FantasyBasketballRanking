@@ -17,17 +17,11 @@ rankings. This means the comparison is directional only — it confirms
 whether our model broadly agrees on player value, not exact rank matching.
 """
 
-import re
-import unicodedata
 import pandas as pd
 import numpy as np
 from pathlib import Path
 
-
-def normalize_player_name(name: str) -> str:
-    """Normalize player names so minor formatting/accent differences still match."""
-    ascii_name = unicodedata.normalize("NFKD", str(name)).encode("ascii", "ignore").decode("ascii")
-    return re.sub(r"[^a-z0-9]", "", ascii_name.lower())
+from identity import canonical_player_key, normalize_player_name
 
 
 def build_player_name(df: pd.DataFrame, name_col: str | list[str]) -> pd.Series:
@@ -62,7 +56,9 @@ def validate(df: pd.DataFrame,
              top_n_misses: int = 10,
              min_matched_players: int = 10,
              label: str | None = None,
-             note: str | None = None) -> dict:
+             note: str | None = None,
+             benchmark_class: str | None = None,
+             trust_tier: str | None = None) -> dict:
     """
     Compare our rankings to a ground-truth CSV.
 
@@ -81,7 +77,7 @@ def validate(df: pd.DataFrame,
     from scipy.stats import spearmanr
 
     predicted = df[["PLAYER_NAME", "RANK"]].copy()
-    predicted["PLAYER_KEY"] = predicted["PLAYER_NAME"].map(normalize_player_name)
+    predicted["PLAYER_KEY"] = predicted["PLAYER_NAME"].map(canonical_player_key)
 
     known_df = pd.read_csv(known_csv)
     required_cols = [rank_col] + ([name_col] if isinstance(name_col, str) else list(name_col))
@@ -94,7 +90,7 @@ def validate(df: pd.DataFrame,
         ascending=rank_metric_ascending,
     )
     known = known[["ACTUAL_PLAYER_NAME", "ACTUAL_RANK"]].dropna(subset=["ACTUAL_RANK"])
-    known["PLAYER_KEY"] = known["ACTUAL_PLAYER_NAME"].map(normalize_player_name)
+    known["PLAYER_KEY"] = known["ACTUAL_PLAYER_NAME"].map(canonical_player_key)
 
     merged = pd.merge(
         predicted,
@@ -111,12 +107,18 @@ def validate(df: pd.DataFrame,
         "matched_players": len(merged),
         "details": merged,
         "label": label or Path(known_csv).name,
+        "benchmark_class": benchmark_class,
+        "trust_tier": trust_tier,
     }
 
     print(f"\n{'='*60}")
     print(f"Validation vs {label or Path(known_csv).name}")
     if note:
         print(f"  Note: {note}")
+    if benchmark_class:
+        print(f"  Benchmark class : {benchmark_class}")
+    if trust_tier:
+        print(f"  Trust tier      : {trust_tier}")
     print(f"{'='*60}")
 
     if merged.empty:

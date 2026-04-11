@@ -4,16 +4,15 @@ import unittest
 from pathlib import Path
 
 from data import (
-    _build_game_log_fetch_health,
     _build_cache_envelope,
     _empty_game_log_result,
+    _build_game_log_fetch_health,
     _load_cached_game_logs,
     _load_cached_tech_per_game,
     _missing_game_log_pairs,
-    build_nba_player_lookups,
-    normalize_player_name,
-    resolve_player_id,
+    _partition_missing_pairs,
 )
+from identity import build_nba_player_lookups, normalize_player_name, resolve_player_id
 
 
 class DataTests(unittest.TestCase):
@@ -129,6 +128,32 @@ class DataTests(unittest.TestCase):
         self.assertTrue(health["degraded"])
         self.assertEqual(health["requested_pair_count"], 4)
         self.assertEqual(health["missing_pair_count"], 1)
+
+    def test_partition_missing_pairs_separates_expected_older_seasons(self) -> None:
+        missing_pairs = [
+            ("Bub Carrington", "2023-24"),
+            ("Jimmy Butler", "2024-25"),
+        ]
+
+        unresolved, expected = _partition_missing_pairs(
+            missing_pairs,
+            {("Bub Carrington", "2023-24")},
+        )
+
+        self.assertEqual(unresolved, [("Jimmy Butler", "2024-25")])
+        self.assertEqual(expected, [("Bub Carrington", "2023-24")])
+
+    def test_build_game_log_fetch_health_tracks_expected_missing_pairs_separately(self) -> None:
+        health = _build_game_log_fetch_health(
+            ["Bub Carrington", "Jimmy Butler"],
+            ["2024-25", "2023-24"],
+            [("Jimmy Butler", "2024-25")],
+            [("Bub Carrington", "2023-24")],
+        )
+
+        self.assertTrue(health["degraded"])
+        self.assertEqual(health["missing_pair_count"], 1)
+        self.assertEqual(health["expected_missing_pair_count"], 1)
 
 
 if __name__ == "__main__":

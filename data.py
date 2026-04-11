@@ -15,9 +15,9 @@ import pandas as pd
 import numpy as np
 import time
 import pickle
-import re
-import unicodedata
 from pathlib import Path
+
+from identity import build_nba_player_lookups, normalize_player_name, resolve_player_id
 
 
 # ── Basketball Reference CSV loading ────────────────────────────────────────
@@ -109,30 +109,6 @@ def filter_qualified(df: pd.DataFrame, config: dict) -> pd.DataFrame:
 
 
 # ── NBA API: game log fetching ───────────────────────────────────────────────
-
-def normalize_player_name(name: str) -> str:
-    """Normalize names so accents/punctuation differences do not break lookups."""
-    ascii_name = unicodedata.normalize("NFKD", str(name)).encode("ascii", "ignore").decode("ascii")
-    return re.sub(r"[^a-z0-9]", "", ascii_name.lower())
-
-
-def build_nba_player_lookups(all_players: list[dict]) -> tuple[dict[str, int], dict[str, int]]:
-    """Create exact and normalized name lookup tables for NBA API players."""
-    exact = {p["full_name"]: p["id"] for p in all_players}
-    normalized: dict[str, int] = {}
-    for player in all_players:
-        normalized.setdefault(normalize_player_name(player["full_name"]), player["id"])
-    return exact, normalized
-
-
-def resolve_player_id(player_name: str,
-                      exact_lookup: dict[str, int],
-                      normalized_lookup: dict[str, int]) -> int | None:
-    """Resolve a Basketball Reference-style player name to an NBA API player id."""
-    player_id = exact_lookup.get(player_name)
-    if player_id is not None:
-        return player_id
-    return normalized_lookup.get(normalize_player_name(player_name))
 
 
 def _empty_game_log_result(seasons: list[str]) -> dict[str, dict[str, pd.DataFrame]]:
@@ -261,19 +237,37 @@ def _requested_game_log_pairs(player_names: list[str],
 
 def _build_game_log_fetch_health(player_names: list[str],
                                  seasons: list[str],
-                                 missing_pairs: list[tuple[str, str]]) -> dict[str, object]:
+                                 missing_pairs: list[tuple[str, str]],
+                                 expected_missing_pairs: list[tuple[str, str]] | None = None) -> dict[str, object]:
     requested_pairs = _requested_game_log_pairs(player_names, seasons)
+    expected_missing_pairs = expected_missing_pairs or []
     return {
         "requested_pairs": requested_pairs,
         "requested_pair_count": len(requested_pairs),
+        "expected_missing_pairs": expected_missing_pairs,
+        "expected_missing_pair_count": len(expected_missing_pairs),
         "missing_pairs": missing_pairs,
         "missing_pair_count": len(missing_pairs),
         "degraded": bool(missing_pairs),
     }
 
+
+def _partition_missing_pairs(missing_pairs: list[tuple[str, str]],
+                             expected_missing_pairs: set[tuple[str, str]] | None) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    expected_missing_pairs = expected_missing_pairs or set()
+    expected: list[tuple[str, str]] = []
+    unresolved: list[tuple[str, str]] = []
+    for pair in missing_pairs:
+        if pair in expected_missing_pairs:
+            expected.append(pair)
+        else:
+            unresolved.append(pair)
+    return unresolved, expected
+
 def fetch_game_logs(player_names: list[str],
                     seasons: list[str],
                     cache_file: str,
+                    expected_missing_pairs: set[tuple[str, str]] | None = None,
                     return_health: bool = False) -> dict[str, dict[str, pd.DataFrame]] | tuple[dict[str, dict[str, pd.DataFrame]], dict[str, object]]:
     """
     Fetch per-game logs for each player for each season from the NBA API.
@@ -285,12 +279,18 @@ def fetch_game_logs(player_names: list[str],
     """
     cache_path = Path(cache_file)
     result, cache_status = _load_cached_game_logs(cache_path, seasons)
-    missing_pairs = _missing_game_log_pairs(result, player_names, seasons)
+    raw_missing_pairs = _missing_game_log_pairs(result, player_names, seasons)
+    missing_pairs, expected_pairs = _partition_missing_pairs(raw_missing_pairs, expected_missing_pairs)
     if cache_path.exists():
         if cache_status["valid"]:
             print(f"   Loading game logs from cache: {cache_file}")
             if not missing_pairs:
-                health = _build_game_log_fetch_health(player_names, seasons, missing_pairs)
+                health = _build_game_log_fetch_health(
+                    player_names,
+                    seasons,
+                    missing_pairs,
+                    expected_pairs,
+                )
                 if return_health:
                     return result, health
                 return result
@@ -305,13 +305,13 @@ def fetch_game_logs(player_names: list[str],
     from nba_api.stats.endpoints import playergamelogs
 
     all_players = nba_players.get_players()
-    exact_lookup, normalized_lookup = build_nba_player_lookups(all_players)
+    exact_lookup, canonical_lookup = build_nba_player_lookups(all_players)
 
     total  = len(missing_pairs)
     done   = 0
 
     for player_name, season in missing_pairs:
-        player_id = resolve_player_id(player_name, exact_lookup, normalized_lookup)
+        player_id = resolve_player_id(player_name, exact_lookup, canonical_lookup)
         done += 1
         pct = done / total * 100 if total else 100
 
@@ -350,8 +350,17 @@ def fetch_game_logs(player_names: list[str],
     )
     print(f"   Game logs cached to {cache_file}")
 
-    final_missing_pairs = _missing_game_log_pairs(result, player_names, seasons)
-    health = _build_game_log_fetch_health(player_names, seasons, final_missing_pairs)
+    final_raw_missing_pairs = _missing_game_log_pairs(result, player_names, seasons)
+    final_missing_pairs, final_expected_pairs = _partition_missing_pairs(
+        final_raw_missing_pairs,
+        expected_missing_pairs,
+    )
+    health = _build_game_log_fetch_health(
+        player_names,
+        seasons,
+        final_missing_pairs,
+        final_expected_pairs,
+    )
     if return_health:
         return result, health
     return result

@@ -9,11 +9,11 @@
 
 - [x] **DATA-01**: User can rerun the pipeline without silently reusing stale TECH cache data when seasons or season weights change.
 - [x] **DATA-02**: User can see which player-season game logs are still missing after a run.
-- [ ] **DATA-03**: User can resolve draft-relevant player identity mismatches across Basketball Reference, NBA API, and validation inputs without manually rewriting source files.
+- [x] **DATA-03**: User can resolve draft-relevant player identity mismatches across Basketball Reference, NBA API, and validation inputs without manually rewriting source files.
 
 ### Validation
 
-- [ ] **VAL-01**: User can run the model once and compare it against season-specific 14-cat snapshots and Yahoo market-style benchmarks in the same execution.
+- [x] **VAL-01**: User can run the model once and compare it against season-specific 14-cat snapshots and Yahoo market-style benchmarks in the same execution.
 - [x] **VAL-02**: User can tell when a validation dataset matched too few players or failed entirely instead of reading a silent success.
 - [ ] **VAL-03**: User can inspect the largest rank misses per benchmark after a run to guide the next model fix.
 
@@ -51,8 +51,8 @@
 |-------------|-------|--------|
 | DATA-01 | Phase 1 | Complete |
 | DATA-02 | Phase 1 | Complete |
-| DATA-03 | Phase 2 | Pending |
-| VAL-01 | Phase 2 | Pending |
+| DATA-03 | Phase 2 | Complete |
+| VAL-01 | Phase 2 | Complete |
 | VAL-02 | Phase 1 | Complete |
 | VAL-03 | Phase 3 | Pending |
 | PROJ-01 | Phase 4 | Pending |
@@ -67,4 +67,4 @@
 
 ---
 *Requirements defined: 2026-04-10*
-*Last updated: 2026-04-10 after Phase 1 completion*
+*Last updated: 2026-04-10 after Phase 2 completion*
