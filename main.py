@@ -16,13 +16,22 @@ Everything else is automatic.
 """
 
 from pathlib import Path
+from datetime import datetime
 
 from config   import LEAGUE_CONFIG
 from data     import load_bbr_csv, filter_qualified, fetch_game_logs, \
                      fetch_tech_per_game, derive_stats_from_logs
 from model    import project_stats, compute_tau, compute_g_scores
 from output   import format_rankings, save_rankings
-from validate import validate
+from validate import (
+    append_benchmark_history,
+    build_validation_summary_row,
+    compute_metric_deltas,
+    find_previous_baseline,
+    load_benchmark_history,
+    print_metric_deltas,
+    validate,
+)
 
 
 # ── Season data files — update this list each season ────────────────────────
@@ -33,6 +42,9 @@ BBR_FILES = [
 ]
 
 OUTPUT_FILE     = "durant_rankings_2025_26.csv"
+DIAGNOSTICS_DIR = Path("diagnostics")
+BENCHMARK_HISTORY_FILE = DIAGNOSTICS_DIR / "benchmark_history.csv"
+TOP_MISS_DIR = DIAGNOSTICS_DIR / "top_misses"
 VALIDATION_TARGETS = [
     {
         "path": "actual_14cat_24_25_snapshot.csv",
@@ -82,6 +94,30 @@ VALIDATION_TARGETS = [
         "note": "14-cat model vs 9-cat actual — directional comparison only",
     },
 ]
+
+
+def slugify_label(label: str) -> str:
+    """Build a deterministic filename-safe label slug."""
+    chars = []
+    for ch in label.lower():
+        chars.append(ch if ch.isalnum() else "_")
+    slug = "".join(chars)
+    while "__" in slug:
+        slug = slug.replace("__", "_")
+    return slug.strip("_")
+
+
+def save_top_miss_artifact(result: dict[str, object]) -> None:
+    """Persist the latest top-miss CSV for a benchmark target."""
+    top_misses = result.get("top_misses")
+    if top_misses is None or len(top_misses) == 0:
+        return
+
+    TOP_MISS_DIR.mkdir(parents=True, exist_ok=True)
+    label = str(result.get("label", "benchmark"))
+    path = TOP_MISS_DIR / f"{slugify_label(label)}_top_misses.csv"
+    top_misses.to_csv(path, index=False)
+    print(f"  Miss artifact   : {path}")
 
 
 def print_run_health_summary(game_log_health: dict[str, object],
@@ -224,10 +260,19 @@ def main() -> None:
 
     # ── Validation ───────────────────────────────────────────────────────
     validation_results: list[dict[str, object]] = []
+    history = load_benchmark_history(BENCHMARK_HISTORY_FILE)
+    history_rows: list[dict[str, object]] = []
+    recorded_at = datetime.now().isoformat(timespec="seconds")
     for target in VALIDATION_TARGETS:
         path = target["path"]
         if Path(path).exists():
-            validation_results.append(validate(
+            previous_baseline = find_previous_baseline(
+                history,
+                label=target.get("label", path),
+                benchmark_class=target.get("benchmark_class"),
+                trust_tier=target.get("trust_tier"),
+            )
+            result = validate(
                 rankings,
                 path,
                 name_col=target.get("name_col", "Player Name"),
@@ -238,7 +283,16 @@ def main() -> None:
                 note=target.get("note"),
                 benchmark_class=target.get("benchmark_class"),
                 trust_tier=target.get("trust_tier"),
-            ))
+            )
+            result["baseline_deltas"] = compute_metric_deltas(result, previous_baseline)
+            if previous_baseline is not None:
+                print_metric_deltas(result["baseline_deltas"])
+            else:
+                print("\n  Baseline delta:")
+                print("    first saved baseline for this benchmark")
+            save_top_miss_artifact(result)
+            history_rows.append(build_validation_summary_row(result, recorded_at))
+            validation_results.append(result)
         else:
             print(f"\n[skip] Validation file not found: {path}")
             validation_results.append(
@@ -251,6 +305,7 @@ def main() -> None:
                 }
             )
 
+    append_benchmark_history(BENCHMARK_HISTORY_FILE, history_rows)
     print_run_health_summary(game_log_health, validation_results)
 
 

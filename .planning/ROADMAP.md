@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Reliability Guardrails** - Make stale caches, missing logs, and broken validation impossible to miss. (completed 2026-04-10)
 - [x] **Phase 2: Identity And Benchmark Fidelity** - Make cross-source player matching and benchmark execution trustworthy. (completed 2026-04-10)
-- [ ] **Phase 3: Miss Diagnostics** - Surface benchmark deltas and biggest misses so each model change is measurable.
+- [x] **Phase 3: Miss Diagnostics** - Surface benchmark deltas and biggest misses so each model change is measurable. (completed 2026-04-28)
 - [ ] **Phase 4: Projection Signal Upgrades** - Improve trend and decline signals that drive the heaviest misses.
 - [ ] **Phase 5: Category Calibration** - Rebalance DD/TD influence against the rest of the multicategory profile.
 
@@ -59,8 +59,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 03-01: Add benchmark delta reporting that compares current metrics with the previous baseline.
-- [ ] 03-02: Add top-miss summaries per validation target with enough context to drive the next modeling fix.
+- [x] 03-01: Add benchmark delta reporting that compares current metrics with the previous baseline.
+- [x] 03-02: Add top-miss summaries per validation target with enough context to drive the next modeling fix.
 
 ### Phase 4: Projection Signal Upgrades
 **Goal**: User gets projections that respond to broader role change and aging decline instead of leaning too heavily on points carry-forward.
@@ -99,6 +99,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Reliability Guardrails | 2/2 | Complete    | 2026-04-10 |
 | 2. Identity And Benchmark Fidelity | 2/2 | Complete | 2026-04-10 |
-| 3. Miss Diagnostics | 0/2 | Not started | - |
+| 3. Miss Diagnostics | 2/2 | Complete | 2026-04-28 |
 | 4. Projection Signal Upgrades | 0/2 | Not started | - |
 | 5. Category Calibration | 0/2 | Not started | - |

@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: ready
-stopped_at: Phase 2 completed
-last_updated: "2026-04-10T16:15:00+10:00"
-last_activity: 2026-04-10 -- Phase 02 completed
+stopped_at: Phase 3 completed
+last_updated: "2026-04-28T14:32:00+10:00"
+last_activity: 2026-04-28 -- Phase 03 completed
 progress:
   total_phases: 5
-  completed_phases: 2
-  total_plans: 10
-  completed_plans: 4
-  percent: 40
+  completed_phases: 3
+  total_plans: 6
+  completed_plans: 6
+  percent: 60
 ---
 
 # Project State
@@ -21,22 +21,22 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-10)
 
 **Core value:** Produce trustworthy pre-draft rankings for this exact league format that are more useful than Yahoo's default ordering.
-**Current focus:** Phase 03 — Miss Diagnostics
+**Current focus:** Phase 04 — Projection Signal Upgrades
 
 ## Current Position
 
-Phase: 03 (Miss Diagnostics) — READY
+Phase: 04 (Projection Signal Upgrades) — READY
 Plan: Not started
 Status: Ready for discussion/planning
-Last activity: 2026-04-10 -- Phase 02 completed
+Last activity: 2026-04-28 -- Phase 03 completed
 
-Progress: [████░░░░░░] 40%
+Progress: [██████░░░░] 60%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 4
+- Total plans completed: 6
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -46,10 +46,11 @@ Progress: [████░░░░░░] 40%
 |-------|-------|-------|----------|
 | 1 | 2 | - | - |
 | 2 | 2 | - | - |
+| 3 | 2 | - | - |
 
 **Recent Trend:**
 
-- Last 5 plans: 01-01, 01-02, 02-01, 02-02
+- Last 5 plans: 02-01, 02-02, 03-01, 03-02
 - Trend: Stable upward
 
 ## Accumulated Context
@@ -64,6 +65,8 @@ Recent decisions affecting current work:
 - Phase 2: Use one shared deterministic identity layer with override-first matching and no fuzzy fallback.
 - Phase 2: Suppress expected older-season absences from degraded-run counts while still listing real unresolved fetch misses.
 - Phase 2: Label benchmark outputs with explicit class and trust-tier metadata instead of inferring trust from filenames or note strings.
+- Phase 3: Compare each benchmark target against its own most recent saved baseline automatically.
+- Phase 3: Save compact top-miss CSV artifacts and group misses with deterministic heuristic buckets.
 
 ### Pending Todos
 
@@ -73,10 +76,10 @@ None yet.
 
 - `Jimmy Butler` still fails NBA API ID resolution and remains a real post-Phase-2 identity edge case.
 - Heavy misses remain concentrated in projection logic rather than the DURANT formula alone.
-- Large ranking misses are now easier to trust, so the next phase should focus on miss diagnostics instead of more benchmark plumbing.
+- Large ranking misses are now measured and categorized, so the next phase should focus on improving projection signals rather than more reporting infrastructure.
 
 ## Session Continuity
 
-Last session: 2026-04-10T16:15:00+10:00
-Stopped at: Phase 2 completed
+Last session: 2026-04-28T14:32:00+10:00
+Stopped at: Phase 3 completed
 Resume file: .planning/ROADMAP.md

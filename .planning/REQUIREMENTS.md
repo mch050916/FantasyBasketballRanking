@@ -15,14 +15,14 @@
 
 - [x] **VAL-01**: User can run the model once and compare it against season-specific 14-cat snapshots and Yahoo market-style benchmarks in the same execution.
 - [x] **VAL-02**: User can tell when a validation dataset matched too few players or failed entirely instead of reading a silent success.
-- [ ] **VAL-03**: User can inspect the largest rank misses per benchmark after a run to guide the next model fix.
+- [x] **VAL-03**: User can inspect the largest rank misses per benchmark after a run to guide the next model fix.
 
 ### Projection Quality
 
 - [ ] **PROJ-01**: User gets trend adjustments informed by more than points so non-scoring role changes can influence projections.
 - [ ] **PROJ-02**: User gets a lightweight decline signal for aging veterans whose carry-forward box stats overrate next-season value.
 - [ ] **PROJ-03**: User gets category calibration that keeps DD and TD from systematically overpowering the rest of the multicategory profile.
-- [ ] **PROJ-04**: User can measure validation deltas after each model change to confirm whether a fix improved the benchmarks.
+- [x] **PROJ-04**: User can measure validation deltas after each model change to confirm whether a fix improved the benchmarks.
 
 ## v2 Requirements
 
@@ -54,11 +54,11 @@
 | DATA-03 | Phase 2 | Complete |
 | VAL-01 | Phase 2 | Complete |
 | VAL-02 | Phase 1 | Complete |
-| VAL-03 | Phase 3 | Pending |
+| VAL-03 | Phase 3 | Complete |
 | PROJ-01 | Phase 4 | Pending |
 | PROJ-02 | Phase 4 | Pending |
 | PROJ-03 | Phase 5 | Pending |
-| PROJ-04 | Phase 3 | Pending |
+| PROJ-04 | Phase 3 | Complete |
 
 **Coverage:**
 - v1 requirements: 10 total
@@ -67,4 +67,4 @@
 
 ---
 *Requirements defined: 2026-04-10*
-*Last updated: 2026-04-10 after Phase 2 completion*
+*Last updated: 2026-04-28 after Phase 3 completion*

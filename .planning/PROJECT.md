@@ -34,7 +34,7 @@ Produce trustworthy pre-draft rankings for this exact league format that are mor
 
 The repo already contains a working CLI pipeline built around `main.py`, `data.py`, `model.py`, `output.py`, and `validate.py`. League settings live in `config.py`, validation inputs now include exact-league 14-cat snapshot CSVs plus Yahoo market exports, and NBA API fetches are cached locally in pickle files for repeat runs.
 
-Recent work improved FG% projection math, TECH variance handling, historical benchmark support, NBA API name matching for accented players like Alperen Sengun/Şengün, and Phase 1 reliability guardrails around cache invalidation, degraded-run reporting, and validation health states. Phase 2 added a shared deterministic identity layer, expected-missing suppression for newer players lacking older seasons, and explicit benchmark trust tiers across exact-league snapshots and Yahoo exports. The current investigation is now focused on remaining large misses that appear to come from projection logic rather than benchmark plumbing.
+Recent work improved FG% projection math, TECH variance handling, historical benchmark support, NBA API name matching for accented players like Alperen Sengun/Şengün, and Phase 1 reliability guardrails around cache invalidation, degraded-run reporting, and validation health states. Phase 2 added a shared deterministic identity layer, expected-missing suppression for newer players lacking older seasons, and explicit benchmark trust tiers across exact-league snapshots and Yahoo exports. Phase 3 added per-benchmark baseline history, current-vs-previous delta reporting, and saved top-miss artifacts with compact heuristic grouping. The current investigation is now focused on projection-signal upgrades rather than benchmark plumbing.
 
 ## Constraints
 
@@ -53,6 +53,7 @@ Recent work improved FG% projection math, TECH variance handling, historical ben
 | Make degraded runs explicit instead of failing hard | Trustworthy output matters more than pretending every NBA API fetch is complete | ✓ Implemented in Phase 1 |
 | Use one shared deterministic identity layer with explicit overrides and no fuzzy fallback | Trustworthy matching matters more than squeezing out a few ambiguous joins | ✓ Implemented in Phase 2 |
 | Label benchmark files with explicit class and trust tier | Historical snapshots and direct exports are both useful, but they should not look equally authoritative | ✓ Implemented in Phase 2 |
+| Persist benchmark baselines and saved miss artifacts | Model iteration should be measured from evidence instead of relying on memory or console scrollback | ✓ Implemented in Phase 3 |
 | Fix heavy misses in significance order | The cleanest path to improvement is to address the strongest failure modes one at a time and measure impact after each fix | — Pending |
 
 ## Evolution
@@ -73,4 +74,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-10 after Phase 2 completion*
+*Last updated: 2026-04-28 after Phase 3 completion*
