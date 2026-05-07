@@ -17,13 +17,19 @@ import time
 import pickle
 from pathlib import Path
 
-from identity import build_nba_player_lookups, normalize_player_name, resolve_player_id
+from identity import (
+    build_nba_player_lookups,
+    canonical_player_key,
+    normalize_player_name,
+    resolve_player_id,
+)
 
 
 # ── Basketball Reference CSV loading ────────────────────────────────────────
 
 BBR_COL_MAP = {
     "Player": "PLAYER_NAME",
+    "Age":    "AGE",
     "G":      "GP",
     "MP":     "MIN_TOTAL",
     "FG":     "FGM_T",
@@ -41,6 +47,10 @@ BBR_COL_MAP = {
 }
 
 CACHE_SCHEMA_VERSION = 1
+KNOWN_NON_ACTIONABLE_GAME_LOG_CASES = {
+    (canonical_player_key("Bojan Bogdanović"), "2024-25"): "inactive current-season returnee",
+    (canonical_player_key("Saddiq Bey"), "2024-25"): "inactive current-season returnee",
+}
 
 
 def load_bbr_csv(path: str) -> pd.DataFrame:
@@ -238,9 +248,25 @@ def _requested_game_log_pairs(player_names: list[str],
 def _build_game_log_fetch_health(player_names: list[str],
                                  seasons: list[str],
                                  missing_pairs: list[tuple[str, str]],
-                                 expected_missing_pairs: list[tuple[str, str]] | None = None) -> dict[str, object]:
+                                 expected_missing_pairs: list[tuple[str, str]] | None = None,
+                                 current_season_missing_pairs: list[tuple[str, str]] | None = None,
+                                 historical_missing_pairs: list[tuple[str, str]] | None = None,
+                                 non_actionable_pairs: list[tuple[str, str]] | None = None,
+                                 non_actionable_reasons: dict[tuple[str, str], str] | None = None) -> dict[str, object]:
     requested_pairs = _requested_game_log_pairs(player_names, seasons)
     expected_missing_pairs = expected_missing_pairs or []
+    current_season_missing_pairs = current_season_missing_pairs or []
+    historical_missing_pairs = historical_missing_pairs or []
+    non_actionable_pairs = non_actionable_pairs or []
+    current_season = seasons[0] if seasons else None
+    if not current_season_missing_pairs and current_season is not None:
+        current_season_missing_pairs = [
+            pair for pair in missing_pairs if pair[1] == current_season
+        ]
+    if not historical_missing_pairs and current_season is not None:
+        historical_missing_pairs = [
+            pair for pair in missing_pairs if pair[1] != current_season
+        ]
     return {
         "requested_pairs": requested_pairs,
         "requested_pair_count": len(requested_pairs),
@@ -248,6 +274,13 @@ def _build_game_log_fetch_health(player_names: list[str],
         "expected_missing_pair_count": len(expected_missing_pairs),
         "missing_pairs": missing_pairs,
         "missing_pair_count": len(missing_pairs),
+        "current_season_missing_pairs": current_season_missing_pairs,
+        "current_season_missing_pair_count": len(current_season_missing_pairs),
+        "historical_missing_pairs": historical_missing_pairs,
+        "historical_missing_pair_count": len(historical_missing_pairs),
+        "non_actionable_pairs": non_actionable_pairs,
+        "non_actionable_pair_count": len(non_actionable_pairs),
+        "non_actionable_reasons": non_actionable_reasons or {},
         "degraded": bool(missing_pairs),
     }
 
@@ -263,6 +296,53 @@ def _partition_missing_pairs(missing_pairs: list[tuple[str, str]],
         else:
             unresolved.append(pair)
     return unresolved, expected
+
+
+def _non_actionable_game_log_reason(player_name: str,
+                                    season: str) -> str | None:
+    """Return a narrow explicit reason when a missing pair is non-actionable."""
+    return KNOWN_NON_ACTIONABLE_GAME_LOG_CASES.get((canonical_player_key(player_name), season))
+
+
+def _classify_missing_game_log_pairs(missing_pairs: list[tuple[str, str]],
+                                     seasons: list[str],
+                                     expected_missing_pairs: set[tuple[str, str]] | None = None) -> dict[str, object]:
+    """Classify missing pairs by severity and explicit non-actionable reasons."""
+    expected_missing_pairs = expected_missing_pairs or set()
+    current_season = seasons[0] if seasons else None
+    actionable: list[tuple[str, str]] = []
+    current_season_missing_pairs: list[tuple[str, str]] = []
+    historical_missing_pairs: list[tuple[str, str]] = []
+    expected: list[tuple[str, str]] = []
+    non_actionable: list[tuple[str, str]] = []
+    non_actionable_reasons: dict[tuple[str, str], str] = {}
+
+    for pair in missing_pairs:
+        player_name, season = pair
+        if pair in expected_missing_pairs:
+            expected.append(pair)
+            continue
+
+        reason = _non_actionable_game_log_reason(player_name, season)
+        if reason is not None:
+            non_actionable.append(pair)
+            non_actionable_reasons[pair] = reason
+            continue
+
+        actionable.append(pair)
+        if current_season is not None and season == current_season:
+            current_season_missing_pairs.append(pair)
+        else:
+            historical_missing_pairs.append(pair)
+
+    return {
+        "actionable_missing_pairs": actionable,
+        "current_season_missing_pairs": current_season_missing_pairs,
+        "historical_missing_pairs": historical_missing_pairs,
+        "expected_missing_pairs": expected,
+        "non_actionable_pairs": non_actionable,
+        "non_actionable_reasons": non_actionable_reasons,
+    }
 
 def fetch_game_logs(player_names: list[str],
                     seasons: list[str],
@@ -280,7 +360,15 @@ def fetch_game_logs(player_names: list[str],
     cache_path = Path(cache_file)
     result, cache_status = _load_cached_game_logs(cache_path, seasons)
     raw_missing_pairs = _missing_game_log_pairs(result, player_names, seasons)
-    missing_pairs, expected_pairs = _partition_missing_pairs(raw_missing_pairs, expected_missing_pairs)
+    classified_missing = _classify_missing_game_log_pairs(
+        raw_missing_pairs,
+        seasons,
+        expected_missing_pairs,
+    )
+    missing_pairs = classified_missing["actionable_missing_pairs"]
+    expected_pairs = classified_missing["expected_missing_pairs"]
+    non_actionable_pairs = classified_missing["non_actionable_pairs"]
+    non_actionable_reasons = classified_missing["non_actionable_reasons"]
     if cache_path.exists():
         if cache_status["valid"]:
             print(f"   Loading game logs from cache: {cache_file}")
@@ -290,6 +378,10 @@ def fetch_game_logs(player_names: list[str],
                     seasons,
                     missing_pairs,
                     expected_pairs,
+                    current_season_missing_pairs=classified_missing["current_season_missing_pairs"],
+                    historical_missing_pairs=classified_missing["historical_missing_pairs"],
+                    non_actionable_pairs=non_actionable_pairs,
+                    non_actionable_reasons=non_actionable_reasons,
                 )
                 if return_health:
                     return result, health
@@ -351,15 +443,20 @@ def fetch_game_logs(player_names: list[str],
     print(f"   Game logs cached to {cache_file}")
 
     final_raw_missing_pairs = _missing_game_log_pairs(result, player_names, seasons)
-    final_missing_pairs, final_expected_pairs = _partition_missing_pairs(
+    final_classified_missing = _classify_missing_game_log_pairs(
         final_raw_missing_pairs,
+        seasons,
         expected_missing_pairs,
     )
     health = _build_game_log_fetch_health(
         player_names,
         seasons,
-        final_missing_pairs,
-        final_expected_pairs,
+        final_classified_missing["actionable_missing_pairs"],
+        final_classified_missing["expected_missing_pairs"],
+        current_season_missing_pairs=final_classified_missing["current_season_missing_pairs"],
+        historical_missing_pairs=final_classified_missing["historical_missing_pairs"],
+        non_actionable_pairs=final_classified_missing["non_actionable_pairs"],
+        non_actionable_reasons=final_classified_missing["non_actionable_reasons"],
     )
     if return_health:
         return result, health

@@ -29,6 +29,30 @@ import numpy as np
 from scipy.stats import boxcox
 
 
+TREND_SIGNAL_WEIGHTS = {
+    "PTS": 0.24,
+    "AST": 0.18,
+    "REB": 0.14,
+    "3PTM": 0.14,
+    "ST": 0.10,
+    "BLK": 0.08,
+    "MIN": 0.12,
+}
+
+TREND_SIGNAL_SCALES = {
+    "PTS": 10.0,
+    "AST": 3.0,
+    "REB": 4.0,
+    "3PTM": 1.0,
+    "ST": 0.6,
+    "BLK": 0.5,
+    "MIN": 24.0,
+}
+
+RECENT_WEIGHT_MIN = 0.30
+RECENT_WEIGHT_MAX = 0.85
+
+
 # ── Kappa ─────────────────────────────────────────────────────────────────────
 
 def compute_kappa(roster_size: int) -> float:
@@ -42,58 +66,216 @@ def compute_kappa(roster_size: int) -> float:
 
 # ── Trend detection ───────────────────────────────────────────────────────────
 
-def compute_trend_weights(player_season_stats: dict[str, pd.Series],
-                           available_seasons: list[str],
-                           base_weights: list[float],
-                           trend_threshold: float = 0.15,
-                           trend_boost: float = 0.15) -> list[float]:
-    """
-    Adjust season weights based on a player's performance trajectory.
+def _compute_weighted_stat_baseline(player_season_stats: dict[str, pd.Series],
+                                    seasons: list[str],
+                                    weights: list[float],
+                                    stat: str) -> float:
+    """Weighted baseline for one stat using older available seasons only."""
+    vals, wts = [], []
+    for season, weight in zip(seasons[1:], weights[1:]):
+        value = player_season_stats[season].get(stat, np.nan)
+        if pd.notna(value):
+            vals.append(float(value))
+            wts.append(float(weight))
 
-    Logic:
-      - Compute a baseline projection using the base weights as-is.
-      - Compare the most recent season's PTS to that baseline.
-      - If improved by >trend_threshold (default 15%): boost recent weight.
-        Catches breakout players like Jalen Johnson, Payton Pritchard.
-      - If declined by >trend_threshold: reduce recent weight.
-        Trusts multi-year average more for declining vets.
-      - Stable players use base weights unchanged.
+    if not vals:
+        return np.nan
 
-    Returns renormalised weights that sum to 1.0.
+    total_weight = sum(wts)
+    if total_weight <= 0:
+        return np.nan
+
+    return sum(value * weight for value, weight in zip(vals, wts)) / total_weight
+
+
+def _compute_relative_change(recent_value: float,
+                             baseline_value: float,
+                             scale_floor: float) -> float:
+    """Clip relative change to avoid small-denominator noise dominating the score."""
+    if pd.isna(recent_value) or pd.isna(baseline_value):
+        return np.nan
+
+    denom = max(abs(float(baseline_value)), float(scale_floor), 1e-6)
+    return float(np.clip((float(recent_value) - float(baseline_value)) / denom, -1.0, 1.0))
+
+
+def _rebalance_recent_weight(base_weights: list[float],
+                             desired_recent_weight: float) -> list[float]:
+    """Move weight toward or away from the recent season while preserving a 1.0 sum."""
+    if not base_weights:
+        return base_weights
+    if len(base_weights) == 1:
+        return [1.0]
+
+    desired_recent_weight = float(np.clip(desired_recent_weight, RECENT_WEIGHT_MIN, RECENT_WEIGHT_MAX))
+    remaining_weight = 1.0 - desired_recent_weight
+    other_total = sum(base_weights[1:])
+
+    if other_total <= 0:
+        return [1.0] + [0.0] * (len(base_weights) - 1)
+
+    scaled_others = [weight / other_total * remaining_weight for weight in base_weights[1:]]
+    return [desired_recent_weight] + scaled_others
+
+
+def compute_trend_profile(player_season_stats: dict[str, pd.Series],
+                          available_seasons: list[str],
+                          base_weights: list[float],
+                          trend_boost: float = 0.14,
+                          role_boost_cap: float = 0.08) -> dict[str, object]:
     """
+    Build one explainable multicategory trend profile for a player.
+
+    The composite score blends approved multicategory changes and feeds the
+    existing season-weight adjustment path. Minutes growth also powers a small,
+    separate role-change breakout boost when the player's broader trend is
+    already positive.
+    """
+    neutral_profile = {
+        "weights": base_weights,
+        "composite_score": 0.0,
+        "role_score": 0.0,
+        "trend_shift": 0.0,
+        "role_boost": 0.0,
+        "signal_changes": {},
+    }
+
     if len(available_seasons) < 2:
-        return base_weights   # already normalised, nothing to adjust
+        return neutral_profile
 
-    # Baseline weighted PTS
-    pts_vals, pts_wts = [], []
-    for season, w in zip(available_seasons, base_weights):
-        pts = player_season_stats[season].get("PTS", np.nan)
-        if pd.notna(pts):
-            pts_vals.append(pts)
-            pts_wts.append(w)
+    recent_stats = player_season_stats[available_seasons[0]]
+    signal_changes: dict[str, float] = {}
+    used_signal_weights: dict[str, float] = {}
 
-    if not pts_vals:
-        return base_weights
+    for stat, weight in TREND_SIGNAL_WEIGHTS.items():
+        recent_value = recent_stats.get(stat, np.nan)
+        baseline_value = _compute_weighted_stat_baseline(
+            player_season_stats,
+            available_seasons,
+            base_weights,
+            stat,
+        )
+        change = _compute_relative_change(
+            recent_value=recent_value,
+            baseline_value=baseline_value,
+            scale_floor=TREND_SIGNAL_SCALES[stat],
+        )
+        if pd.isna(change):
+            continue
+        signal_changes[stat] = change
+        used_signal_weights[stat] = weight
 
-    total_w  = sum(pts_wts)
-    baseline = sum(v * w for v, w in zip(pts_vals, pts_wts)) / total_w
+    if not used_signal_weights:
+        return neutral_profile
 
-    recent_pts = player_season_stats[available_seasons[0]].get("PTS", np.nan)
-    if pd.isna(recent_pts) or baseline == 0:
-        return base_weights
+    total_signal_weight = sum(used_signal_weights.values())
+    composite_score = sum(
+        signal_changes[stat] * used_signal_weights[stat]
+        for stat in used_signal_weights
+    ) / total_signal_weight
+    composite_score = float(np.clip(composite_score, -0.5, 0.5))
 
-    pct_change = (recent_pts - baseline) / baseline
+    trend_shift = float(np.clip(composite_score / 0.22, -1.0, 1.0) * trend_boost)
 
-    adjusted = list(base_weights)
-    if pct_change > trend_threshold:
-        # Breakout — trust recent season more
-        adjusted[0] = min(adjusted[0] + trend_boost, 0.80)
-    elif pct_change < -trend_threshold:
-        # Declining — trust multi-year average more
-        adjusted[0] = max(adjusted[0] - trend_boost, 0.30)
+    minutes_growth = max(0.0, signal_changes.get("MIN", 0.0))
+    support_stats = [signal_changes.get(stat, 0.0) for stat in ("PTS", "AST", "REB", "3PTM")]
+    positive_support = float(np.mean([max(0.0, value) for value in support_stats])) if support_stats else 0.0
+    role_score = float(np.clip((0.65 * minutes_growth) + (0.35 * positive_support), 0.0, 0.5))
 
-    total = sum(adjusted)
-    return [w / total for w in adjusted]
+    role_boost = 0.0
+    if minutes_growth >= 0.10 and composite_score > 0.03:
+        role_boost = float(
+            np.clip(role_score / 0.25, 0.0, 1.0) * role_boost_cap
+        )
+
+    desired_recent_weight = base_weights[0] + trend_shift + role_boost
+    adjusted_weights = _rebalance_recent_weight(base_weights, desired_recent_weight)
+
+    return {
+        "weights": adjusted_weights,
+        "composite_score": composite_score,
+        "role_score": role_score,
+        "trend_shift": trend_shift,
+        "role_boost": role_boost,
+        "signal_changes": signal_changes,
+    }
+
+
+def compute_trend_weights(player_season_stats: dict[str, pd.Series],
+                          available_seasons: list[str],
+                          base_weights: list[float],
+                          trend_boost: float = 0.14,
+                          role_boost_cap: float = 0.08) -> list[float]:
+    """
+    Adjust season weights using one multicategory composite trend score.
+
+    Returns normalized weights that still sum to 1.0, but the recent-season
+    share can move faster for true multicategory growth and role expansion.
+    """
+    return compute_trend_profile(
+        player_season_stats=player_season_stats,
+        available_seasons=available_seasons,
+        base_weights=base_weights,
+        trend_boost=trend_boost,
+        role_boost_cap=role_boost_cap,
+    )["weights"]
+
+
+def compute_decline_factor(age: float | None,
+                           composite_score: float,
+                           age_start: float = 31.0) -> float:
+    """
+    Compute a light veteran decline factor.
+
+    Age alone does very little. The penalty becomes meaningfully stronger only
+    when a veteran profile also carries a negative recent trend.
+    """
+    if age is None or pd.isna(age) or float(age) < age_start:
+        return 1.0
+
+    age_pressure = float(np.clip((float(age) - age_start) / 5.0, 0.0, 1.0))
+    negative_alignment = float(np.clip((-float(composite_score) - 0.05) / 0.20, 0.0, 1.0))
+
+    base_penalty = 0.02 * age_pressure
+    aligned_penalty = 0.10 * age_pressure * negative_alignment
+    total_penalty = min(0.12, base_penalty + aligned_penalty)
+
+    return 1.0 - total_penalty
+
+
+def calibrate_milestone_value(value: float,
+                              stat: str,
+                              config: dict) -> float:
+    """
+    Apply bounded milestone-stat compression for DD/TD.
+
+    This keeps custom-league milestone categories meaningful while reducing the
+    separation created by sparse event-rate spikes.
+    """
+    calibration = config.get("milestone_calibration", {}).get(stat)
+    if calibration is None or pd.isna(value):
+        return float(value)
+
+    raw = max(float(value), 0.0)
+    scale = float(calibration.get("scale", 1.0))
+    curvature = max(float(calibration.get("curvature", 0.0)), 0.0)
+
+    if raw == 0.0:
+        return 0.0
+
+    return scale * (raw / (1.0 + curvature * raw))
+
+
+def calibrate_category_values(raw: np.ndarray,
+                              cat: str,
+                              config: dict) -> np.ndarray:
+    """Apply category-specific calibration to a numpy array when configured."""
+    if cat not in {"DD", "TD"}:
+        return raw
+    return np.array(
+        [calibrate_milestone_value(value, cat, config) for value in raw],
+        dtype=float,
+    )
 
 
 # ── GP adjustment ─────────────────────────────────────────────────────────────
@@ -221,11 +403,12 @@ def project_stats(season_dfs: list[pd.DataFrame],
         norm_weights      = [w / total_w for w in raw_weights]
 
         # Step 1: trend-aware weight adjustment
-        final_weights = compute_trend_weights(
+        trend_profile = compute_trend_profile(
             player_season_stats=player_season_stats,
             available_seasons=available_seasons,
             base_weights=norm_weights,
         )
+        final_weights = trend_profile["weights"]
 
         # Step 2: GP availability factor
         gp_factor = compute_gp_factor(
@@ -234,7 +417,19 @@ def project_stats(season_dfs: list[pd.DataFrame],
             weights=final_weights,
         )
 
-        row = {"PLAYER_NAME": player, "GP_FACTOR": round(gp_factor, 3)}
+        first = available_seasons[0]
+        projection_age = player_season_stats[first].get("AGE", np.nan)
+        decline_factor = compute_decline_factor(
+            age=projection_age,
+            composite_score=float(trend_profile["composite_score"]),
+        )
+
+        row = {
+            "PLAYER_NAME": player,
+            "GP_FACTOR": round(gp_factor, 3),
+            "AGE": projection_age,
+            "DECLINE_FACTOR": round(decline_factor, 3),
+        }
 
         # ── Counting categories — GP-adjusted ───────────────────────────
         for cat in counting_cats:
@@ -251,7 +446,7 @@ def project_stats(season_dfs: list[pd.DataFrame],
 
             wt        = sum(wts)
             projected = sum(v * w for v, w in zip(vals, wts)) / wt
-            row[cat]  = projected * gp_factor   # GP adjustment applied here
+            row[cat]  = projected * gp_factor * decline_factor
 
         # ── FG% — volume-weighted, no GP adjustment ──────────────────────
         row["FG%"] = compute_weighted_fg_pct(
@@ -262,14 +457,13 @@ def project_stats(season_dfs: list[pd.DataFrame],
 
         # ── DD and TD — GP-adjusted ──────────────────────────────────────
         player_derived = derived_stats.get(player, {})
-        row["DD"] = player_derived.get("DD", 0.0) * gp_factor
-        row["TD"] = player_derived.get("TD", 0.0) * gp_factor
+        row["DD"] = player_derived.get("DD", 0.0) * gp_factor * decline_factor
+        row["TD"] = player_derived.get("TD", 0.0) * gp_factor * decline_factor
 
         # ── TECH — GP-adjusted ───────────────────────────────────────────
-        row["TECH"] = tech_per_game.get(player, 0.05) * gp_factor
+        row["TECH"] = tech_per_game.get(player, 0.05) * gp_factor * decline_factor
 
         # ── GP and MIN — raw, for filtering and display ──────────────────
-        first = available_seasons[0]
         row["GP"]  = player_season_stats[first].get("GP", np.nan)
         row["MIN"] = player_season_stats[first].get("MIN", np.nan)
 
@@ -403,6 +597,7 @@ def compute_g_scores(projected: pd.DataFrame,
             continue
 
         raw     = df[cat].fillna(0.0).values.astype(float)
+        raw     = calibrate_category_values(raw, cat, config)
         shifted = raw + epsilon
 
         try:

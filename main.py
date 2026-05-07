@@ -18,6 +18,7 @@ Everything else is automatic.
 from pathlib import Path
 from datetime import datetime
 
+from benchmark_ingest import assess_benchmark_readiness, benchmark_snapshot_filename
 from config   import LEAGUE_CONFIG
 from data     import load_bbr_csv, filter_qualified, fetch_game_logs, \
                      fetch_tech_per_game, derive_stats_from_logs
@@ -31,6 +32,7 @@ from validate import (
     load_benchmark_history,
     print_metric_deltas,
     validate,
+    write_analysis_artifact,
 )
 
 
@@ -45,25 +47,26 @@ OUTPUT_FILE     = "durant_rankings_2025_26.csv"
 DIAGNOSTICS_DIR = Path("diagnostics")
 BENCHMARK_HISTORY_FILE = DIAGNOSTICS_DIR / "benchmark_history.csv"
 TOP_MISS_DIR = DIAGNOSTICS_DIR / "top_misses"
+MILESTONE_CONTRIBUTION_DIR = DIAGNOSTICS_DIR / "milestone_contributions"
+
+
+def build_historical_snapshot_target(season: str, note: str) -> dict[str, object]:
+    """Return one historical snapshot target using the canonical ingestion filename."""
+    filename = benchmark_snapshot_filename(season)
+    return {
+        "path": filename,
+        "label": filename,
+        "benchmark_class": "historical_snapshot",
+        "trust_tier": "snapshot_derived",
+        "name_col": "Player Name",
+        "rank_col": "Rank",
+        "note": note,
+    }
+
+
 VALIDATION_TARGETS = [
-    {
-        "path": "actual_14cat_24_25_snapshot.csv",
-        "label": "actual_14cat_24_25_snapshot.csv",
-        "benchmark_class": "historical_snapshot",
-        "trust_tier": "snapshot_derived",
-        "name_col": "Player Name",
-        "rank_col": "Rank",
-        "note": "14-cat exact-league validation snapshot for 2024-25",
-    },
-    {
-        "path": "actual_14cat_23_24_snapshot.csv",
-        "label": "actual_14cat_23_24_snapshot.csv",
-        "benchmark_class": "historical_snapshot",
-        "trust_tier": "snapshot_derived",
-        "name_col": "Player Name",
-        "rank_col": "Rank",
-        "note": "14-cat exact-league validation snapshot for 2023-24",
-    },
+    build_historical_snapshot_target("2024-25", "14-cat exact-league validation snapshot for 2024-25"),
+    build_historical_snapshot_target("2023-24", "14-cat exact-league validation snapshot for 2023-24"),
     {
         "path": "yahoo_25_26_market_export.csv",
         "label": "yahoo_25_26_adp_proxy",
@@ -113,11 +116,22 @@ def save_top_miss_artifact(result: dict[str, object]) -> None:
     if top_misses is None or len(top_misses) == 0:
         return
 
-    TOP_MISS_DIR.mkdir(parents=True, exist_ok=True)
     label = str(result.get("label", "benchmark"))
     path = TOP_MISS_DIR / f"{slugify_label(label)}_top_misses.csv"
-    top_misses.to_csv(path, index=False)
+    write_analysis_artifact(top_misses, path)
     print(f"  Miss artifact   : {path}")
+
+
+def save_milestone_contribution_artifact(result: dict[str, object]) -> None:
+    """Persist the latest DD/TD contribution artifact for a benchmark target."""
+    artifact = result.get("milestone_contributions")
+    if artifact is None or len(artifact) == 0:
+        return
+
+    label = str(result.get("label", "benchmark"))
+    path = MILESTONE_CONTRIBUTION_DIR / f"{slugify_label(label)}_milestone_contributions.csv"
+    write_analysis_artifact(artifact, path)
+    print(f"  DD/TD artifact  : {path}")
 
 
 def print_run_health_summary(game_log_health: dict[str, object],
@@ -137,26 +151,88 @@ def print_run_health_summary(game_log_health: dict[str, object],
     else:
         print("  Game-log fetch  : OK")
         print(f"  Missing pairs   : 0 / {game_log_health['requested_pair_count']}")
+    print(
+        "  Severity split  : "
+        f"{game_log_health['current_season_missing_pair_count']} current-season / "
+        f"{game_log_health['historical_missing_pair_count']} historical / "
+        f"{game_log_health['non_actionable_pair_count']} non-actionable"
+    )
+    if game_log_health["current_season_missing_pair_count"]:
+        print("  Current-season  :")
+        for player_name, season in game_log_health["current_season_missing_pairs"][:10]:
+            print(f"    - {player_name} ({season})")
+    if game_log_health["historical_missing_pair_count"]:
+        print("  Historical      :")
+        for player_name, season in game_log_health["historical_missing_pairs"][:10]:
+            print(f"    - {player_name} ({season})")
+    if game_log_health["non_actionable_pair_count"]:
+        print("  Non-actionable  :")
+        reasons = game_log_health.get("non_actionable_reasons", {})
+        for player_name, season in game_log_health["non_actionable_pairs"][:10]:
+            reason = reasons.get((player_name, season), "non-actionable")
+            print(f"    - {player_name} ({season}): {reason}")
     if game_log_health["expected_missing_pair_count"]:
         print(f"  Expected misses : {game_log_health['expected_missing_pair_count']} suppressed")
 
     ok_labels = [r["label"] for r in validation_results if r["status"] == "ok"]
     weak_labels = [r["label"] for r in validation_results if r["status"] == "weak_matches"]
     failed_labels = [r["label"] for r in validation_results if r["status"] == "no_matches"]
+    not_ready_labels = [r["label"] for r in validation_results if r["status"] == "not_ready"]
     skipped_labels = [r["label"] for r in validation_results if r["status"] == "missing_file"]
 
     print("  Validation      :")
     print(f"    ok            : {len(ok_labels)}")
     print(f"    weak          : {len(weak_labels)}")
     print(f"    failed        : {len(failed_labels)}")
+    print(f"    not_ready     : {len(not_ready_labels)}")
     print(f"    skipped       : {len(skipped_labels)}")
 
     if weak_labels:
         print(f"    weak targets  : {', '.join(weak_labels)}")
     if failed_labels:
         print(f"    failed targets: {', '.join(failed_labels)}")
+    if not_ready_labels:
+        print(f"    not ready     : {', '.join(not_ready_labels)}")
     if skipped_labels:
         print(f"    skipped files : {', '.join(skipped_labels)}")
+
+
+def print_not_ready_benchmark(target: dict[str, object],
+                              readiness: dict[str, object]) -> None:
+    """Render a skipped screenshot-derived benchmark with explicit trust reasons."""
+    print(f"\n{'='*60}")
+    print(f"Validation vs {target.get('label', target['path'])}")
+    if target.get("note"):
+        print(f"  Note: {target['note']}")
+    if target.get("benchmark_class"):
+        print(f"  Benchmark class : {target['benchmark_class']}")
+    if target.get("trust_tier"):
+        print(f"  Trust tier      : {target['trust_tier']}")
+    print("  Status          : not_ready")
+    print("  Players matched : 0")
+    if readiness.get("confidence_summary") is not None:
+        file_confidence = readiness.get("file_confidence")
+        if file_confidence is None:
+            print(f"  Confidence      : {readiness['confidence_summary']}")
+        else:
+            print(f"  Confidence      : {readiness['confidence_summary']} ({float(file_confidence):.2f})")
+    if readiness.get("source_batch"):
+        print(f"  Source batch    : {readiness['source_batch']}")
+    review_counts = readiness.get("review_counts") or {}
+    if review_counts:
+        print(
+            "  Review counts   : "
+            f"{review_counts.get('total', 0)} total / "
+            f"{review_counts.get('approved', 0)} approved / "
+            f"{review_counts.get('pending', 0)} pending / "
+            f"{review_counts.get('rejected', 0)} rejected"
+        )
+    if readiness.get("generated_at"):
+        print(f"  Generated at    : {readiness['generated_at']}")
+    blockers = readiness.get("blocked_reasons") or []
+    if blockers:
+        print("  Skip reason     : " + "; ".join(str(reason) for reason in blockers))
+    print(f"{'='*60}")
 
 
 def main() -> None:
@@ -266,6 +342,25 @@ def main() -> None:
     for target in VALIDATION_TARGETS:
         path = target["path"]
         if Path(path).exists():
+            readiness = None
+            if (
+                target.get("benchmark_class") == "historical_snapshot"
+                and target.get("trust_tier") == "snapshot_derived"
+            ):
+                readiness = assess_benchmark_readiness(path)
+                if readiness is not None and not readiness.get("ready", False):
+                    print_not_ready_benchmark(target, readiness)
+                    validation_results.append(
+                        {
+                            "label": target.get("label", path),
+                            "benchmark_class": target.get("benchmark_class"),
+                            "trust_tier": target.get("trust_tier"),
+                            "status": "not_ready",
+                            "matched_players": 0,
+                            "benchmark_metadata": readiness,
+                        }
+                    )
+                    continue
             previous_baseline = find_previous_baseline(
                 history,
                 label=target.get("label", path),
@@ -283,6 +378,7 @@ def main() -> None:
                 note=target.get("note"),
                 benchmark_class=target.get("benchmark_class"),
                 trust_tier=target.get("trust_tier"),
+                benchmark_metadata=readiness,
             )
             result["baseline_deltas"] = compute_metric_deltas(result, previous_baseline)
             if previous_baseline is not None:
@@ -291,6 +387,7 @@ def main() -> None:
                 print("\n  Baseline delta:")
                 print("    first saved baseline for this benchmark")
             save_top_miss_artifact(result)
+            save_milestone_contribution_artifact(result)
             history_rows.append(build_validation_summary_row(result, recorded_at))
             validation_results.append(result)
         else:

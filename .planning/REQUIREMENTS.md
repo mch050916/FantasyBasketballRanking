@@ -1,70 +1,60 @@
 # Requirements: DURANT Fantasy Basketball Ranker
 
-**Defined:** 2026-04-10
+**Defined:** 2026-04-30
 **Core Value:** Produce trustworthy pre-draft rankings for this exact league format that are more useful than Yahoo's default ordering.
 
-## v1 Requirements
+## v1.1 Requirements
 
-### Data Integrity
+### Benchmark Ingestion
 
-- [x] **DATA-01**: User can rerun the pipeline without silently reusing stale TECH cache data when seasons or season weights change.
-- [x] **DATA-02**: User can see which player-season game logs are still missing after a run.
-- [x] **DATA-03**: User can resolve draft-relevant player identity mismatches across Basketball Reference, NBA API, and validation inputs without manually rewriting source files.
+- [x] **INGEST-01**: User can maintain season-specific exact-league benchmark CSVs from Yahoo screenshots through one repeatable ingestion path instead of ad hoc manual transcription.
+- [x] **INGEST-02**: User can preserve season identity, rank order, and relevant player fields when converting screenshot-derived benchmark data into validation-ready files.
+- [x] **INGEST-03**: User can review and correct screenshot-derived player rows before benchmark files are treated as trustworthy inputs.
 
-### Validation
+### Benchmark Trust
 
-- [x] **VAL-01**: User can run the model once and compare it against season-specific 14-cat snapshots and Yahoo market-style benchmarks in the same execution.
-- [x] **VAL-02**: User can tell when a validation dataset matched too few players or failed entirely instead of reading a silent success.
-- [x] **VAL-03**: User can inspect the largest rank misses per benchmark after a run to guide the next model fix.
+- [x] **BTRUST-01**: User can see confidence or completeness signals for screenshot-derived benchmark files before relying on their validation metrics.
+- [x] **BTRUST-02**: User can keep screenshot-derived benchmarks versioned and maintainable season by season without confusing them with direct-export sources.
 
-### Projection Quality
+### Data Resolution
 
-- [ ] **PROJ-01**: User gets trend adjustments informed by more than points so non-scoring role changes can influence projections.
-- [ ] **PROJ-02**: User gets a lightweight decline signal for aging veterans whose carry-forward box stats overrate next-season value.
-- [ ] **PROJ-03**: User gets category calibration that keeps DD and TD from systematically overpowering the rest of the multicategory profile.
-- [x] **PROJ-04**: User can measure validation deltas after each model change to confirm whether a fix improved the benchmarks.
+- [x] **DRES-01**: User can resolve or explicitly suppress the remaining real NBA API identity/fetch edge cases such as `Jimmy Butler`, `Bojan Bogdanovic`, and `Saddiq Bey`.
+- [x] **DRES-02**: User can distinguish expected unavailable player-season history from truly unresolved current-season fetch failures for problematic players.
+- [x] **DRES-03**: User can rerun the pipeline after resolution changes and see whether degraded-run counts improved without hiding real failures.
 
 ## v2 Requirements
 
-### Modeling Expansion
+### Modeling
 
-- **MODL-01**: User can project from three or more historical seasons when enough data exists.
-- **MODL-02**: User can use stable player IDs instead of name-only joins across data providers.
-- **MODL-03**: User can tune category weights from observed matchup history instead of hand-set heuristics.
-
-### Workflow
-
-- **FLOW-01**: User can import exact Yahoo exports directly instead of maintaining screenshot-derived historical CSVs manually.
-- **FLOW-02**: User can review benchmark summaries in a richer report than console output alone.
+- **MODL-01**: User can improve the remaining breakout and availability miss cluster once the benchmark inputs and data-resolution surface are cleaner.
+- **MODL-02**: User can bring in richer historical benchmark sources if Yahoo ever exposes a reliable league export path.
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Weekly lineup optimization | Not part of the pre-draft ranking objective |
-| Full GUI or hosted application | The current local script form is sufficient for the immediate milestone |
-| Live scraping of Yahoo pages | Adds fragility and credential complexity without improving the core model directly |
+| Replacing screenshot benchmarks with direct Yahoo exports | The exact league workflow does not reliably provide a clean export path today |
+| Full OCR automation with no human review | Screenshot-derived data still needs a confidence and correction layer to stay trustworthy |
+| New model-signal experiments unrelated to benchmark ingestion or data resolution | This milestone is about cleaner truth data and cleaner fetch coverage first |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DATA-01 | Phase 1 | Complete |
-| DATA-02 | Phase 1 | Complete |
-| DATA-03 | Phase 2 | Complete |
-| VAL-01 | Phase 2 | Complete |
-| VAL-02 | Phase 1 | Complete |
-| VAL-03 | Phase 3 | Complete |
-| PROJ-01 | Phase 4 | Pending |
-| PROJ-02 | Phase 4 | Pending |
-| PROJ-03 | Phase 5 | Pending |
-| PROJ-04 | Phase 3 | Complete |
+| INGEST-01 | Phase 6 | Complete |
+| INGEST-02 | Phase 6 | Complete |
+| INGEST-03 | Phase 7 | Complete |
+| BTRUST-01 | Phase 7 | Complete |
+| BTRUST-02 | Phase 7 | Complete |
+| DRES-01 | Phase 8 | Complete |
+| DRES-02 | Phase 8 | Complete |
+| DRES-03 | Phase 8 | Complete |
 
 **Coverage:**
-- v1 requirements: 10 total
-- Mapped to phases: 10
+- v1.1 requirements: 8 total
+- Mapped to phases: 8
 - Unmapped: 0 ✓
 
 ---
-*Requirements defined: 2026-04-10*
-*Last updated: 2026-04-28 after Phase 3 completion*
+*Requirements defined: 2026-04-30*
+*Last updated: 2026-05-07 after Phase 8 completion*

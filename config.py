@@ -57,8 +57,23 @@ LEAGUE_CONFIG = {
         "TO":   0.5,
         "PF":   0.5,
         "TECH": 0.3,
-        "DD":   0.8,   # reduced from 1.2 — was over-rewarding bigs vs guards
-        "TD":   0.8,
+        "DD":   0.80,  # keep full league relevance; rely more on bounded scaling
+        "TD":   0.68,  # rarer category still gets a modest weight trim
+    },
+
+    # ── Milestone stat calibration ────────────────────────────────────────
+    # DD and TD are sparse event-rate categories. Treat them separately:
+    #   - DD still matters in this custom league, so calibration stays light.
+    #   - TD is rarer and more distortion-prone, so it gets stronger compression.
+    #
+    # Formula in model.py:
+    #   calibrated = scale * (raw / (1 + curvature * raw))
+    #
+    # This keeps zero at zero, preserves ordering, and compresses high-end
+    # outliers more than moderate contributors.
+    "milestone_calibration": {
+        "DD": {"scale": 1.00, "curvature": 0.15},
+        "TD": {"scale": 0.82, "curvature": 1.60},
     },
 
     # ── League structure ───────────────────────────────────────────────────

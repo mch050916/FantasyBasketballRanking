@@ -5,6 +5,7 @@ from pathlib import Path
 
 from data import (
     _build_cache_envelope,
+    _classify_missing_game_log_pairs,
     _empty_game_log_result,
     _build_game_log_fetch_health,
     _load_cached_game_logs,
@@ -29,6 +30,14 @@ class DataTests(unittest.TestCase):
 
         self.assertEqual(resolve_player_id("Alperen Şengün", exact, normalized), 1)
         self.assertEqual(resolve_player_id("Nikola Jokic", exact, normalized), 2)
+
+    def test_resolve_player_id_uses_nba_api_source_override(self) -> None:
+        players = [
+            {"full_name": "Jimmy Butler III", "id": 22},
+        ]
+        exact, normalized = build_nba_player_lookups(players)
+
+        self.assertEqual(resolve_player_id("Jimmy Butler", exact, normalized), 22)
 
     def test_missing_game_log_pairs_only_returns_unfetched_entries(self) -> None:
         result = _empty_game_log_result(["2024-25", "2023-24"])
@@ -154,6 +163,50 @@ class DataTests(unittest.TestCase):
         self.assertTrue(health["degraded"])
         self.assertEqual(health["missing_pair_count"], 1)
         self.assertEqual(health["expected_missing_pair_count"], 1)
+
+    def test_classify_missing_game_log_pairs_separates_current_historical_and_non_actionable(self) -> None:
+        classified = _classify_missing_game_log_pairs(
+            [
+                ("Bojan Bogdanović", "2024-25"),
+                ("Jimmy Butler", "2024-25"),
+                ("Someone Else", "2023-24"),
+                ("Bub Carrington", "2023-24"),
+            ],
+            ["2024-25", "2023-24"],
+            {("Bub Carrington", "2023-24")},
+        )
+
+        self.assertEqual(classified["current_season_missing_pairs"], [("Jimmy Butler", "2024-25")])
+        self.assertEqual(classified["historical_missing_pairs"], [("Someone Else", "2023-24")])
+        self.assertEqual(classified["expected_missing_pairs"], [("Bub Carrington", "2023-24")])
+        self.assertEqual(classified["non_actionable_pairs"], [("Bojan Bogdanović", "2024-25")])
+        self.assertEqual(
+            classified["non_actionable_reasons"][("Bojan Bogdanović", "2024-25")],
+            "inactive current-season returnee",
+        )
+
+    def test_build_game_log_fetch_health_tracks_current_historical_and_non_actionable_counts(self) -> None:
+        health = _build_game_log_fetch_health(
+            ["Bojan Bogdanović", "Jimmy Butler", "Someone Else"],
+            ["2024-25", "2023-24"],
+            [("Jimmy Butler", "2024-25"), ("Someone Else", "2023-24")],
+            [("Bub Carrington", "2023-24")],
+            current_season_missing_pairs=[("Jimmy Butler", "2024-25")],
+            historical_missing_pairs=[("Someone Else", "2023-24")],
+            non_actionable_pairs=[("Bojan Bogdanović", "2024-25")],
+            non_actionable_reasons={
+                ("Bojan Bogdanović", "2024-25"): "inactive current-season returnee",
+            },
+        )
+
+        self.assertTrue(health["degraded"])
+        self.assertEqual(health["current_season_missing_pair_count"], 1)
+        self.assertEqual(health["historical_missing_pair_count"], 1)
+        self.assertEqual(health["non_actionable_pair_count"], 1)
+        self.assertEqual(
+            health["non_actionable_reasons"][("Bojan Bogdanović", "2024-25")],
+            "inactive current-season returnee",
+        )
 
 
 if __name__ == "__main__":

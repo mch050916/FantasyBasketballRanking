@@ -1,0 +1,2 @@
+Season,Source Batch,Review Total Rows,Review Approved Rows,Review Rejected Rows,Review Pending Rows,Missing Required Rows,Low Confidence Rows,File Confidence,Confidence Summary,Ready,Ready Blockers,Generated At
+2023-24,legacy_2023_24_snapshot,125,125,0,0,0,0,1.0,high,True,,2026-05-07T07:25:29+00:00

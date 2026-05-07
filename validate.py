@@ -36,6 +36,19 @@ BENCHMARK_HISTORY_COLUMNS = [
     "mae",
 ]
 
+PREDICTED_CONTEXT_COLUMNS = [
+    "GP_FACTOR",
+    "PTS",
+    "REB",
+    "AST",
+    "DD",
+    "TD",
+    "TECH",
+    "TOTAL_VALUE",
+    "DD_G",
+    "TD_G",
+]
+
 MISS_CONTEXT_COLUMNS = [
     "GP_FACTOR",
     "PTS",
@@ -54,6 +67,22 @@ MISS_OUTPUT_COLUMNS = [
     "delta",
     "MISS_BUCKET",
 ] + MISS_CONTEXT_COLUMNS
+
+MILESTONE_CONTRIBUTION_COLUMNS = [
+    "PLAYER_NAME",
+    "RANK",
+    "ACTUAL_RANK",
+    "delta",
+    "MISS_BUCKET",
+    "DD",
+    "TD",
+    "DD_G",
+    "TD_G",
+    "MILESTONE_G_SUM",
+    "MILESTONE_ABS_SHARE",
+    "MILESTONE_DOMINANT",
+    "TOTAL_VALUE",
+]
 
 
 def build_player_name(df: pd.DataFrame, name_col: str | list[str]) -> pd.Series:
@@ -230,6 +259,76 @@ def summarize_miss_buckets(miss_df: pd.DataFrame) -> pd.Series:
     return miss_df["MISS_BUCKET"].value_counts()
 
 
+def _milestone_dominant_label(dd_g: float | None, td_g: float | None) -> str:
+    """Return which milestone category dominates the miss contribution."""
+    dd_abs = abs(float(dd_g)) if dd_g is not None and not pd.isna(dd_g) else 0.0
+    td_abs = abs(float(td_g)) if td_g is not None and not pd.isna(td_g) else 0.0
+    if dd_abs == 0.0 and td_abs == 0.0:
+        return "none"
+    if dd_abs >= td_abs * 1.25:
+        return "DD"
+    if td_abs >= dd_abs * 1.25:
+        return "TD"
+    return "mixed"
+
+
+def build_milestone_contribution_artifact(result: dict,
+                                          top_n: int = 10) -> pd.DataFrame:
+    """Build a compact DD/TD contribution artifact from validation details."""
+    details = result.get("details")
+    if details is None or len(details) == 0:
+        return pd.DataFrame(columns=MILESTONE_CONTRIBUTION_COLUMNS)
+
+    artifact = details.copy()
+    if "delta" not in artifact.columns:
+        artifact["delta"] = artifact["RANK"] - artifact["ACTUAL_RANK"]
+    if "MISS_BUCKET" not in artifact.columns:
+        artifact["MISS_BUCKET"] = artifact.apply(classify_miss_bucket, axis=1)
+
+    for col in ["DD", "TD", "DD_G", "TD_G", "TOTAL_VALUE"]:
+        if col not in artifact.columns:
+            artifact[col] = pd.NA
+        artifact[col] = pd.to_numeric(artifact[col], errors="coerce")
+
+    artifact["MILESTONE_G_SUM"] = artifact["DD_G"].fillna(0.0) + artifact["TD_G"].fillna(0.0)
+    total_abs = artifact["TOTAL_VALUE"].abs().replace(0, np.nan)
+    artifact["MILESTONE_ABS_SHARE"] = artifact["MILESTONE_G_SUM"].abs() / total_abs
+    artifact["MILESTONE_DOMINANT"] = artifact.apply(
+        lambda row: _milestone_dominant_label(row.get("DD_G"), row.get("TD_G")),
+        axis=1,
+    )
+
+    artifact = artifact.sort_values("delta", key=abs, ascending=False).head(top_n).copy()
+    return artifact[MILESTONE_CONTRIBUTION_COLUMNS].reset_index(drop=True)
+
+
+def summarize_milestone_contributions(artifact: pd.DataFrame) -> dict[str, object]:
+    """Return a compact DD/TD contribution summary for one benchmark artifact."""
+    if artifact.empty:
+        return {
+            "avg_dd_g": 0.0,
+            "avg_td_g": 0.0,
+            "avg_share": 0.0,
+            "dominant_counts": {},
+        }
+
+    dominant_counts = artifact["MILESTONE_DOMINANT"].value_counts().to_dict() \
+        if "MILESTONE_DOMINANT" in artifact.columns else {}
+    return {
+        "avg_dd_g": float(artifact["DD_G"].fillna(0.0).mean()),
+        "avg_td_g": float(artifact["TD_G"].fillna(0.0).mean()),
+        "avg_share": float(artifact["MILESTONE_ABS_SHARE"].fillna(0.0).mean() * 100.0),
+        "dominant_counts": dominant_counts,
+    }
+
+
+def write_analysis_artifact(df: pd.DataFrame, path: str | Path) -> None:
+    """Persist an analysis artifact deterministically to CSV."""
+    artifact_path = Path(path)
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(artifact_path, index=False)
+
+
 def validate(df: pd.DataFrame,
              known_csv: str,
              name_col: str | list[str] = "Player Name",
@@ -241,7 +340,8 @@ def validate(df: pd.DataFrame,
              label: str | None = None,
              note: str | None = None,
              benchmark_class: str | None = None,
-             trust_tier: str | None = None) -> dict:
+             trust_tier: str | None = None,
+             benchmark_metadata: dict[str, object] | None = None) -> dict:
     """
     Compare our rankings to a ground-truth CSV.
 
@@ -259,7 +359,7 @@ def validate(df: pd.DataFrame,
     """
     from scipy.stats import spearmanr
 
-    context_cols = [col for col in MISS_CONTEXT_COLUMNS if col in df.columns]
+    context_cols = [col for col in PREDICTED_CONTEXT_COLUMNS if col in df.columns]
     predicted = df[["PLAYER_NAME", "RANK"] + context_cols].copy()
     predicted["PLAYER_KEY"] = predicted["PLAYER_NAME"].map(canonical_player_key)
 
@@ -293,7 +393,9 @@ def validate(df: pd.DataFrame,
         "label": label or Path(known_csv).name,
         "benchmark_class": benchmark_class,
         "trust_tier": trust_tier,
+        "benchmark_metadata": benchmark_metadata,
         "top_misses": pd.DataFrame(columns=MISS_OUTPUT_COLUMNS),
+        "milestone_contributions": pd.DataFrame(columns=MILESTONE_CONTRIBUTION_COLUMNS),
     }
 
     print(f"\n{'='*60}")
@@ -304,6 +406,28 @@ def validate(df: pd.DataFrame,
         print(f"  Benchmark class : {benchmark_class}")
     if trust_tier:
         print(f"  Trust tier      : {trust_tier}")
+    if benchmark_metadata:
+        print(f"  Readiness       : {'ready' if benchmark_metadata.get('ready') else 'not_ready'}")
+        confidence_summary = benchmark_metadata.get("confidence_summary")
+        file_confidence = benchmark_metadata.get("file_confidence")
+        if confidence_summary is not None:
+            if file_confidence is None or pd.isna(file_confidence):
+                print(f"  Confidence      : {confidence_summary}")
+            else:
+                print(f"  Confidence      : {confidence_summary} ({float(file_confidence):.2f})")
+        if benchmark_metadata.get("source_batch"):
+            print(f"  Source batch    : {benchmark_metadata['source_batch']}")
+        review_counts = benchmark_metadata.get("review_counts") or {}
+        if review_counts:
+            print(
+                "  Review counts   : "
+                f"{review_counts.get('total', 0)} total / "
+                f"{review_counts.get('approved', 0)} approved / "
+                f"{review_counts.get('pending', 0)} pending / "
+                f"{review_counts.get('rejected', 0)} rejected"
+            )
+        if benchmark_metadata.get("generated_at"):
+            print(f"  Generated at    : {benchmark_metadata['generated_at']}")
     print(f"{'='*60}")
 
     if merged.empty:
@@ -344,7 +468,9 @@ def validate(df: pd.DataFrame,
 
     merged["delta"] = delta
     top_misses = build_top_miss_artifact({"details": merged}, top_n=top_n_misses)
+    milestone_artifact = build_milestone_contribution_artifact({"details": merged}, top_n=top_n_misses)
     result["top_misses"] = top_misses
+    result["milestone_contributions"] = milestone_artifact
 
     print(f"\n  Biggest misses:")
     for _, row in top_misses.iterrows():
@@ -359,5 +485,17 @@ def validate(df: pd.DataFrame,
         print("\n  Miss buckets:")
         for bucket, count in bucket_counts.items():
             print(f"    {bucket:<24} {count}")
+
+    milestone_summary = summarize_milestone_contributions(milestone_artifact)
+    dominant_counts = milestone_summary["dominant_counts"]
+    if milestone_artifact is not None and len(milestone_artifact) > 0:
+        dominant_parts = ", ".join(
+            f"{label} {count}" for label, count in dominant_counts.items()
+        ) or "none"
+        print("\n  DD/TD contribution:")
+        print(f"    avg DD_G                 {milestone_summary['avg_dd_g']:.3f}")
+        print(f"    avg TD_G                 {milestone_summary['avg_td_g']:.3f}")
+        print(f"    avg milestone share      {milestone_summary['avg_share']:.1f}%")
+        print(f"    dominant                 {dominant_parts}")
 
     return result

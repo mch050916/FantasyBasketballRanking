@@ -1,104 +1,76 @@
 # Roadmap: DURANT Fantasy Basketball Ranker
 
-## Overview
+## Milestones
 
-This roadmap treats the existing ranking engine as working brownfield software and focuses the next milestone on trustworthiness and accuracy. The path starts by making stale or incomplete runs explicit, then improves cross-source identity and benchmarking, then adds the feedback loop needed to measure changes, and only after that moves into the higher-variance model changes that can materially reduce the biggest ranking misses.
+- ✅ **v1.0 Trustworthiness And Accuracy Baseline** — Phases 1-5 (shipped 2026-04-30) — see [archive](/Users/chesterman/FantasyBasketballRanking/.planning/milestones/v1.0-ROADMAP.md)
+- 🚧 **v1.1 Benchmark Ingestion And Data Resolution** — Phases 6-8 (planned)
 
-## Phases
+## Archived Phases
 
-**Phase Numbering:**
-- Integer phases (1, 2, 3): Planned milestone work
-- Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
+<details>
+<summary>✅ v1.0 Trustworthiness And Accuracy Baseline (Phases 1-5) — SHIPPED 2026-04-30</summary>
 
-Decimal phases appear between their surrounding integers in numeric order.
+- [x] Phase 1: Reliability Guardrails (2/2 plans) — completed 2026-04-10
+- [x] Phase 2: Identity And Benchmark Fidelity (2/2 plans) — completed 2026-04-10
+- [x] Phase 3: Miss Diagnostics (2/2 plans) — completed 2026-04-28
+- [x] Phase 4: Projection Signal Upgrades (2/2 plans) — completed 2026-04-30
+- [x] Phase 5: Category Calibration (2/2 plans) — completed 2026-04-30
 
-- [x] **Phase 1: Reliability Guardrails** - Make stale caches, missing logs, and broken validation impossible to miss. (completed 2026-04-10)
-- [x] **Phase 2: Identity And Benchmark Fidelity** - Make cross-source player matching and benchmark execution trustworthy. (completed 2026-04-10)
-- [x] **Phase 3: Miss Diagnostics** - Surface benchmark deltas and biggest misses so each model change is measurable. (completed 2026-04-28)
-- [ ] **Phase 4: Projection Signal Upgrades** - Improve trend and decline signals that drive the heaviest misses.
-- [ ] **Phase 5: Category Calibration** - Rebalance DD/TD influence against the rest of the multicategory profile.
+</details>
+
+## Active Phases
+
+- [x] **Phase 6: Screenshot Benchmark Ingestion** - Build a repeatable path for converting Yahoo screenshot history into season-specific benchmark CSVs. (completed 2026-05-07)
+- [x] **Phase 7: Benchmark Confidence And Review** - Add confidence, review, and maintenance guardrails for screenshot-derived benchmark files. (completed 2026-05-07)
+- [x] **Phase 8: NBA API Resolution Hardening** - Reduce the remaining true identity/fetch failures without weakening degraded-run honesty. (completed 2026-05-07)
 
 ## Phase Details
 
-### Phase 1: Reliability Guardrails
-**Goal**: User can trust that a successful run did not quietly rely on stale TECH cache data, hidden missing logs, or silently broken validation.
-**Depends on**: Nothing (first phase)
-**Requirements**: DATA-01, DATA-02, VAL-02
+### Phase 6: Screenshot Benchmark Ingestion
+**Goal**: User can turn league screenshots into season-specific benchmark CSVs through one repeatable ingestion path instead of one-off manual handling.
+**Depends on**: Phase 5
+**Requirements**: INGEST-01, INGEST-02
 **Success Criteria** (what must be TRUE):
-  1. User can rerun the pipeline and get refreshed TECH cache behavior when season inputs or weighting assumptions change.
-  2. User can see which player-season logs are still missing after a run instead of inferring it from bad outputs.
-  3. User can see when a validation file failed or matched too few players to be trustworthy.
+  1. User can produce validation-ready benchmark rows from screenshot-derived league history with season identity preserved.
+  2. User can regenerate benchmark CSVs using the same ingestion path for future seasons.
+  3. Ingested benchmark files keep rank order and player identity data consistent enough for validation use.
 **Plans**: 2 plans
 
 Plans:
-- [x] 01-01: Add cache metadata and invalidation rules for TECH and other fragile fetch artifacts.
-- [x] 01-02: Add explicit missing-log and validation-health reporting to pipeline output and tests.
+- [x] 06-01: Create a structured screenshot-to-benchmark ingestion workflow and file format.
+- [x] 06-02: Normalize player fields and season metadata from ingested screenshot benchmarks.
 
-### Phase 2: Identity And Benchmark Fidelity
-**Goal**: User can compare the same player population across Basketball Reference, NBA API, and benchmark files without brittle manual cleanup.
-**Depends on**: Phase 1
-**Requirements**: DATA-03, VAL-01
+### Phase 7: Benchmark Confidence And Review
+**Goal**: User can understand how trustworthy a screenshot-derived benchmark file is before using it to judge model accuracy.
+**Depends on**: Phase 6
+**Requirements**: INGEST-03, BTRUST-01, BTRUST-02
 **Success Criteria** (what must be TRUE):
-  1. User can run the pipeline without draft-relevant players dropping out because of avoidable naming mismatches.
-  2. User can execute season-specific 14-cat and Yahoo-style validations in one pass with clearly labeled outputs.
-  3. User can trust benchmark inputs to represent the same players the model ranked.
+  1. User can review and correct suspicious or incomplete screenshot-derived rows before validation consumes them.
+  2. Validation output distinguishes screenshot-derived benchmark confidence from direct-export trust.
+  3. Historical screenshot benchmarks stay organized and maintainable across seasons.
 **Plans**: 2 plans
 
 Plans:
-- [x] 02-01: Strengthen player identity resolution and add deterministic fallbacks for known cross-source mismatches.
-- [x] 02-02: Normalize benchmark target handling so exact-league and Yahoo comparison paths are explicit and consistent.
+- [x] 07-01: Add benchmark review and correction support for ingested screenshot data.
+- [x] 07-02: Add confidence/completeness reporting and maintenance conventions for screenshot-derived benchmarks.
 
-### Phase 3: Miss Diagnostics
-**Goal**: User can see the benchmark impact and largest misses after every run so the next fix is chosen from evidence instead of guesswork.
-**Depends on**: Phase 2
-**Requirements**: VAL-03, PROJ-04
+### Phase 8: NBA API Resolution Hardening
+**Goal**: User can shrink the remaining real unresolved NBA API fetch failures while keeping degraded-run reporting honest.
+**Depends on**: Phase 7
+**Requirements**: DRES-01, DRES-02, DRES-03
 **Success Criteria** (what must be TRUE):
-  1. User can inspect the largest misses for each benchmark directly from the run artifacts.
-  2. User can compare new metrics against a prior baseline after a model change.
-  3. User can identify which player profiles still dominate the error distribution.
+  1. User can resolve or explicitly suppress known stubborn fetch cases like `Jimmy Butler`, `Bojan Bogdanovic`, and `Saddiq Bey`.
+  2. User can distinguish expected unavailable seasons from true current-season resolution failures for problematic players.
+  3. Reruns show whether degraded-run counts improved after resolution changes without masking real misses.
 **Plans**: 2 plans
 
 Plans:
-- [x] 03-01: Add benchmark delta reporting that compares current metrics with the previous baseline.
-- [x] 03-02: Add top-miss summaries per validation target with enough context to drive the next modeling fix.
-
-### Phase 4: Projection Signal Upgrades
-**Goal**: User gets projections that respond to broader role change and aging decline instead of leaning too heavily on points carry-forward.
-**Depends on**: Phase 3
-**Requirements**: PROJ-01, PROJ-02
-**Success Criteria** (what must be TRUE):
-  1. User gets trend adjustments informed by more than raw scoring movement.
-  2. User sees obvious over-carried veterans discounted when decline signals are present.
-  3. User can rerun validations and see whether the upgraded projection signals improved the target benchmarks.
-**Plans**: 2 plans
-
-Plans:
-- [ ] 04-01: Expand trend weighting to consider broader category and role movement.
-- [ ] 04-02: Add a lightweight age and decline adjustment with focused regression tests.
-
-### Phase 5: Category Calibration
-**Goal**: User gets final rankings whose DD and TD contribution is calibrated against historical results instead of overpowering the rest of the profile.
-**Depends on**: Phase 4
-**Requirements**: PROJ-03
-**Success Criteria** (what must be TRUE):
-  1. User can see DD and TD contribution reviewed against historical benchmark misses.
-  2. User gets recalibrated category influence when DD or TD is dominating rankings unfairly.
-  3. User can rerun validations after calibration and judge whether the ranking spread improved.
-**Plans**: 2 plans
-
-Plans:
-- [ ] 05-01: Analyze DD and TD contribution against benchmark miss patterns.
-- [ ] 05-02: Adjust scoring/calibration and verify the effect with rerun metrics.
+- [x] 08-01: Harden the identity/fetch path for the remaining unresolved NBA API players.
+- [x] 08-02: Improve degraded-run classification and rerun measurement for stubborn fetch failures.
 
 ## Progress
 
-**Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
-
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 1. Reliability Guardrails | 2/2 | Complete    | 2026-04-10 |
-| 2. Identity And Benchmark Fidelity | 2/2 | Complete | 2026-04-10 |
-| 3. Miss Diagnostics | 2/2 | Complete | 2026-04-28 |
-| 4. Projection Signal Upgrades | 0/2 | Not started | - |
-| 5. Category Calibration | 0/2 | Not started | - |
+| Milestone | Phases | Plans | Status | Shipped |
+|-----------|--------|-------|--------|---------|
+| v1.0 Trustworthiness And Accuracy Baseline | 5 | 10 | Complete | 2026-04-30 |
+| v1.1 Benchmark Ingestion And Data Resolution | 3 | 6 | In Progress | - |
