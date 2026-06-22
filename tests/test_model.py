@@ -1,9 +1,11 @@
 import unittest
 
+import numpy as np
 import pandas as pd
 
 from config import LEAGUE_CONFIG
 from model import (
+    calibrate_category_values,
     calibrate_milestone_value,
     compute_decline_factor,
     compute_tau,
@@ -181,6 +183,33 @@ class ProjectStatsTests(unittest.TestCase):
         self.assertEqual(calibrate_milestone_value(0.0, "TD", LEAGUE_CONFIG), 0.0)
         self.assertNotEqual(calibrate_milestone_value(0.50, "DD", LEAGUE_CONFIG), 0.50)
         self.assertNotEqual(calibrate_milestone_value(0.10, "TD", LEAGUE_CONFIG), 0.10)
+
+    def test_milestone_calibration_compresses_high_end_values_more_strongly(self) -> None:
+        low_value = 0.10
+        high_value = 0.80
+
+        dd_low = calibrate_milestone_value(low_value, "DD", LEAGUE_CONFIG) / low_value
+        dd_high = calibrate_milestone_value(high_value, "DD", LEAGUE_CONFIG) / high_value
+        td_low = calibrate_milestone_value(low_value, "TD", LEAGUE_CONFIG) / low_value
+        td_high = calibrate_milestone_value(high_value, "TD", LEAGUE_CONFIG) / high_value
+
+        self.assertLess(dd_high, dd_low)
+        self.assertLess(td_high, td_low)
+        self.assertLess(td_high, dd_high)
+
+    def test_calibrate_category_values_leaves_non_milestones_untouched(self) -> None:
+        raw = np.array([0.05, 0.20, 0.60], dtype=float)
+
+        dd_values = calibrate_category_values(raw, "DD", LEAGUE_CONFIG)
+        td_values = calibrate_category_values(raw, "TD", LEAGUE_CONFIG)
+        pts_values = calibrate_category_values(raw, "PTS", LEAGUE_CONFIG)
+
+        self.assertTrue(np.allclose(pts_values, raw))
+        self.assertTrue(np.all(np.diff(dd_values) > 0))
+        self.assertTrue(np.all(np.diff(td_values) > 0))
+        self.assertTrue(np.all(dd_values < raw))
+        self.assertTrue(np.all(td_values < raw))
+        self.assertTrue(np.all(td_values < dd_values))
 
     def test_compute_tau_derives_tech_from_weekly_pf_proxy(self) -> None:
         game_logs = {

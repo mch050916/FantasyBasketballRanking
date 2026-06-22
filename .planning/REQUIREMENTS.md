@@ -1,60 +1,58 @@
 # Requirements: DURANT Fantasy Basketball Ranker
 
-**Defined:** 2026-04-30
+**Defined:** 2026-06-10  
 **Core Value:** Produce trustworthy pre-draft rankings for this exact league format that are more useful than Yahoo's default ordering.
 
-## v1.1 Requirements
+## v1.3 Requirements
 
-### Benchmark Ingestion
+### Breakout And Availability Diagnostics
 
-- [x] **INGEST-01**: User can maintain season-specific exact-league benchmark CSVs from Yahoo screenshots through one repeatable ingestion path instead of ad hoc manual transcription.
-- [x] **INGEST-02**: User can preserve season identity, rank order, and relevant player fields when converting screenshot-derived benchmark data into validation-ready files.
-- [x] **INGEST-03**: User can review and correct screenshot-derived player rows before benchmark files are treated as trustworthy inputs.
+- [ ] **BAV-01**: User can distinguish breakout underreaction, role-growth signal, and availability overtrust in the biggest exact-league misses.
+- [ ] **BAV-02**: User can inspect saved diagnostic artifacts that explain why a player was classified as breakout-driven, role-growth-driven, availability-driven, or unclear.
 
-### Benchmark Trust
+### Role-Growth Responsiveness
 
-- [x] **BTRUST-01**: User can see confidence or completeness signals for screenshot-derived benchmark files before relying on their validation metrics.
-- [x] **BTRUST-02**: User can keep screenshot-derived benchmarks versioned and maintainable season by season without confusing them with direct-export sources.
+- [ ] **BAV-03**: User can improve model responsiveness to minutes, usage, and multicategory growth signals without allowing one recent season to fully dominate projections.
+- [ ] **BAV-04**: User can confirm role-growth changes preserve the `v1.2` exact-league category-balance gains and do not reintroduce major milestone or category distortion.
 
-### Data Resolution
+### Availability Risk
 
-- [x] **DRES-01**: User can resolve or explicitly suppress the remaining real NBA API identity/fetch edge cases such as `Jimmy Butler`, `Bojan Bogdanovic`, and `Saddiq Bey`.
-- [x] **DRES-02**: User can distinguish expected unavailable player-season history from truly unresolved current-season fetch failures for problematic players.
-- [x] **DRES-03**: User can rerun the pipeline after resolution changes and see whether degraded-run counts improved without hiding real failures.
+- [ ] **BAV-05**: User can apply a bounded availability-risk adjustment so fragile or low-availability profiles are not over-carried by per-game production alone.
+- [ ] **BAV-06**: User can rerun the full ranking and validation loop after breakout and availability changes and see exact-league-first benchmark deltas plus secondary Yahoo sanity checks.
 
 ## v2 Requirements
 
 ### Modeling
 
-- **MODL-01**: User can improve the remaining breakout and availability miss cluster once the benchmark inputs and data-resolution surface are cleaner.
-- **MODL-02**: User can bring in richer historical benchmark sources if Yahoo ever exposes a reliable league export path.
+- **MODL-01**: User can revisit residual balanced-category carry if it expands beyond the current `monitor_narrow` signal.
+- **MODL-02**: User can incorporate a concrete local OCR backend behind the existing adapter boundary if benchmark upkeep still needs more automation.
+- **MODL-03**: User can revisit richer historical benchmark sources if Yahoo ever exposes a reliable league export path.
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Replacing screenshot benchmarks with direct Yahoo exports | The exact league workflow does not reliably provide a clean export path today |
-| Full OCR automation with no human review | Screenshot-derived data still needs a confidence and correction layer to stay trustworthy |
-| New model-signal experiments unrelated to benchmark ingestion or data resolution | This milestone is about cleaner truth data and cleaner fetch coverage first |
+| Full projection-engine rewrite | `v1.3` should keep the bounded, measurable model-iteration pattern that worked in `v1.2`. |
+| New benchmark ingestion workflows | `v1.1` already established screenshot review, confidence, OCR adapter, and suppression governance. |
+| In-season injury news scraping | This milestone should use available historical availability signals, not add a volatile news-ingestion dependency. |
+| Draft-room UI or live roster assistant | The product remains a local pre-draft ranking pipeline. |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INGEST-01 | Phase 6 | Complete |
-| INGEST-02 | Phase 6 | Complete |
-| INGEST-03 | Phase 7 | Complete |
-| BTRUST-01 | Phase 7 | Complete |
-| BTRUST-02 | Phase 7 | Complete |
-| DRES-01 | Phase 8 | Complete |
-| DRES-02 | Phase 8 | Complete |
-| DRES-03 | Phase 8 | Complete |
+| BAV-01 | Phase 11 | Pending |
+| BAV-02 | Phase 11 | Pending |
+| BAV-03 | Phase 12 | Pending |
+| BAV-04 | Phase 12 | Pending |
+| BAV-05 | Phase 13 | Pending |
+| BAV-06 | Phase 13 | Pending |
 
 **Coverage:**
-- v1.1 requirements: 8 total
-- Mapped to phases: 8
-- Unmapped: 0 ✓
+- v1.3 requirements: 6 total
+- Mapped to phases: 6
+- Unmapped: 0
 
 ---
-*Requirements defined: 2026-04-30*
-*Last updated: 2026-05-07 after Phase 8 completion*
+*Requirements defined: 2026-06-10*
+*Last updated: 2026-06-10 after v1.3 initialization*

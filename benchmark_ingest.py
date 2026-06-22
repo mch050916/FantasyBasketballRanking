@@ -1,20 +1,22 @@
 """
 benchmark_ingest.py — Screenshot-derived benchmark ingestion
 ============================================================
-Helpers for turning semi-automatic screenshot extraction output into
-reviewable intermediate tables, then into validation-ready benchmark CSVs.
+Helpers for turning screenshot extraction output into reviewable
+intermediate tables, then into validation-ready benchmark CSVs.
 
-Phase 6 intentionally stops short of raw OCR. The public entry points here
-accept parsed rows from any extraction path, preserve the noisy text for
-review, and enforce that only reviewed rows can become benchmark truth.
+The ingestion path remains review-first: OCR or any other extraction backend
+may seed the review table, but only reviewed rows can become benchmark truth.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from io import StringIO
 from pathlib import Path
-from typing import Iterable, Mapping
+from typing import Iterable, Mapping, Protocol, Sequence
 import re
+import shutil
+import subprocess
 
 import pandas as pd
 
@@ -31,6 +33,7 @@ REVIEW_READY_MIN_CONFIDENCE = 0.80
 CONFIDENCE_SUMMARY_HIGH = "high"
 CONFIDENCE_SUMMARY_MIXED = "mixed"
 CONFIDENCE_SUMMARY_LOW = "low"
+DEFAULT_OCR_BACKEND = "tesseract_cli"
 
 REVIEW_TABLE_COLUMNS = [
     "SEASON",
@@ -76,6 +79,306 @@ REVIEW_TABLE_DEFAULTS = {
     "CORRECTED_RANK": pd.NA,
     "ROW_CONFIDENCE": pd.NA,
 }
+
+
+class OCRBackendError(RuntimeError):
+    """Base error for OCR backend resolution and execution."""
+
+
+class OCRBackendUnavailableError(OCRBackendError):
+    """Raised when the requested OCR backend is not available locally."""
+
+
+class OCRBatchAdapter(Protocol):
+    """Pluggable backend contract for OCR-assisted batch extraction."""
+
+    backend_name: str
+
+    def is_available(self) -> bool:
+        """Return whether the backend can run in the current environment."""
+
+    def extract_rows(self,
+                     image_paths: Sequence[Path],
+                     season: str,
+                     source_batch: str) -> list[Mapping[str, object]]:
+        """Return parsed OCR row mappings for one season batch."""
+
+
+class TesseractCliOCRAdapter:
+    """Optional OCR backend that shells out to a local `tesseract` binary."""
+
+    backend_name = DEFAULT_OCR_BACKEND
+
+    def is_available(self) -> bool:
+        return shutil.which("tesseract") is not None
+
+    def extract_rows(self,
+                     image_paths: Sequence[Path],
+                     season: str,
+                     source_batch: str) -> list[Mapping[str, object]]:
+        if not self.is_available():
+            raise OCRBackendUnavailableError(
+                "tesseract CLI backend is unavailable; install `tesseract` or pass a custom adapter"
+            )
+
+        rows: list[Mapping[str, object]] = []
+        running_order = 1
+        for image_path in image_paths:
+            image_rows = _extract_rows_from_tesseract_image(
+                Path(image_path),
+                running_order_start=running_order,
+            )
+            rows.extend(image_rows)
+            running_order += len(image_rows)
+        return rows
+
+
+def default_ocr_adapters() -> list[OCRBatchAdapter]:
+    """Return the built-in OCR adapters in backend resolution order."""
+    return [TesseractCliOCRAdapter()]
+
+
+def available_ocr_backends(adapters: Sequence[OCRBatchAdapter] | None = None,
+                           available_only: bool = False) -> list[str]:
+    """Return known OCR backend names, optionally filtered to available ones."""
+    available: list[str] = []
+    for adapter in adapters or default_ocr_adapters():
+        if available_only and not adapter.is_available():
+            continue
+        available.append(adapter.backend_name)
+    return available
+
+
+def resolve_ocr_adapter(backend_name: str = DEFAULT_OCR_BACKEND,
+                        adapters: Sequence[OCRBatchAdapter] | None = None) -> OCRBatchAdapter:
+    """Resolve one OCR adapter by backend name."""
+    requested = str(backend_name).strip() or DEFAULT_OCR_BACKEND
+    for adapter in adapters or default_ocr_adapters():
+        if adapter.backend_name == requested:
+            return adapter
+
+    known = available_ocr_backends(adapters=adapters, available_only=False)
+    raise OCRBackendError(
+        f"unknown OCR backend {requested!r}; known backends: {', '.join(known) or 'none'}"
+    )
+
+
+def _collapse_whitespace(text: object) -> str:
+    return re.sub(r"\s+", " ", _coerce_optional_text(text)).strip()
+
+
+def _merge_review_notes(existing_notes: object,
+                        new_notes: Sequence[str]) -> str:
+    """Combine review notes without duplicating the same message repeatedly."""
+    merged: list[str] = []
+    seen: set[str] = set()
+    for note in [_collapse_whitespace(existing_notes), *[_collapse_whitespace(note) for note in new_notes]]:
+        if not note or note in seen:
+            continue
+        merged.append(note)
+        seen.add(note)
+    return "; ".join(merged)
+
+
+def _normalize_ocr_confidence(value: object) -> float | None:
+    confidence = _coerce_confidence(value)
+    if confidence is None:
+        return None
+    if confidence > 1.0:
+        confidence /= 100.0
+    return max(0.0, min(1.0, confidence))
+
+
+def _parse_ocr_line(raw_text: str,
+                    fallback_rank: int) -> dict[str, object]:
+    """Parse one OCR line into the review-table-first row contract."""
+    collapsed = _collapse_whitespace(raw_text)
+    body = collapsed
+    rank = fallback_rank
+    notes: list[str] = []
+
+    rank_match = re.match(r"^(?P<rank>\d{1,3})\s*[\.\)\-:]?\s*(?P<body>.*)$", collapsed)
+    if rank_match:
+        rank = int(rank_match.group("rank"))
+        body = _collapse_whitespace(rank_match.group("body"))
+    else:
+        notes.append("rank inferred from OCR row order")
+
+    team_text = ""
+    player_fragment = body
+    team_match = re.match(
+        r"^(?P<player>.+?)\s+(?P<team>[A-Z]{2,4}(?:\s*-\s*[A-Z,]{1,12})?)$",
+        body,
+    )
+    if team_match:
+        player_fragment = _collapse_whitespace(team_match.group("player"))
+        team_text = _collapse_whitespace(team_match.group("team"))
+    else:
+        notes.append("team text needs review")
+
+    if not player_fragment:
+        player_fragment = body or collapsed or f"ocr_row_{fallback_rank}"
+        notes.append("player name needs review")
+
+    return {
+        "rank": rank,
+        "player_name": player_fragment,
+        "raw_ocr_name": player_fragment,
+        "team_text": team_text,
+        "review_status": REVIEW_STATUS_PENDING,
+        "review_notes": "; ".join(notes),
+    }
+
+
+def _ocr_line_to_review_row(raw_text: str,
+                            ocr_confidence: object,
+                            source_order: int,
+                            image_path: Path | None = None) -> dict[str, object]:
+    """Convert one OCR line into a reviewable row while preserving uncertainty."""
+    row = _parse_ocr_line(raw_text, fallback_rank=source_order)
+    row["ocr_confidence"] = _normalize_ocr_confidence(ocr_confidence)
+    source_note = f"ocr extracted from {image_path.name}" if image_path is not None else "ocr extracted"
+    row["review_notes"] = _merge_review_notes(row.get("review_notes"), [source_note])
+    return row
+
+
+def _extract_rows_from_tesseract_image(image_path: Path,
+                                       running_order_start: int = 1) -> list[dict[str, object]]:
+    """Extract one image into reviewable OCR rows using tesseract TSV output."""
+    result = subprocess.run(
+        ["tesseract", str(image_path), "stdout", "--psm", "6", "tsv"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise OCRBackendError(
+            f"tesseract failed for {image_path.name}: {result.stderr.strip() or result.stdout.strip()}"
+        )
+    if not result.stdout.strip():
+        return []
+
+    try:
+        tsv = pd.read_csv(StringIO(result.stdout), sep="\t")
+    except pd.errors.EmptyDataError:
+        return []
+
+    if "text" not in tsv.columns:
+        return []
+
+    words = tsv.copy()
+    words["text"] = words["text"].fillna("").astype(str).map(_collapse_whitespace)
+    words = words[words["text"] != ""].copy()
+    if words.empty:
+        return []
+
+    if "conf" in words.columns:
+        words["conf"] = pd.to_numeric(words["conf"], errors="coerce")
+    else:
+        words["conf"] = pd.Series([pd.NA] * len(words), index=words.index, dtype="float64")
+    group_cols = [col for col in ["page_num", "block_num", "par_num", "line_num"] if col in words.columns]
+    sort_cols = [col for col in group_cols + ["word_num"] if col in words.columns]
+    if sort_cols:
+        words = words.sort_values(sort_cols).reset_index(drop=True)
+
+    rows: list[dict[str, object]] = []
+    running_order = running_order_start
+    grouped = words.groupby(group_cols, sort=False) if group_cols else [(None, words)]
+    for _, line_words in grouped:
+        raw_text = " ".join(line_words["text"].tolist()).strip()
+        if not raw_text:
+            continue
+        valid_conf = line_words["conf"][line_words["conf"].ge(0).fillna(False)]
+        confidence = None if valid_conf.empty else float(valid_conf.mean())
+        rows.append(
+            _ocr_line_to_review_row(
+                raw_text,
+                ocr_confidence=confidence,
+                source_order=running_order,
+                image_path=image_path,
+            )
+        )
+        running_order += 1
+    return rows
+
+
+def _coerce_ocr_seed_row(row: Mapping[str, object],
+                         source_order: int) -> dict[str, object]:
+    """Normalize one adapter row into the trusted review-table seed shape."""
+    raw_ocr_name = _collapse_whitespace(
+        row.get("raw_ocr_name", row.get("RAW_OCR_NAME", row.get("raw_text", row.get("text"))))
+    )
+    player_name = _collapse_whitespace(row.get("player_name", row.get("PLAYER_NAME"))) or raw_ocr_name
+    rank = _coerce_optional_rank(row.get("rank", row.get("RANK")))
+    notes: list[str] = []
+    if rank is None:
+        rank = source_order
+        notes.append("rank inferred from OCR row order")
+    if not player_name:
+        player_name = f"ocr_row_{source_order}"
+        raw_ocr_name = raw_ocr_name or player_name
+        notes.append("player name needs review")
+    if not _collapse_whitespace(row.get("team_text", row.get("TEAM_TEXT"))):
+        notes.append("team text needs review")
+
+    existing_notes = row.get("review_notes", row.get("REVIEW_NOTES", row.get("notes")))
+    return {
+        "rank": rank,
+        "player_name": player_name,
+        "raw_ocr_name": raw_ocr_name or player_name,
+        "team_text": _collapse_whitespace(row.get("team_text", row.get("TEAM_TEXT"))),
+        "review_status": row.get("review_status", REVIEW_STATUS_PENDING),
+        "ocr_confidence": _normalize_ocr_confidence(
+            row.get("ocr_confidence", row.get("OCR_CONFIDENCE"))
+        ),
+        "review_notes": _merge_review_notes(existing_notes, notes),
+    }
+
+
+def extract_review_rows_from_ocr_batch(image_paths: Sequence[str | Path],
+                                       season: str,
+                                       source_batch: str,
+                                       *,
+                                       backend_name: str = DEFAULT_OCR_BACKEND,
+                                       adapter: OCRBatchAdapter | None = None,
+                                       adapters: Sequence[OCRBatchAdapter] | None = None) -> list[dict[str, object]]:
+    """Extract one season screenshot batch into review-table seed rows."""
+    normalized_paths = [Path(path) for path in image_paths]
+    if not normalized_paths:
+        raise ValueError("at least one screenshot image is required")
+
+    resolved = adapter or resolve_ocr_adapter(backend_name=backend_name, adapters=adapters)
+    raw_rows = resolved.extract_rows(
+        image_paths=normalized_paths,
+        season=str(season).strip(),
+        source_batch=str(source_batch).strip(),
+    )
+    rows = [
+        _coerce_ocr_seed_row(row, source_order=index)
+        for index, row in enumerate(raw_rows, start=1)
+    ]
+    if not rows:
+        raise ValueError("OCR batch did not produce any reviewable rows")
+    return rows
+
+
+def build_review_table_from_ocr_batch(image_paths: Sequence[str | Path],
+                                      season: str,
+                                      source_batch: str,
+                                      *,
+                                      backend_name: str = DEFAULT_OCR_BACKEND,
+                                      adapter: OCRBatchAdapter | None = None,
+                                      adapters: Sequence[OCRBatchAdapter] | None = None) -> pd.DataFrame:
+    """Run one OCR-assisted season batch and land it in the canonical review table."""
+    rows = extract_review_rows_from_ocr_batch(
+        image_paths=image_paths,
+        season=season,
+        source_batch=source_batch,
+        backend_name=backend_name,
+        adapter=adapter,
+        adapters=adapters,
+    )
+    return build_review_table(rows=rows, season=season, source_batch=source_batch)
 
 
 def season_to_snapshot_slug(season: str) -> str:
@@ -186,8 +489,6 @@ def _coerce_review_row(row: Mapping[str, object],
     )
     if row_confidence is None and review_status == REVIEW_STATUS_APPROVED:
         row_confidence = 1.0
-    elif row_confidence is None:
-        row_confidence = ocr_confidence
 
     return {
         "SEASON": str(season).strip(),

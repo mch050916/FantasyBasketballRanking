@@ -21,11 +21,13 @@ from datetime import datetime
 from benchmark_ingest import assess_benchmark_readiness, benchmark_snapshot_filename
 from config   import LEAGUE_CONFIG
 from data     import load_bbr_csv, filter_qualified, fetch_game_logs, \
-                     fetch_tech_per_game, derive_stats_from_logs
+                     fetch_tech_per_game, derive_stats_from_logs, \
+                     build_non_actionable_suppression_report
 from model    import project_stats, compute_tau, compute_g_scores
 from output   import format_rankings, save_rankings
 from validate import (
     append_benchmark_history,
+    build_category_distortion_summary,
     build_validation_summary_row,
     compute_metric_deltas,
     find_previous_baseline,
@@ -48,6 +50,9 @@ DIAGNOSTICS_DIR = Path("diagnostics")
 BENCHMARK_HISTORY_FILE = DIAGNOSTICS_DIR / "benchmark_history.csv"
 TOP_MISS_DIR = DIAGNOSTICS_DIR / "top_misses"
 MILESTONE_CONTRIBUTION_DIR = DIAGNOSTICS_DIR / "milestone_contributions"
+CATEGORY_DISTORTION_DIR = DIAGNOSTICS_DIR / "category_distortions"
+CATEGORY_DISTORTION_SUMMARY_FILE = CATEGORY_DISTORTION_DIR / "category_distortion_summary.csv"
+SUPPRESSION_MAINTENANCE_FILE = DIAGNOSTICS_DIR / "non_actionable_suppression_maintenance.md"
 
 
 def build_historical_snapshot_target(season: str, note: str) -> dict[str, object]:
@@ -134,6 +139,54 @@ def save_milestone_contribution_artifact(result: dict[str, object]) -> None:
     print(f"  DD/TD artifact  : {path}")
 
 
+def save_category_distortion_artifact(result: dict[str, object]) -> None:
+    """Persist the latest family-level category-distortion artifact for a benchmark target."""
+    artifact = result.get("category_distortions")
+    if artifact is None or len(artifact) == 0:
+        return
+
+    label = str(result.get("label", "benchmark"))
+    path = CATEGORY_DISTORTION_DIR / f"{slugify_label(label)}_category_distortions.csv"
+    write_analysis_artifact(artifact, path)
+    print(f"  Distortion artf : {path}")
+
+
+def print_category_distortion_summary(summary: object) -> None:
+    """Render a compact cross-benchmark category-distortion summary."""
+    if summary is None or len(summary) == 0:
+        return
+
+    print(f"\n{'='*60}")
+    print("Category Distortion Summary")
+    print(f"{'='*60}")
+    print("  Primary surface : exact-league 14-cat snapshots")
+
+    real_families = summary[summary["EVIDENCE_LEVEL"] == "repeat_exact_league"]
+    if real_families.empty:
+        print("  Real families   : none yet")
+    else:
+        print("  Real families   :")
+        for _, row in real_families.iterrows():
+            print(
+                f"    {row['DISTORTION_FAMILY']:<24} "
+                f"{int(row['PRIMARY_HITS'])} hits / "
+                f"{int(row['PRIMARY_BENCHMARKS'])} snapshots"
+            )
+            print(f"      reps: {row['REPRESENTATIVE_PLAYERS']}")
+            print(f"      follow-up: {row['FOLLOW_UP_DECISION']}")
+
+    supporting_families = summary[summary["EVIDENCE_LEVEL"] != "repeat_exact_league"]
+    if not supporting_families.empty:
+        print("  Supporting only :")
+        for _, row in supporting_families.iterrows():
+            print(
+                f"    {row['DISTORTION_FAMILY']:<24} "
+                f"{row['EVIDENCE_LEVEL']} / {row['FOLLOW_UP_DECISION']}"
+            )
+
+    print(f"  Summary artifact: {CATEGORY_DISTORTION_SUMMARY_FILE}")
+
+
 def print_run_health_summary(game_log_health: dict[str, object],
                              validation_results: list[dict[str, object]]) -> None:
     print(f"\n{'='*60}")
@@ -173,6 +226,20 @@ def print_run_health_summary(game_log_health: dict[str, object],
             print(f"    - {player_name} ({season}): {reason}")
     if game_log_health["expected_missing_pair_count"]:
         print(f"  Expected misses : {game_log_health['expected_missing_pair_count']} suppressed")
+    suppression_review = game_log_health.get("suppression_registry_review") or {}
+    if suppression_review:
+        print(
+            "  Registry review : "
+            f"{suppression_review.get('active_entry_count', 0)} active / "
+            f"{suppression_review.get('expired_entry_count', 0)} expired / "
+            f"{suppression_review.get('retired_entry_count', 0)} retired"
+        )
+        if suppression_review.get("expired_entries"):
+            print("  Needs review    :")
+            for entry in suppression_review["expired_entries"][:10]:
+                print(f"    - {entry['Player Name']} ({entry['Season']}): reaffirm or retire")
+        if game_log_health.get("suppression_maintenance_report"):
+            print(f"  Maintenance rpt : {game_log_health['suppression_maintenance_report']}")
 
     ok_labels = [r["label"] for r in validation_results if r["status"] == "ok"]
     weak_labels = [r["label"] for r in validation_results if r["status"] == "weak_matches"]
@@ -292,6 +359,12 @@ def main() -> None:
         expected_missing_pairs=expected_missing_pairs,
         return_health=True,
     )
+    SUPPRESSION_MAINTENANCE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    SUPPRESSION_MAINTENANCE_FILE.write_text(
+        build_non_actionable_suppression_report(game_log_health),
+        encoding="utf-8",
+    )
+    game_log_health["suppression_maintenance_report"] = str(SUPPRESSION_MAINTENANCE_FILE)
 
     # ── 3. Derive DD and TD from game logs ───────────────────────────────
     print("\n[3/5] Deriving DD/TD from game logs...")
@@ -388,6 +461,7 @@ def main() -> None:
                 print("    first saved baseline for this benchmark")
             save_top_miss_artifact(result)
             save_milestone_contribution_artifact(result)
+            save_category_distortion_artifact(result)
             history_rows.append(build_validation_summary_row(result, recorded_at))
             validation_results.append(result)
         else:
@@ -403,6 +477,10 @@ def main() -> None:
             )
 
     append_benchmark_history(BENCHMARK_HISTORY_FILE, history_rows)
+    category_distortion_summary = build_category_distortion_summary(validation_results)
+    if len(category_distortion_summary) > 0:
+        write_analysis_artifact(category_distortion_summary, CATEGORY_DISTORTION_SUMMARY_FILE)
+        print_category_distortion_summary(category_distortion_summary)
     print_run_health_summary(game_log_health, validation_results)
 
 

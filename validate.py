@@ -41,6 +41,10 @@ PREDICTED_CONTEXT_COLUMNS = [
     "PTS",
     "REB",
     "AST",
+    "3PTM",
+    "BLK",
+    "TO",
+    "FG%",
     "DD",
     "TD",
     "TECH",
@@ -84,6 +88,40 @@ MILESTONE_CONTRIBUTION_COLUMNS = [
     "TOTAL_VALUE",
 ]
 
+CATEGORY_DISTORTION_COLUMNS = [
+    "PLAYER_NAME",
+    "RANK",
+    "ACTUAL_RANK",
+    "delta",
+    "DISTORTION_FAMILY",
+    "MISS_BUCKET",
+    "PTS",
+    "REB",
+    "AST",
+    "3PTM",
+    "BLK",
+    "TO",
+    "FG%",
+    "DD",
+    "TD",
+    "DD_G",
+    "TD_G",
+    "MILESTONE_ABS_SHARE",
+    "TOTAL_VALUE",
+]
+
+CATEGORY_DISTORTION_SUMMARY_COLUMNS = [
+    "DISTORTION_FAMILY",
+    "PRIMARY_HITS",
+    "PRIMARY_BENCHMARKS",
+    "PRIMARY_PLAYER_COUNT",
+    "SECONDARY_HITS",
+    "EVIDENCE_LEVEL",
+    "FOLLOW_UP_DECISION",
+    "AVG_ABS_DELTA",
+    "REPRESENTATIVE_PLAYERS",
+]
+
 
 def build_player_name(df: pd.DataFrame, name_col: str | list[str]) -> pd.Series:
     """Build a comparable player-name column from one or more source columns."""
@@ -106,6 +144,16 @@ def build_rank_series(df: pd.DataFrame,
     if not rank_from_metric:
         return series
     return series.rank(method="first", ascending=ascending)
+
+
+def _coerce_float(value: object) -> float | None:
+    """Return a float when possible, otherwise None."""
+    if value is None or pd.isna(value):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def load_benchmark_history(path: str | Path) -> pd.DataFrame:
@@ -259,6 +307,30 @@ def summarize_miss_buckets(miss_df: pd.DataFrame) -> pd.Series:
     return miss_df["MISS_BUCKET"].value_counts()
 
 
+def classify_category_distortion_family(row: pd.Series) -> str:
+    """Assign a broad, interpretable family to category-weight distortion misses."""
+    milestone_share = _coerce_float(row.get("MILESTONE_ABS_SHARE")) or 0.0
+    pts = _coerce_float(row.get("PTS")) or 0.0
+    reb = _coerce_float(row.get("REB")) or 0.0
+    ast = _coerce_float(row.get("AST")) or 0.0
+    threes = _coerce_float(row.get("3PTM")) or 0.0
+    blocks = _coerce_float(row.get("BLK")) or 0.0
+    turnovers = _coerce_float(row.get("TO")) or 99.0
+    fg_pct = _coerce_float(row.get("FG%")) or 0.0
+    dd = _coerce_float(row.get("DD")) or 0.0
+    td = _coerce_float(row.get("TD")) or 0.0
+
+    if milestone_share >= 0.55 or td >= 0.08 or (dd >= 0.50 and ast >= 5.0):
+        return "milestone carry"
+    if reb >= 8.0 and (blocks >= 0.80 or (fg_pct >= 0.50 and ast < 5.5)):
+        return "big-man stat carry"
+    if ast >= 6.5 and (pts >= 16.0 or threes >= 1.80):
+        return "guard creation carry"
+    if fg_pct >= 0.53 and turnovers <= 2.0:
+        return "efficiency carry"
+    return "balanced category carry"
+
+
 def _milestone_dominant_label(dd_g: float | None, td_g: float | None) -> str:
     """Return which milestone category dominates the miss contribution."""
     dd_abs = abs(float(dd_g)) if dd_g is not None and not pd.isna(dd_g) else 0.0
@@ -300,6 +372,154 @@ def build_milestone_contribution_artifact(result: dict,
 
     artifact = artifact.sort_values("delta", key=abs, ascending=False).head(top_n).copy()
     return artifact[MILESTONE_CONTRIBUTION_COLUMNS].reset_index(drop=True)
+
+
+def build_category_distortion_artifact(result: dict,
+                                       top_n: int = 10) -> pd.DataFrame:
+    """Build a compact saved artifact for family-level category distortion diagnosis."""
+    details = result.get("details")
+    if details is None or len(details) == 0:
+        return pd.DataFrame(columns=CATEGORY_DISTORTION_COLUMNS)
+
+    artifact = details.copy()
+    if "delta" not in artifact.columns:
+        artifact["delta"] = artifact["RANK"] - artifact["ACTUAL_RANK"]
+    if "MISS_BUCKET" not in artifact.columns:
+        artifact["MISS_BUCKET"] = artifact.apply(classify_miss_bucket, axis=1)
+
+    for col in ["DD", "TD", "DD_G", "TD_G", "TOTAL_VALUE"]:
+        if col not in artifact.columns:
+            artifact[col] = pd.NA
+        artifact[col] = pd.to_numeric(artifact[col], errors="coerce")
+
+    total_abs = artifact["TOTAL_VALUE"].abs().replace(0, np.nan)
+    artifact["MILESTONE_ABS_SHARE"] = (
+        artifact["DD_G"].fillna(0.0) + artifact["TD_G"].fillna(0.0)
+    ).abs() / total_abs
+
+    distortion_only = artifact[artifact["MISS_BUCKET"] == "category-weight distortion"].copy()
+    if distortion_only.empty:
+        return pd.DataFrame(columns=CATEGORY_DISTORTION_COLUMNS)
+
+    for col in ["PTS", "REB", "AST", "3PTM", "BLK", "TO", "FG%"]:
+        if col not in distortion_only.columns:
+            distortion_only[col] = pd.NA
+
+    distortion_only["DISTORTION_FAMILY"] = distortion_only.apply(
+        classify_category_distortion_family,
+        axis=1,
+    )
+    distortion_only = distortion_only.sort_values("delta", key=abs, ascending=False).head(top_n).copy()
+    return distortion_only[CATEGORY_DISTORTION_COLUMNS].reset_index(drop=True)
+
+
+def summarize_category_distortion_families(artifact: pd.DataFrame) -> pd.Series:
+    """Return family counts for a saved or computed category-distortion artifact."""
+    if artifact.empty or "DISTORTION_FAMILY" not in artifact.columns:
+        return pd.Series(dtype="int64")
+    return artifact["DISTORTION_FAMILY"].value_counts()
+
+
+def build_category_distortion_summary(results: list[dict[str, object]]) -> pd.DataFrame:
+    """Aggregate category-distortion artifacts into one cross-benchmark summary."""
+    records: list[dict[str, object]] = []
+    for result in results:
+        artifact = result.get("category_distortions")
+        if artifact is None or len(artifact) == 0:
+            continue
+
+        artifact_df = artifact.copy()
+        artifact_df["ABS_DELTA"] = artifact_df["delta"].abs()
+        is_primary = (
+            result.get("benchmark_class") == "historical_snapshot"
+            and result.get("trust_tier") == "snapshot_derived"
+        )
+        label = str(result.get("label", "benchmark"))
+
+        for family, family_df in artifact_df.groupby("DISTORTION_FAMILY"):
+            records.append(
+                {
+                    "DISTORTION_FAMILY": family,
+                    "BENCHMARK_LABEL": label,
+                    "IS_PRIMARY": is_primary,
+                    "HIT_COUNT": int(len(family_df)),
+                    "PLAYER_NAMES": family_df["PLAYER_NAME"].astype(str).tolist(),
+                    "AVG_ABS_DELTA": float(family_df["ABS_DELTA"].mean()),
+                    "REPRESENTATIVE_PLAYERS": ", ".join(
+                        family_df.sort_values("ABS_DELTA", ascending=False)["PLAYER_NAME"]
+                        .astype(str)
+                        .drop_duplicates()
+                        .head(3)
+                        .tolist()
+                    ),
+                }
+            )
+
+    if not records:
+        return pd.DataFrame(columns=CATEGORY_DISTORTION_SUMMARY_COLUMNS)
+
+    records_df = pd.DataFrame(records)
+    summary_rows: list[dict[str, object]] = []
+    for family, family_df in records_df.groupby("DISTORTION_FAMILY"):
+        primary_df = family_df[family_df["IS_PRIMARY"]]
+        secondary_df = family_df[~family_df["IS_PRIMARY"]]
+        primary_benchmarks = int(primary_df["BENCHMARK_LABEL"].nunique())
+        primary_hits = int(primary_df["HIT_COUNT"].sum())
+        primary_player_count = int(
+            primary_df["PLAYER_NAMES"].explode().dropna().astype(str).nunique()
+        ) if not primary_df.empty else 0
+        secondary_hits = int(secondary_df["HIT_COUNT"].sum())
+        if primary_benchmarks >= 2:
+            evidence_level = "repeat_exact_league"
+        elif primary_hits > 0:
+            evidence_level = "single_exact_league"
+        else:
+            evidence_level = "secondary_only"
+
+        if evidence_level == "repeat_exact_league" and (
+            primary_player_count >= 2 or primary_hits >= 4
+        ):
+            follow_up_decision = "active_target"
+        elif evidence_level == "repeat_exact_league":
+            follow_up_decision = "monitor_narrow"
+        elif evidence_level == "single_exact_league":
+            follow_up_decision = "watch_supporting"
+        else:
+            follow_up_decision = "support_only"
+
+        representative_source = primary_df if not primary_df.empty else family_df
+        representative_players = ", ".join(
+            representative_source
+            .sort_values("AVG_ABS_DELTA", ascending=False)["REPRESENTATIVE_PLAYERS"]
+            .astype(str)
+            .str.split(", ")
+            .explode()
+            .dropna()
+            .drop_duplicates()
+            .head(3)
+            .tolist()
+        )
+
+        summary_rows.append(
+            {
+                "DISTORTION_FAMILY": family,
+                "PRIMARY_HITS": primary_hits,
+                "PRIMARY_BENCHMARKS": primary_benchmarks,
+                "PRIMARY_PLAYER_COUNT": primary_player_count,
+                "SECONDARY_HITS": secondary_hits,
+                "EVIDENCE_LEVEL": evidence_level,
+                "FOLLOW_UP_DECISION": follow_up_decision,
+                "AVG_ABS_DELTA": float(family_df["AVG_ABS_DELTA"].mean()),
+                "REPRESENTATIVE_PLAYERS": representative_players,
+            }
+        )
+
+    summary = pd.DataFrame(summary_rows)
+    summary = summary.sort_values(
+        ["PRIMARY_BENCHMARKS", "PRIMARY_HITS", "SECONDARY_HITS", "AVG_ABS_DELTA"],
+        ascending=[False, False, False, False],
+    )
+    return summary[CATEGORY_DISTORTION_SUMMARY_COLUMNS].reset_index(drop=True)
 
 
 def summarize_milestone_contributions(artifact: pd.DataFrame) -> dict[str, object]:
@@ -396,6 +616,7 @@ def validate(df: pd.DataFrame,
         "benchmark_metadata": benchmark_metadata,
         "top_misses": pd.DataFrame(columns=MISS_OUTPUT_COLUMNS),
         "milestone_contributions": pd.DataFrame(columns=MILESTONE_CONTRIBUTION_COLUMNS),
+        "category_distortions": pd.DataFrame(columns=CATEGORY_DISTORTION_COLUMNS),
     }
 
     print(f"\n{'='*60}")
@@ -469,8 +690,10 @@ def validate(df: pd.DataFrame,
     merged["delta"] = delta
     top_misses = build_top_miss_artifact({"details": merged}, top_n=top_n_misses)
     milestone_artifact = build_milestone_contribution_artifact({"details": merged}, top_n=top_n_misses)
+    category_distortion_artifact = build_category_distortion_artifact({"details": merged}, top_n=top_n_misses)
     result["top_misses"] = top_misses
     result["milestone_contributions"] = milestone_artifact
+    result["category_distortions"] = category_distortion_artifact
 
     print(f"\n  Biggest misses:")
     for _, row in top_misses.iterrows():
@@ -497,5 +720,11 @@ def validate(df: pd.DataFrame,
         print(f"    avg TD_G                 {milestone_summary['avg_td_g']:.3f}")
         print(f"    avg milestone share      {milestone_summary['avg_share']:.1f}%")
         print(f"    dominant                 {dominant_parts}")
+
+    family_counts = summarize_category_distortion_families(category_distortion_artifact)
+    if not family_counts.empty:
+        print("\n  Category distortion families:")
+        for family, count in family_counts.items():
+            print(f"    {family:<24} {count}")
 
     return result

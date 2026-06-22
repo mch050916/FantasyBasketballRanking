@@ -16,10 +16,50 @@
 **Stats:**
 - 5 phases, 10 plans
 - 36 passing unit tests at milestone completion
-- ~1,721,783 lines across tracked Python files in the working tree snapshot
 - Git range unavailable because milestone commits were blocked locally by `.git/index.lock`
-
-**What's next:** Define the next milestone around direct-export benchmark fidelity, unresolved NBA API edge cases, and the remaining breakout/availability-driven misses.
 
 ---
 
+## v1.1 Benchmark Ingestion And Data Resolution (Shipped: 2026-05-09)
+
+**Delivered:** A screenshot-first benchmark workflow with reviewed ingestion, confidence and readiness guardrails, OCR-assisted seeding, explicit NBA API suppression governance, and durable audit evidence for the whole path.
+
+**Phases completed:** 6-10 (10 plans total)
+
+**Key accomplishments:**
+- Added a repeatable screenshot-to-review-table-to-benchmark pipeline instead of one-off manual benchmark handling.
+- Introduced structured review corrections, row/file confidence rollups, readiness gates, and provenance metadata for historical exact-league snapshots.
+- Hardened NBA API resolution reporting with explicit severity splits, narrow non-actionable classifications, and season-scoped suppression governance.
+- Added a pluggable OCR ingestion boundary that seeds the existing reviewed-table workflow without bypassing human review.
+- Backfilled markdown UAT artifacts and added a dedicated maintenance report so milestone evidence and suppression policy stay reviewable on disk.
+
+**Stats:**
+- 5 phases, 10 plans
+- 62 passing unit tests at milestone completion
+- Exact-league historical snapshots now run as ready, high-confidence reviewed benchmarks
+- Git range unavailable because milestone commits were blocked locally by `.git/index.lock`
+
+---
+
+## v1.2 Category Balance Calibration (Shipped: 2026-06-10)
+
+**Delivered:** Exact-league-first category-distortion diagnostics plus a bounded broad-category calibration pass that reduced the dominant `milestone carry` pattern without forcing a noisy second-pass rebalance.
+
+**Phases completed:** 1-2 (4 plans total)
+
+**Key accomplishments:**
+- Added saved per-benchmark category-distortion artifacts and an exact-league-first cross-benchmark summary.
+- Surfaced broad distortion families in normal validation output while preserving existing miss buckets and DD/TD contribution diagnostics.
+- Tightened bounded `DD` and `TD` milestone calibration through existing config/model hooks.
+- Improved exact-league ordering quality on both primary historical snapshots.
+- Marked residual `balanced category carry` as `monitor_narrow`, keeping future modeling work explicit and evidence-gated.
+
+**Stats:**
+- 2 phases, 4 plans
+- 67 passing unit tests at milestone audit
+- Exact-league snapshot Spearman improved to `0.676` for 2024-25 and `0.627` for 2023-24
+- Git range unavailable because milestone commits were blocked locally by `.git/index.lock`
+
+**What's next:** Define the next milestone, likely around breakout/availability misses, local OCR backend enablement, or future benchmark-source upgrades.
+
+---

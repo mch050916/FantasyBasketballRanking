@@ -8,6 +8,8 @@ from benchmark_ingest import build_benchmark_snapshot, build_review_table
 from identity import canonical_player_key
 from validate import (
     append_benchmark_history,
+    build_category_distortion_artifact,
+    build_category_distortion_summary,
     build_player_name,
     build_milestone_contribution_artifact,
     build_rank_series,
@@ -17,6 +19,7 @@ from validate import (
     find_previous_baseline,
     load_benchmark_history,
     normalize_player_name,
+    summarize_category_distortion_families,
     summarize_miss_buckets,
     summarize_milestone_contributions,
     validate,
@@ -412,6 +415,187 @@ class ValidateTests(unittest.TestCase):
         self.assertGreater(summary["avg_td_g"], 0.0)
         self.assertIn("DD", summary["dominant_counts"])
         self.assertIn("TD", summary["dominant_counts"])
+
+    def test_build_category_distortion_artifact_keeps_family_output_compact(self) -> None:
+        result = {
+            "details": pd.DataFrame(
+                [
+                    {
+                        "PLAYER_NAME": "Nikola Vucevic",
+                        "RANK": 18,
+                        "ACTUAL_RANK": 112,
+                        "delta": -94,
+                        "MISS_BUCKET": "category-weight distortion",
+                        "PTS": 16.3,
+                        "REB": 9.1,
+                        "AST": 3.1,
+                        "3PTM": 1.4,
+                        "BLK": 0.8,
+                        "TO": 1.4,
+                        "FG%": 0.51,
+                        "DD": 0.56,
+                        "TD": 0.01,
+                        "DD_G": 1.55,
+                        "TD_G": 0.02,
+                        "TOTAL_VALUE": 2.67,
+                        "FGM": 6.7,
+                    },
+                    {
+                        "PLAYER_NAME": "Tyrese Haliburton",
+                        "RANK": 4,
+                        "ACTUAL_RANK": 103,
+                        "delta": -99,
+                        "MISS_BUCKET": "category-weight distortion",
+                        "PTS": 16.7,
+                        "REB": 3.2,
+                        "AST": 8.6,
+                        "3PTM": 2.6,
+                        "BLK": 0.6,
+                        "TO": 1.7,
+                        "FG%": 0.47,
+                        "DD": 0.40,
+                        "TD": 0.01,
+                        "DD_G": 0.35,
+                        "TD_G": 0.01,
+                        "TOTAL_VALUE": 4.20,
+                        "FGM": 5.9,
+                    },
+                    {
+                        "PLAYER_NAME": "Jayson Tatum",
+                        "RANK": 5,
+                        "ACTUAL_RANK": 121,
+                        "delta": -116,
+                        "MISS_BUCKET": "category-weight distortion",
+                        "PTS": 23.8,
+                        "REB": 7.5,
+                        "AST": 5.0,
+                        "3PTM": 3.0,
+                        "BLK": 0.5,
+                        "TO": 2.5,
+                        "FG%": 0.46,
+                        "DD": 0.38,
+                        "TD": 0.02,
+                        "DD_G": 0.38,
+                        "TD_G": 0.02,
+                        "TOTAL_VALUE": 3.95,
+                        "FGM": 8.1,
+                    },
+                ]
+            )
+        }
+
+        artifact = build_category_distortion_artifact(result, top_n=3)
+        family_counts = summarize_category_distortion_families(artifact)
+
+        self.assertIn("DISTORTION_FAMILY", artifact.columns)
+        self.assertIn("MILESTONE_ABS_SHARE", artifact.columns)
+        self.assertNotIn("FGM", artifact.columns)
+        self.assertEqual(artifact.iloc[0]["DISTORTION_FAMILY"], "balanced category carry")
+        self.assertIn("milestone carry", family_counts.index)
+        self.assertIn("guard creation carry", family_counts.index)
+
+    def test_build_category_distortion_summary_requires_repeat_exact_league_signal(self) -> None:
+        summary = build_category_distortion_summary(
+            [
+                {
+                    "label": "actual_14cat_24_25_snapshot.csv",
+                    "benchmark_class": "historical_snapshot",
+                    "trust_tier": "snapshot_derived",
+                    "category_distortions": pd.DataFrame(
+                        [
+                            {
+                                "PLAYER_NAME": "Nikola Vucevic",
+                                "delta": -94,
+                                "DISTORTION_FAMILY": "milestone carry",
+                            },
+                            {
+                                "PLAYER_NAME": "Tyrese Haliburton",
+                                "delta": -99,
+                                "DISTORTION_FAMILY": "guard creation carry",
+                            },
+                        ]
+                    ),
+                },
+                {
+                    "label": "actual_14cat_23_24_snapshot.csv",
+                    "benchmark_class": "historical_snapshot",
+                    "trust_tier": "snapshot_derived",
+                    "category_distortions": pd.DataFrame(
+                        [
+                            {
+                                "PLAYER_NAME": "Josh Hart",
+                                "delta": -58,
+                                "DISTORTION_FAMILY": "milestone carry",
+                            }
+                        ]
+                    ),
+                },
+                {
+                    "label": "yahoo_25_26_adp_proxy",
+                    "benchmark_class": "direct_export_market",
+                    "trust_tier": "direct_export",
+                    "category_distortions": pd.DataFrame(
+                        [
+                            {
+                                "PLAYER_NAME": "Jayson Tatum",
+                                "delta": -116,
+                                "DISTORTION_FAMILY": "guard creation carry",
+                            }
+                        ]
+                    ),
+                },
+            ]
+        )
+
+        milestone_row = summary[summary["DISTORTION_FAMILY"] == "milestone carry"].iloc[0]
+        guard_row = summary[summary["DISTORTION_FAMILY"] == "guard creation carry"].iloc[0]
+
+        self.assertEqual(milestone_row["PRIMARY_BENCHMARKS"], 2)
+        self.assertEqual(milestone_row["EVIDENCE_LEVEL"], "repeat_exact_league")
+        self.assertEqual(milestone_row["FOLLOW_UP_DECISION"], "active_target")
+        self.assertEqual(guard_row["PRIMARY_BENCHMARKS"], 1)
+        self.assertEqual(guard_row["SECONDARY_HITS"], 1)
+        self.assertEqual(guard_row["EVIDENCE_LEVEL"], "single_exact_league")
+        self.assertEqual(guard_row["FOLLOW_UP_DECISION"], "watch_supporting")
+
+    def test_build_category_distortion_summary_marks_narrow_repeat_family_for_monitoring(self) -> None:
+        summary = build_category_distortion_summary(
+            [
+                {
+                    "label": "actual_14cat_24_25_snapshot.csv",
+                    "benchmark_class": "historical_snapshot",
+                    "trust_tier": "snapshot_derived",
+                    "category_distortions": pd.DataFrame(
+                        [
+                            {
+                                "PLAYER_NAME": "Toumani Camara",
+                                "delta": -16,
+                                "DISTORTION_FAMILY": "balanced category carry",
+                            }
+                        ]
+                    ),
+                },
+                {
+                    "label": "actual_14cat_23_24_snapshot.csv",
+                    "benchmark_class": "historical_snapshot",
+                    "trust_tier": "snapshot_derived",
+                    "category_distortions": pd.DataFrame(
+                        [
+                            {
+                                "PLAYER_NAME": "Toumani Camara",
+                                "delta": -16,
+                                "DISTORTION_FAMILY": "balanced category carry",
+                            }
+                        ]
+                    ),
+                },
+            ]
+        )
+
+        balanced_row = summary[summary["DISTORTION_FAMILY"] == "balanced category carry"].iloc[0]
+        self.assertEqual(balanced_row["PRIMARY_BENCHMARKS"], 2)
+        self.assertEqual(balanced_row["PRIMARY_PLAYER_COUNT"], 1)
+        self.assertEqual(balanced_row["FOLLOW_UP_DECISION"], "monitor_narrow")
 
     def test_write_analysis_artifact_persists_deterministically(self) -> None:
         artifact = pd.DataFrame(

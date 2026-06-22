@@ -12,6 +12,9 @@ from data import (
     _load_cached_tech_per_game,
     _missing_game_log_pairs,
     _partition_missing_pairs,
+    build_non_actionable_suppression_report,
+    load_non_actionable_suppression_registry,
+    summarize_non_actionable_suppression_registry,
 )
 from identity import build_nba_player_lookups, normalize_player_name, resolve_player_id
 
@@ -165,6 +168,9 @@ class DataTests(unittest.TestCase):
         self.assertEqual(health["expected_missing_pair_count"], 1)
 
     def test_classify_missing_game_log_pairs_separates_current_historical_and_non_actionable(self) -> None:
+        active_reasons = {
+            ("bojanbogdanovic", "2024-25"): "inactive current-season returnee",
+        }
         classified = _classify_missing_game_log_pairs(
             [
                 ("Bojan Bogdanović", "2024-25"),
@@ -174,6 +180,7 @@ class DataTests(unittest.TestCase):
             ],
             ["2024-25", "2023-24"],
             {("Bub Carrington", "2023-24")},
+            active_reasons,
         )
 
         self.assertEqual(classified["current_season_missing_pairs"], [("Jimmy Butler", "2024-25")])
@@ -197,6 +204,22 @@ class DataTests(unittest.TestCase):
             non_actionable_reasons={
                 ("Bojan Bogdanović", "2024-25"): "inactive current-season returnee",
             },
+            suppression_registry_review={
+                "active_entry_count": 1,
+                "expired_entry_count": 0,
+                "retired_entry_count": 0,
+                "active_entries": [
+                    {
+                        "Player Name": "Bojan Bogdanović",
+                        "Season": "2024-25",
+                        "Reason": "inactive current-season returnee",
+                    }
+                ],
+                "expired_entries": [],
+                "retired_entries": [],
+                "registry_path": ".planning/non_actionable_suppressions.csv",
+                "current_season": "2024-25",
+            },
         )
 
         self.assertTrue(health["degraded"])
@@ -207,6 +230,105 @@ class DataTests(unittest.TestCase):
             health["non_actionable_reasons"][("Bojan Bogdanović", "2024-25")],
             "inactive current-season returnee",
         )
+        self.assertEqual(health["suppression_registry_review"]["active_entry_count"], 1)
+
+    def test_load_non_actionable_suppression_registry_preserves_contract(self) -> None:
+        registry_csv = """Player Name,Season,Reason,Review Status,Review Notes
+Bojan Bogdanović,2024-25,inactive current-season returnee,active,notes
+"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            registry_path = Path(tmpdir) / "registry.csv"
+            registry_path.write_text(registry_csv, encoding="utf-8")
+            registry = load_non_actionable_suppression_registry(registry_path)
+
+        self.assertEqual(
+            registry.columns.tolist(),
+            ["Player Name", "Season", "Reason", "Review Status", "Review Notes"],
+        )
+        self.assertEqual(registry.iloc[0]["Review Status"], "active")
+
+    def test_summarize_non_actionable_suppression_registry_marks_expired_entries(self) -> None:
+        registry_csv = """Player Name,Season,Reason,Review Status,Review Notes
+Bojan Bogdanović,2024-25,inactive current-season returnee,active,notes
+Saddiq Bey,2025-26,inactive current-season returnee,active,notes
+"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            registry_path = Path(tmpdir) / "registry.csv"
+            registry_path.write_text(registry_csv, encoding="utf-8")
+            summary = summarize_non_actionable_suppression_registry(
+                ["2025-26", "2024-25"],
+                path=registry_path,
+            )
+
+        self.assertEqual(summary["active_entry_count"], 1)
+        self.assertEqual(summary["expired_entry_count"], 1)
+        self.assertEqual(summary["active_entries"][0]["Player Name"], "Saddiq Bey")
+        self.assertEqual(summary["expired_entries"][0]["Player Name"], "Bojan Bogdanović")
+
+    def test_expired_registry_entries_do_not_suppress_missing_pairs(self) -> None:
+        registry_csv = """Player Name,Season,Reason,Review Status,Review Notes
+Bojan Bogdanović,2024-25,inactive current-season returnee,active,notes
+"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            registry_path = Path(tmpdir) / "registry.csv"
+            registry_path.write_text(registry_csv, encoding="utf-8")
+            summary = summarize_non_actionable_suppression_registry(
+                ["2025-26", "2024-25"],
+                path=registry_path,
+            )
+            classified = _classify_missing_game_log_pairs(
+                [("Bojan Bogdanović", "2024-25")],
+                ["2025-26", "2024-25"],
+                set(),
+                summary["active_reason_map"],
+            )
+
+        self.assertEqual(classified["non_actionable_pairs"], [])
+        self.assertEqual(classified["historical_missing_pairs"], [("Bojan Bogdanović", "2024-25")])
+
+    def test_build_non_actionable_suppression_report_includes_active_and_expired_sections(self) -> None:
+        health = _build_game_log_fetch_health(
+            ["Bojan Bogdanović", "Saddiq Bey"],
+            ["2025-26", "2024-25"],
+            [],
+            [],
+            current_season_missing_pairs=[],
+            historical_missing_pairs=[],
+            non_actionable_pairs=[("Saddiq Bey", "2025-26")],
+            non_actionable_reasons={
+                ("Saddiq Bey", "2025-26"): "inactive current-season returnee",
+            },
+            suppression_registry_review={
+                "registry_path": ".planning/non_actionable_suppressions.csv",
+                "current_season": "2025-26",
+                "active_entries": [
+                    {
+                        "Player Name": "Saddiq Bey",
+                        "Season": "2025-26",
+                        "Reason": "inactive current-season returnee",
+                    }
+                ],
+                "expired_entries": [
+                    {
+                        "Player Name": "Bojan Bogdanović",
+                        "Season": "2024-25",
+                        "Reason": "inactive current-season returnee",
+                    }
+                ],
+                "retired_entries": [],
+                "active_entry_count": 1,
+                "expired_entry_count": 1,
+                "retired_entry_count": 0,
+            },
+        )
+
+        report = build_non_actionable_suppression_report(health)
+
+        self.assertIn("# Non-Actionable Suppression Maintenance", report)
+        self.assertIn("## Active Entries", report)
+        self.assertIn("Saddiq Bey (2025-26): inactive current-season returnee [used this run]", report)
+        self.assertIn("## Expired Entries Requiring Reaffirmation", report)
+        self.assertIn("Bojan Bogdanović (2024-25): inactive current-season returnee", report)
 
 
 if __name__ == "__main__":

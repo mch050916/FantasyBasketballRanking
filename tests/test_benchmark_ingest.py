@@ -7,10 +7,12 @@ import pandas as pd
 from benchmark_ingest import (
     BENCHMARK_SNAPSHOT_COLUMNS,
     BENCHMARK_METADATA_COLUMNS,
+    OCRBackendUnavailableError,
     REVIEW_STATUS_APPROVED,
     REVIEW_STATUS_PENDING,
     REVIEW_TABLE_COLUMNS,
     assess_benchmark_readiness,
+    available_ocr_backends,
     benchmark_metadata_filename,
     benchmark_metadata_path,
     benchmark_snapshot_filename,
@@ -18,8 +20,11 @@ from benchmark_ingest import (
     build_benchmark_snapshot,
     build_benchmark_metadata,
     build_review_table,
+    build_review_table_from_ocr_batch,
     bootstrap_review_table_from_snapshot,
+    extract_review_rows_from_ocr_batch,
     normalize_review_table,
+    resolve_ocr_adapter,
     review_table_filename,
     review_table_path,
     summarize_review_table,
@@ -27,6 +32,35 @@ from benchmark_ingest import (
     write_benchmark_metadata,
     write_review_table,
 )
+
+
+class FakeOCRAdapter:
+    def __init__(self,
+                 backend_name: str,
+                 rows: list[dict[str, object]] | None = None,
+                 available: bool = True) -> None:
+        self.backend_name = backend_name
+        self._rows = rows or []
+        self._available = available
+        self.calls: list[dict[str, object]] = []
+
+    def is_available(self) -> bool:
+        return self._available
+
+    def extract_rows(self,
+                     image_paths: list[Path],
+                     season: str,
+                     source_batch: str) -> list[dict[str, object]]:
+        self.calls.append(
+            {
+                "image_paths": list(image_paths),
+                "season": season,
+                "source_batch": source_batch,
+            }
+        )
+        if not self._available:
+            raise OCRBackendUnavailableError(f"{self.backend_name} backend is unavailable")
+        return list(self._rows)
 
 
 class BenchmarkIngestTests(unittest.TestCase):
@@ -352,6 +386,95 @@ class BenchmarkIngestTests(unittest.TestCase):
         self.assertEqual(review_table["REVIEW_STATUS"].tolist(), [REVIEW_STATUS_APPROVED, REVIEW_STATUS_APPROVED])
         self.assertEqual(review_table["ROW_CONFIDENCE"].tolist(), [1.0, 1.0])
         self.assertTrue(summarize_review_table(review_table)["ready"])
+
+    def test_resolve_ocr_adapter_uses_one_explicit_backend_boundary(self) -> None:
+        first = FakeOCRAdapter("mock_a")
+        second = FakeOCRAdapter("mock_b")
+
+        resolved = resolve_ocr_adapter("mock_b", adapters=[first, second])
+
+        self.assertIs(resolved, second)
+        self.assertEqual(available_ocr_backends(adapters=[first, second]), ["mock_a", "mock_b"])
+
+    def test_build_review_table_from_ocr_batch_preserves_one_season_batch_contract(self) -> None:
+        adapter = FakeOCRAdapter(
+            "mock",
+            rows=[
+                {"rank": 2, "player_name": "Victor Wembanyama", "raw_ocr_name": "Victor Wembanyama"},
+                {"rank": 1, "player_name": "Nikola Jokic", "raw_ocr_name": "Nikola Jokic"},
+            ],
+        )
+
+        review_table = build_review_table_from_ocr_batch(
+            image_paths=[Path("screen_1.png"), Path("screen_2.png")],
+            season="2024-25",
+            source_batch="ocr_batch_24_25",
+            adapter=adapter,
+        )
+
+        self.assertEqual(len(adapter.calls), 1)
+        self.assertEqual(adapter.calls[0]["season"], "2024-25")
+        self.assertEqual(adapter.calls[0]["source_batch"], "ocr_batch_24_25")
+        self.assertEqual(review_table["SEASON"].unique().tolist(), ["2024-25"])
+        self.assertEqual(review_table["SOURCE_BATCH"].unique().tolist(), ["ocr_batch_24_25"])
+        self.assertEqual(review_table["RANK"].tolist(), [1, 2])
+
+    def test_ocr_confidence_stays_separate_from_reviewed_row_confidence(self) -> None:
+        adapter = FakeOCRAdapter(
+            "mock",
+            rows=[
+                {
+                    "rank": 1,
+                    "player_name": "Nikola Jokic",
+                    "raw_ocr_name": "Nikola Joklc",
+                    "ocr_confidence": 0.42,
+                }
+            ],
+        )
+
+        review_table = build_review_table_from_ocr_batch(
+            image_paths=[Path("screen_1.png")],
+            season="2024-25",
+            source_batch="ocr_batch_24_25",
+            adapter=adapter,
+        )
+
+        self.assertTrue(pd.isna(review_table.iloc[0]["ROW_CONFIDENCE"]))
+        self.assertAlmostEqual(review_table.iloc[0]["OCR_CONFIDENCE"], 0.42)
+        self.assertEqual(review_table.iloc[0]["REVIEW_STATUS"], REVIEW_STATUS_PENDING)
+
+    def test_partial_ocr_rows_are_preserved_for_review_instead_of_dropped(self) -> None:
+        adapter = FakeOCRAdapter(
+            "mock",
+            rows=[
+                {"raw_text": "Unreadable player fragment", "ocr_confidence": 0.18},
+                {"rank": 2, "raw_ocr_name": "Victor Wembanyama", "ocr_confidence": 0.73},
+            ],
+        )
+
+        rows = extract_review_rows_from_ocr_batch(
+            image_paths=[Path("screen_1.png")],
+            season="2024-25",
+            source_batch="ocr_batch_24_25",
+            adapter=adapter,
+        )
+
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["rank"], 1)
+        self.assertEqual(rows[0]["raw_ocr_name"], "Unreadable player fragment")
+        self.assertIn("rank inferred from OCR row order", rows[0]["review_notes"])
+        self.assertIn("team text needs review", rows[0]["review_notes"])
+
+    def test_unavailable_ocr_backend_surfaces_clear_error(self) -> None:
+        adapter = FakeOCRAdapter("mock", available=False)
+
+        with self.assertRaisesRegex(OCRBackendUnavailableError, "backend is unavailable"):
+            build_review_table_from_ocr_batch(
+                image_paths=[Path("screen_1.png")],
+                season="2024-25",
+                source_batch="ocr_batch_24_25",
+                adapter=adapter,
+            )
 
 
 if __name__ == "__main__":

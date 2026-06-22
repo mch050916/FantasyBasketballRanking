@@ -16,6 +16,7 @@ import numpy as np
 import time
 import pickle
 from pathlib import Path
+from typing import Any
 
 from identity import (
     build_nba_player_lookups,
@@ -47,9 +48,19 @@ BBR_COL_MAP = {
 }
 
 CACHE_SCHEMA_VERSION = 1
-KNOWN_NON_ACTIONABLE_GAME_LOG_CASES = {
-    (canonical_player_key("Bojan Bogdanović"), "2024-25"): "inactive current-season returnee",
-    (canonical_player_key("Saddiq Bey"), "2024-25"): "inactive current-season returnee",
+NON_ACTIONABLE_SUPPRESSION_REGISTRY_FILE = Path(".planning/non_actionable_suppressions.csv")
+SUPPRESSION_REGISTRY_COLUMNS = [
+    "Player Name",
+    "Season",
+    "Reason",
+    "Review Status",
+    "Review Notes",
+]
+SUPPRESSION_REVIEW_STATUS_ACTIVE = "active"
+SUPPRESSION_REVIEW_STATUS_RETIRED = "retired"
+VALID_SUPPRESSION_REVIEW_STATUSES = {
+    SUPPRESSION_REVIEW_STATUS_ACTIVE,
+    SUPPRESSION_REVIEW_STATUS_RETIRED,
 }
 
 
@@ -252,7 +263,8 @@ def _build_game_log_fetch_health(player_names: list[str],
                                  current_season_missing_pairs: list[tuple[str, str]] | None = None,
                                  historical_missing_pairs: list[tuple[str, str]] | None = None,
                                  non_actionable_pairs: list[tuple[str, str]] | None = None,
-                                 non_actionable_reasons: dict[tuple[str, str], str] | None = None) -> dict[str, object]:
+                                 non_actionable_reasons: dict[tuple[str, str], str] | None = None,
+                                 suppression_registry_review: dict[str, Any] | None = None) -> dict[str, object]:
     requested_pairs = _requested_game_log_pairs(player_names, seasons)
     expected_missing_pairs = expected_missing_pairs or []
     current_season_missing_pairs = current_season_missing_pairs or []
@@ -281,6 +293,7 @@ def _build_game_log_fetch_health(player_names: list[str],
         "non_actionable_pairs": non_actionable_pairs,
         "non_actionable_pair_count": len(non_actionable_pairs),
         "non_actionable_reasons": non_actionable_reasons or {},
+        "suppression_registry_review": suppression_registry_review or {},
         "degraded": bool(missing_pairs),
     }
 
@@ -298,15 +311,87 @@ def _partition_missing_pairs(missing_pairs: list[tuple[str, str]],
     return unresolved, expected
 
 
+def _coerce_optional_registry_text(value: object) -> str:
+    if value is None or pd.isna(value):
+        return ""
+    return str(value).strip()
+
+
+def load_non_actionable_suppression_registry(path: str | Path = NON_ACTIONABLE_SUPPRESSION_REGISTRY_FILE) -> pd.DataFrame:
+    """Load the season-scoped non-actionable suppression registry from disk."""
+    registry_path = Path(path)
+    if not registry_path.exists():
+        return pd.DataFrame(columns=SUPPRESSION_REGISTRY_COLUMNS)
+
+    registry = pd.read_csv(registry_path)
+    for col in SUPPRESSION_REGISTRY_COLUMNS:
+        if col not in registry.columns:
+            registry[col] = ""
+    registry = registry[SUPPRESSION_REGISTRY_COLUMNS].copy()
+    for col in SUPPRESSION_REGISTRY_COLUMNS:
+        registry[col] = registry[col].map(_coerce_optional_registry_text)
+    registry["Review Status"] = registry["Review Status"].str.lower()
+    invalid_statuses = set(registry["Review Status"]) - VALID_SUPPRESSION_REVIEW_STATUSES
+    if invalid_statuses:
+        raise ValueError(
+            f"invalid suppression review status(es): {sorted(invalid_statuses)}"
+        )
+    return registry
+
+
+def summarize_non_actionable_suppression_registry(
+        seasons: list[str],
+        path: str | Path = NON_ACTIONABLE_SUPPRESSION_REGISTRY_FILE) -> dict[str, Any]:
+    """Summarize active and expired suppression entries for the current run."""
+    registry_path = Path(path)
+    registry = load_non_actionable_suppression_registry(registry_path)
+    current_season = seasons[0] if seasons else ""
+    entries = registry.to_dict("records")
+
+    active_entries: list[dict[str, str]] = []
+    expired_entries: list[dict[str, str]] = []
+    retired_entries: list[dict[str, str]] = []
+    active_reason_map: dict[tuple[str, str], str] = {}
+
+    for entry in entries:
+        status = entry["Review Status"]
+        season = entry["Season"]
+        if status != SUPPRESSION_REVIEW_STATUS_ACTIVE:
+            retired_entries.append(entry)
+            continue
+        if season == current_season:
+            active_entries.append(entry)
+            active_reason_map[(canonical_player_key(entry["Player Name"]), season)] = entry["Reason"]
+        else:
+            expired_entries.append(entry)
+
+    return {
+        "registry_path": str(registry_path),
+        "current_season": current_season,
+        "total_entries": len(entries),
+        "active_entries": active_entries,
+        "active_entry_count": len(active_entries),
+        "expired_entries": expired_entries,
+        "expired_entry_count": len(expired_entries),
+        "retired_entries": retired_entries,
+        "retired_entry_count": len(retired_entries),
+        "active_reason_map": active_reason_map,
+    }
+
+
 def _non_actionable_game_log_reason(player_name: str,
-                                    season: str) -> str | None:
+                                    season: str,
+                                    active_reason_map: dict[tuple[str, str], str] | None = None) -> str | None:
     """Return a narrow explicit reason when a missing pair is non-actionable."""
-    return KNOWN_NON_ACTIONABLE_GAME_LOG_CASES.get((canonical_player_key(player_name), season))
+    if active_reason_map is None:
+        return None
+    return active_reason_map.get((canonical_player_key(player_name), season))
 
 
 def _classify_missing_game_log_pairs(missing_pairs: list[tuple[str, str]],
                                      seasons: list[str],
-                                     expected_missing_pairs: set[tuple[str, str]] | None = None) -> dict[str, object]:
+                                     expected_missing_pairs: set[tuple[str, str]] | None = None,
+                                     active_non_actionable_reasons: dict[tuple[str, str], str] | None = None) -> dict[str, object]:
     """Classify missing pairs by severity and explicit non-actionable reasons."""
     expected_missing_pairs = expected_missing_pairs or set()
     current_season = seasons[0] if seasons else None
@@ -323,7 +408,11 @@ def _classify_missing_game_log_pairs(missing_pairs: list[tuple[str, str]],
             expected.append(pair)
             continue
 
-        reason = _non_actionable_game_log_reason(player_name, season)
+        reason = _non_actionable_game_log_reason(
+            player_name,
+            season,
+            active_non_actionable_reasons,
+        )
         if reason is not None:
             non_actionable.append(pair)
             non_actionable_reasons[pair] = reason
@@ -348,7 +437,8 @@ def fetch_game_logs(player_names: list[str],
                     seasons: list[str],
                     cache_file: str,
                     expected_missing_pairs: set[tuple[str, str]] | None = None,
-                    return_health: bool = False) -> dict[str, dict[str, pd.DataFrame]] | tuple[dict[str, dict[str, pd.DataFrame]], dict[str, object]]:
+                    return_health: bool = False,
+                    suppression_registry_path: str | Path = NON_ACTIONABLE_SUPPRESSION_REGISTRY_FILE) -> dict[str, dict[str, pd.DataFrame]] | tuple[dict[str, dict[str, pd.DataFrame]], dict[str, object]]:
     """
     Fetch per-game logs for each player for each season from the NBA API.
 
@@ -358,12 +448,17 @@ def fetch_game_logs(player_names: list[str],
     Uses retry logic with exponential backoff to handle NBA API rate limiting.
     """
     cache_path = Path(cache_file)
+    suppression_registry_review = summarize_non_actionable_suppression_registry(
+        seasons,
+        path=suppression_registry_path,
+    )
     result, cache_status = _load_cached_game_logs(cache_path, seasons)
     raw_missing_pairs = _missing_game_log_pairs(result, player_names, seasons)
     classified_missing = _classify_missing_game_log_pairs(
         raw_missing_pairs,
         seasons,
         expected_missing_pairs,
+        suppression_registry_review["active_reason_map"],
     )
     missing_pairs = classified_missing["actionable_missing_pairs"]
     expected_pairs = classified_missing["expected_missing_pairs"]
@@ -382,6 +477,7 @@ def fetch_game_logs(player_names: list[str],
                     historical_missing_pairs=classified_missing["historical_missing_pairs"],
                     non_actionable_pairs=non_actionable_pairs,
                     non_actionable_reasons=non_actionable_reasons,
+                    suppression_registry_review=suppression_registry_review,
                 )
                 if return_health:
                     return result, health
@@ -447,6 +543,7 @@ def fetch_game_logs(player_names: list[str],
         final_raw_missing_pairs,
         seasons,
         expected_missing_pairs,
+        suppression_registry_review["active_reason_map"],
     )
     health = _build_game_log_fetch_health(
         player_names,
@@ -457,10 +554,67 @@ def fetch_game_logs(player_names: list[str],
         historical_missing_pairs=final_classified_missing["historical_missing_pairs"],
         non_actionable_pairs=final_classified_missing["non_actionable_pairs"],
         non_actionable_reasons=final_classified_missing["non_actionable_reasons"],
+        suppression_registry_review=suppression_registry_review,
     )
     if return_health:
         return result, health
     return result
+
+
+def build_non_actionable_suppression_report(game_log_health: dict[str, object]) -> str:
+    """Render a markdown maintenance report for season-scoped suppressions."""
+    review = game_log_health.get("suppression_registry_review") or {}
+    current_season = review.get("current_season") or "unknown"
+    registry_path = review.get("registry_path") or str(NON_ACTIONABLE_SUPPRESSION_REGISTRY_FILE)
+    active_entries = list(review.get("active_entries") or [])
+    expired_entries = list(review.get("expired_entries") or [])
+    retired_entries = list(review.get("retired_entries") or [])
+    used_pairs = set(game_log_health.get("non_actionable_pairs") or [])
+    used_reasons = game_log_health.get("non_actionable_reasons") or {}
+
+    lines = [
+        "# Non-Actionable Suppression Maintenance",
+        "",
+        f"- Current season: `{current_season}`",
+        f"- Registry: `{registry_path}`",
+        f"- Active entries: `{len(active_entries)}`",
+        f"- Expired entries: `{len(expired_entries)}`",
+        f"- Retired entries: `{len(retired_entries)}`",
+        f"- Used this run: `{len(used_pairs)}`",
+        "",
+    ]
+
+    if active_entries:
+        lines.extend(["## Active Entries", ""])
+        for entry in active_entries:
+            pair = (entry["Player Name"], entry["Season"])
+            used_label = "used this run" if pair in used_pairs else "not used this run"
+            reason = used_reasons.get(pair, entry["Reason"])
+            lines.append(
+                f"- {entry['Player Name']} ({entry['Season']}): {reason} [{used_label}]"
+            )
+        lines.append("")
+
+    if expired_entries:
+        lines.extend(["## Expired Entries Requiring Reaffirmation", ""])
+        for entry in expired_entries:
+            lines.append(
+                f"- {entry['Player Name']} ({entry['Season']}): {entry['Reason']}"
+            )
+        lines.append("")
+
+    if retired_entries:
+        lines.extend(["## Retired Entries", ""])
+        for entry in retired_entries:
+            lines.append(
+                f"- {entry['Player Name']} ({entry['Season']}): {entry['Reason']}"
+            )
+        lines.append("")
+
+    if not active_entries and not expired_entries and not retired_entries:
+        lines.extend(["## Registry Status", "", "- No suppression registry entries found.", ""])
+
+    return "\n".join(lines).rstrip() + "\n"
 
 
 # ── NBA API: TECH stats ──────────────────────────────────────────────────────

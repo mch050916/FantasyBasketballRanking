@@ -57,8 +57,8 @@ LEAGUE_CONFIG = {
         "TO":   0.5,
         "PF":   0.5,
         "TECH": 0.3,
-        "DD":   0.80,  # keep full league relevance; rely more on bounded scaling
-        "TD":   0.68,  # rarer category still gets a modest weight trim
+        "DD":   0.72,  # Phase 2: trim remaining milestone carry without erasing DD value
+        "TD":   0.56,  # stronger trim after repeat exact-league milestone distortion
     },
 
     # ── Milestone stat calibration ────────────────────────────────────────
@@ -72,8 +72,8 @@ LEAGUE_CONFIG = {
     # This keeps zero at zero, preserves ordering, and compresses high-end
     # outliers more than moderate contributors.
     "milestone_calibration": {
-        "DD": {"scale": 1.00, "curvature": 0.15},
-        "TD": {"scale": 0.82, "curvature": 1.60},
+        "DD": {"scale": 0.92, "curvature": 0.28},
+        "TD": {"scale": 0.70, "curvature": 2.40},
     },
 
     # ── League structure ───────────────────────────────────────────────────
