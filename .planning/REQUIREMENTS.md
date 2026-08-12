@@ -24,9 +24,10 @@
 
 ### Modeling
 
-- **MODL-01**: User can revisit residual balanced-category carry if it expands beyond the current `monitor_narrow` signal.
+- **MODL-01**: User can revisit residual balanced-category carry now that it is an `active_target` with real repeat evidence.
 - **MODL-02**: User can incorporate a concrete local OCR backend behind the existing adapter boundary if benchmark upkeep still needs more automation.
 - **MODL-03**: User can revisit richer historical benchmark sources if Yahoo ever exposes a reliable league export path.
+- **MODL-04**: User can rank incoming rookies with no prior NBA statistical history (e.g. `26-27` draft class) alongside returning players, using a projection path that doesn't depend on the current trend/season-history model.
 
 ## Out of Scope
 

@@ -55,9 +55,10 @@ The current baseline is much stronger:
 
 ## Candidate Future Goals
 
-- Revisit residual balanced-category carry if it expands beyond the current `monitor_narrow` signal.
+- `balanced category carry` was upgraded from `monitor_narrow` to `active_target` on 2026-08-12 once the duplicated 23-24/24-25 benchmark data was fixed and gave it real independent repeat evidence (4 hits / 2 genuine snapshots) — no longer just a "future" watch item, it's active evidence for upcoming model work.
 - Install and support a concrete OCR backend locally behind the existing adapter boundary.
 - Continue using screenshot-derived benchmark history as the primary exact-league source unless Yahoo exposes a reliable export path.
+- Incorporate incoming rookies with no prior NBA statistical history (e.g. AJ Dybantsa, Cam Boozer, and the rest of the 2026 draft class once known) into the ranking model ahead of `26-27` season prep. This needs a different projection path than the current trend/season-history model, since rookies have no `BBR_FILES`/game-log history to weight against — likely some kind of draft-capital/college-production/comparable-archetype proxy. Not scoped or designed yet; revisit when `26-27` season prep begins.
 
 ## Out of Scope
 

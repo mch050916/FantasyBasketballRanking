@@ -46,7 +46,9 @@ Progress: [===-------] 33%
 
 ### Next Phase
 
-Phase 12: Role-Growth Responsiveness Calibration is not yet planned. It should use the Phase 11 `role-growth underreaction` evidence (both exact-league snapshots repeated this label at `repeat_exact_league` evidence level) to scope bounded responsiveness changes.
+Phase 12: Role-Growth Responsiveness Calibration is not yet planned. It should use the Phase 11 `role-growth underreaction` evidence (both exact-league snapshots repeated this label at `repeat_exact_league` evidence level) to scope bounded responsiveness changes, and fold in a check of whether the Devin Booker-style `category-weight distortion` miss found in the new `2025-26` true holdout (predicted #39, actual #119, healthy all season) is an isolated case or a repeat pattern worth addressing alongside role-growth.
+
+Backlogged (not scoped for `v1.3`): incorporating incoming rookies with no prior NBA stat history (e.g. AJ Dybantsa, Cam Boozer) into the model ahead of `26-27` season prep — see `MODL-04` in REQUIREMENTS.md and PROJECT.md's Candidate Future Goals.
 
 ### Planning Progress
 

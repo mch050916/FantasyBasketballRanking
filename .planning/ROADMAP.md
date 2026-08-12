@@ -40,6 +40,8 @@ Plans:
 **Depends on:** Phase 11  
 **Plans:** not planned yet
 
+**Added scope (2026-08-12):** The new `actual_14cat_25_26_snapshot.csv` true holdout surfaced a real, healthy-all-season miss for Devin Booker (predicted #39, actual #119 — a one-dimensional scorer overrated despite weak REB/BLK/D categories) that looks like `category-weight distortion` leaking through even after `v1.2`'s calibration pass. Fold a check of whether this is an isolated case or a repeat pattern into Phase 12's evidence gathering alongside the role-growth work, since both surfaced from the same holdout run.
+
 ### Phase 13: Availability Risk Calibration And Rerun
 
 **Goal:** Add a bounded availability-risk adjustment, rerun exact-league benchmarks, and judge the combined breakout/availability change against saved baselines.  
