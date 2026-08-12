@@ -45,11 +45,11 @@ The current baseline is much stronger:
 - ✓ Diagnose category-balance distortions against exact-league 14-cat benchmarks — shipped in `v1.2`
 - ✓ Recalibrate dominant category influence without rewriting the core DURANT pipeline — shipped in `v1.2`
 - ✓ Keep exact-league 14-cat snapshots as the primary acceptance surface while checking Yahoo outputs as secondary sanity checks — shipped in `v1.2`
+- ✓ Distinguish breakout underreaction, role-growth signal, and availability overtrust in the biggest exact-league misses — shipped in `v1.3` Phase 11
 
 ### Active
 
-- [ ] Distinguish breakout underreaction, role-growth signal, and availability overtrust in the biggest exact-league misses.
-- [ ] Improve bounded role-growth responsiveness without letting one recent season fully dominate projections.
+- [ ] Improve bounded role-growth responsiveness without letting one recent season fully dominate projections. — Phase 12 next
 - [ ] Add a bounded availability-risk adjustment for fragile or low-availability profiles.
 - [ ] Rerun exact-league benchmarks and secondary Yahoo sanity checks after breakout and availability changes.
 
@@ -103,4 +103,4 @@ The most recent milestone, `v1.2`, improved exact-league ordering quality on bot
 This document evolves at phase transitions and milestone boundaries.
 
 ---
-*Last updated: 2026-06-10 after `v1.3` initialization*
+*Last updated: 2026-08-12 after Phase 11 completion*

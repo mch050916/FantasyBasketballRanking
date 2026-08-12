@@ -1,2 +1,2 @@
 Season,Source Batch,Review Total Rows,Review Approved Rows,Review Rejected Rows,Review Pending Rows,Missing Required Rows,Low Confidence Rows,File Confidence,Confidence Summary,Ready,Ready Blockers,Generated At
-2024-25,legacy_2024_25_snapshot,150,150,0,0,0,0,1.0,high,True,,2026-05-07T07:25:29+00:00
+2024-25,yahoo_screenshot_2024_25_total,125,125,0,0,0,0,1.0,high,True,,2026-08-12T04:53:42+00:00

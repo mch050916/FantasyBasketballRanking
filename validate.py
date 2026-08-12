@@ -38,10 +38,13 @@ BENCHMARK_HISTORY_COLUMNS = [
 
 PREDICTED_CONTEXT_COLUMNS = [
     "GP_FACTOR",
+    "GP",
+    "MIN",
     "PTS",
     "REB",
     "AST",
     "3PTM",
+    "ST",
     "BLK",
     "TO",
     "FG%",
@@ -120,6 +123,48 @@ CATEGORY_DISTORTION_SUMMARY_COLUMNS = [
     "FOLLOW_UP_DECISION",
     "AVG_ABS_DELTA",
     "REPRESENTATIVE_PLAYERS",
+]
+
+BREAKOUT_AVAILABILITY_LABELS = [
+    "breakout underreaction",
+    "role-growth underreaction",
+    "availability overtrust",
+    "availability undertrust",
+    "unclear",
+]
+
+BREAKOUT_AVAILABILITY_COLUMNS = [
+    "PLAYER_NAME",
+    "RANK",
+    "ACTUAL_RANK",
+    "delta",
+    "BREAKOUT_AVAILABILITY_LABEL",
+    "DIAGNOSTIC_REASON",
+    "MISS_BUCKET",
+    "DISTORTION_FAMILY",
+    "GP",
+    "MIN",
+    "GP_FACTOR",
+    "PTS",
+    "REB",
+    "AST",
+    "3PTM",
+    "ST",
+    "BLK",
+    "ROLE_SIGNAL_SCORE",
+    "AVAILABILITY_SIGNAL",
+    "TOTAL_VALUE",
+]
+
+BREAKOUT_AVAILABILITY_SUMMARY_COLUMNS = [
+    "BREAKOUT_AVAILABILITY_LABEL",
+    "PRIMARY_HITS",
+    "PRIMARY_BENCHMARKS",
+    "SECONDARY_HITS",
+    "EVIDENCE_LEVEL",
+    "AVG_ABS_DELTA",
+    "REPRESENTATIVE_PLAYERS",
+    "REPRESENTATIVE_REASONS",
 ]
 
 
@@ -420,6 +465,260 @@ def summarize_category_distortion_families(artifact: pd.DataFrame) -> pd.Series:
     return artifact["DISTORTION_FAMILY"].value_counts()
 
 
+def _role_signal_score(row: pd.Series) -> float:
+    """Return a simple role-growth cue from projected multicategory context."""
+    minutes = _coerce_float(row.get("MIN")) or 0.0
+    assists = _coerce_float(row.get("AST")) or 0.0
+    rebounds = _coerce_float(row.get("REB")) or 0.0
+    stocks = (_coerce_float(row.get("ST")) or 0.0) + (_coerce_float(row.get("BLK")) or 0.0)
+    threes = _coerce_float(row.get("3PTM")) or 0.0
+
+    score = 0.0
+    if minutes >= 30.0:
+        score += 2.0
+    elif minutes >= 26.0:
+        score += 1.0
+    if assists >= 4.5:
+        score += 1.0
+    if rebounds >= 5.5:
+        score += 1.0
+    if stocks >= 1.4:
+        score += 1.0
+    if threes >= 1.8:
+        score += 0.5
+    return score
+
+
+def _availability_signal(row: pd.Series) -> str:
+    """Classify the projected availability context for diagnostics."""
+    gp_factor = _coerce_float(row.get("GP_FACTOR"))
+    gp = _coerce_float(row.get("GP"))
+    if gp_factor is not None:
+        if gp_factor < 0.62:
+            return "very_low"
+        if gp_factor < 0.78:
+            return "low"
+    if gp is not None:
+        if gp < 45:
+            return "very_low"
+        if gp < 60:
+            return "low"
+    return "normal"
+
+
+def _diagnostic_reason(label: str, row: pd.Series, role_score: float, availability_signal: str) -> str:
+    """Return a compact human-readable reason for a breakout/availability label."""
+    gp_factor = _coerce_float(row.get("GP_FACTOR"))
+    minutes = _coerce_float(row.get("MIN"))
+    miss_bucket = str(row.get("MISS_BUCKET", ""))
+    parts: list[str] = []
+    if label in {"availability overtrust", "availability undertrust"}:
+        parts.append(f"availability={availability_signal}")
+        if gp_factor is not None:
+            parts.append(f"GP_FACTOR={gp_factor:.2f}")
+    if label == "role-growth underreaction":
+        parts.append(f"role_score={role_score:.1f}")
+        if minutes is not None:
+            parts.append(f"MIN={minutes:.1f}")
+    if label == "breakout underreaction":
+        parts.append("upside miss")
+        if miss_bucket:
+            parts.append(miss_bucket)
+    if label == "unclear":
+        parts.append("mixed or weak evidence")
+        if miss_bucket:
+            parts.append(miss_bucket)
+    return "; ".join(parts)
+
+
+def classify_breakout_availability(row: pd.Series) -> str:
+    """Assign a deterministic breakout/availability diagnostic label."""
+    delta = _coerce_float(row.get("delta")) or 0.0
+    miss_bucket = str(row.get("MISS_BUCKET", ""))
+    availability_signal = _availability_signal(row)
+    role_score = _role_signal_score(row)
+
+    if abs(delta) < 15:
+        return "unclear"
+
+    # Negative delta means we ranked the player better than the benchmark did.
+    if delta <= -15 and availability_signal in {"low", "very_low"}:
+        return "availability overtrust"
+
+    # Positive delta means the benchmark liked the player more than we did.
+    if delta >= 15 and availability_signal in {"low", "very_low"}:
+        return "availability undertrust"
+
+    if delta >= 15 and (role_score >= 2.0 or miss_bucket == "breakout/role growth"):
+        if role_score >= 2.0:
+            return "role-growth underreaction"
+        return "breakout underreaction"
+
+    if delta >= 15:
+        return "breakout underreaction"
+
+    return "unclear"
+
+
+def build_breakout_availability_artifact(result: dict,
+                                         top_n: int = 10) -> pd.DataFrame:
+    """Build a saved diagnostic artifact for breakout and availability misses."""
+    details = result.get("details")
+    if details is None or len(details) == 0:
+        return pd.DataFrame(columns=BREAKOUT_AVAILABILITY_COLUMNS)
+
+    artifact = details.copy()
+    if "delta" not in artifact.columns:
+        artifact["delta"] = artifact["RANK"] - artifact["ACTUAL_RANK"]
+    if "MISS_BUCKET" not in artifact.columns:
+        artifact["MISS_BUCKET"] = artifact.apply(classify_miss_bucket, axis=1)
+
+    for col in ["DD", "TD", "DD_G", "TD_G", "TOTAL_VALUE"]:
+        if col not in artifact.columns:
+            artifact[col] = pd.NA
+        artifact[col] = pd.to_numeric(artifact[col], errors="coerce")
+
+    total_abs = artifact["TOTAL_VALUE"].abs().replace(0, np.nan)
+    artifact["MILESTONE_ABS_SHARE"] = (
+        artifact["DD_G"].fillna(0.0) + artifact["TD_G"].fillna(0.0)
+    ).abs() / total_abs
+
+    for col in ["GP", "MIN", "GP_FACTOR", "PTS", "REB", "AST", "3PTM", "ST", "BLK"]:
+        if col not in artifact.columns:
+            artifact[col] = pd.NA
+        artifact[col] = pd.to_numeric(artifact[col], errors="coerce")
+
+    artifact["ROLE_SIGNAL_SCORE"] = artifact.apply(_role_signal_score, axis=1)
+    artifact["AVAILABILITY_SIGNAL"] = artifact.apply(_availability_signal, axis=1)
+    artifact["BREAKOUT_AVAILABILITY_LABEL"] = artifact.apply(
+        classify_breakout_availability,
+        axis=1,
+    )
+
+    artifact["DISTORTION_FAMILY"] = artifact.apply(
+        lambda row: classify_category_distortion_family(row)
+        if row.get("MISS_BUCKET") == "category-weight distortion"
+        else pd.NA,
+        axis=1,
+    )
+    artifact["DIAGNOSTIC_REASON"] = artifact.apply(
+        lambda row: _diagnostic_reason(
+            str(row["BREAKOUT_AVAILABILITY_LABEL"]),
+            row,
+            float(row["ROLE_SIGNAL_SCORE"]),
+            str(row["AVAILABILITY_SIGNAL"]),
+        ),
+        axis=1,
+    )
+
+    artifact = artifact.sort_values("delta", key=abs, ascending=False).head(top_n).copy()
+    return artifact[BREAKOUT_AVAILABILITY_COLUMNS].reset_index(drop=True)
+
+
+def summarize_breakout_availability_labels(artifact: pd.DataFrame) -> pd.Series:
+    """Return diagnostic label counts for one breakout/availability artifact."""
+    if artifact.empty or "BREAKOUT_AVAILABILITY_LABEL" not in artifact.columns:
+        return pd.Series(dtype="int64")
+    return artifact["BREAKOUT_AVAILABILITY_LABEL"].value_counts()
+
+
+def build_breakout_availability_summary(results: list[dict[str, object]]) -> pd.DataFrame:
+    """Aggregate breakout/availability artifacts into one cross-benchmark summary."""
+    records: list[dict[str, object]] = []
+    for result in results:
+        artifact = result.get("breakout_availability")
+        if artifact is None or len(artifact) == 0:
+            continue
+
+        artifact_df = artifact.copy()
+        artifact_df["ABS_DELTA"] = artifact_df["delta"].abs()
+        is_primary = (
+            result.get("benchmark_class") == "historical_snapshot"
+            and result.get("trust_tier") == "snapshot_derived"
+        )
+        benchmark_label = str(result.get("label", "benchmark"))
+
+        for label, label_df in artifact_df.groupby("BREAKOUT_AVAILABILITY_LABEL"):
+            representative_df = label_df.sort_values("ABS_DELTA", ascending=False)
+            records.append(
+                {
+                    "BREAKOUT_AVAILABILITY_LABEL": label,
+                    "BENCHMARK_LABEL": benchmark_label,
+                    "IS_PRIMARY": is_primary,
+                    "HIT_COUNT": int(len(label_df)),
+                    "AVG_ABS_DELTA": float(label_df["ABS_DELTA"].mean()),
+                    "REPRESENTATIVE_PLAYERS": ", ".join(
+                        representative_df["PLAYER_NAME"].astype(str).drop_duplicates().head(3).tolist()
+                    ),
+                    "REPRESENTATIVE_REASONS": " | ".join(
+                        representative_df["DIAGNOSTIC_REASON"].astype(str).drop_duplicates().head(2).tolist()
+                    ),
+                }
+            )
+
+    if not records:
+        return pd.DataFrame(columns=BREAKOUT_AVAILABILITY_SUMMARY_COLUMNS)
+
+    records_df = pd.DataFrame(records)
+    summary_rows: list[dict[str, object]] = []
+    for label, label_df in records_df.groupby("BREAKOUT_AVAILABILITY_LABEL"):
+        primary_df = label_df[label_df["IS_PRIMARY"]]
+        secondary_df = label_df[~label_df["IS_PRIMARY"]]
+        primary_benchmarks = int(primary_df["BENCHMARK_LABEL"].nunique())
+        primary_hits = int(primary_df["HIT_COUNT"].sum())
+        secondary_hits = int(secondary_df["HIT_COUNT"].sum())
+        if primary_benchmarks >= 2:
+            evidence_level = "repeat_exact_league"
+        elif primary_hits > 0:
+            evidence_level = "single_exact_league"
+        else:
+            evidence_level = "secondary_only"
+
+        representative_source = primary_df if not primary_df.empty else label_df
+        representative_players = ", ".join(
+            representative_source
+            .sort_values("AVG_ABS_DELTA", ascending=False)["REPRESENTATIVE_PLAYERS"]
+            .astype(str)
+            .str.split(", ")
+            .explode()
+            .dropna()
+            .drop_duplicates()
+            .head(3)
+            .tolist()
+        )
+        representative_reasons = " | ".join(
+            representative_source
+            .sort_values("AVG_ABS_DELTA", ascending=False)["REPRESENTATIVE_REASONS"]
+            .astype(str)
+            .str.split(" | ", regex=False)
+            .explode()
+            .dropna()
+            .drop_duplicates()
+            .head(2)
+            .tolist()
+        )
+
+        summary_rows.append(
+            {
+                "BREAKOUT_AVAILABILITY_LABEL": label,
+                "PRIMARY_HITS": primary_hits,
+                "PRIMARY_BENCHMARKS": primary_benchmarks,
+                "SECONDARY_HITS": secondary_hits,
+                "EVIDENCE_LEVEL": evidence_level,
+                "AVG_ABS_DELTA": float(label_df["AVG_ABS_DELTA"].mean()),
+                "REPRESENTATIVE_PLAYERS": representative_players,
+                "REPRESENTATIVE_REASONS": representative_reasons,
+            }
+        )
+
+    summary = pd.DataFrame(summary_rows)
+    summary = summary.sort_values(
+        ["PRIMARY_BENCHMARKS", "PRIMARY_HITS", "SECONDARY_HITS", "AVG_ABS_DELTA"],
+        ascending=[False, False, False, False],
+    )
+    return summary[BREAKOUT_AVAILABILITY_SUMMARY_COLUMNS].reset_index(drop=True)
+
+
 def build_category_distortion_summary(results: list[dict[str, object]]) -> pd.DataFrame:
     """Aggregate category-distortion artifacts into one cross-benchmark summary."""
     records: list[dict[str, object]] = []
@@ -617,6 +916,7 @@ def validate(df: pd.DataFrame,
         "top_misses": pd.DataFrame(columns=MISS_OUTPUT_COLUMNS),
         "milestone_contributions": pd.DataFrame(columns=MILESTONE_CONTRIBUTION_COLUMNS),
         "category_distortions": pd.DataFrame(columns=CATEGORY_DISTORTION_COLUMNS),
+        "breakout_availability": pd.DataFrame(columns=BREAKOUT_AVAILABILITY_COLUMNS),
     }
 
     print(f"\n{'='*60}")
@@ -691,9 +991,11 @@ def validate(df: pd.DataFrame,
     top_misses = build_top_miss_artifact({"details": merged}, top_n=top_n_misses)
     milestone_artifact = build_milestone_contribution_artifact({"details": merged}, top_n=top_n_misses)
     category_distortion_artifact = build_category_distortion_artifact({"details": merged}, top_n=top_n_misses)
+    breakout_availability_artifact = build_breakout_availability_artifact({"details": merged}, top_n=top_n_misses)
     result["top_misses"] = top_misses
     result["milestone_contributions"] = milestone_artifact
     result["category_distortions"] = category_distortion_artifact
+    result["breakout_availability"] = breakout_availability_artifact
 
     print(f"\n  Biggest misses:")
     for _, row in top_misses.iterrows():
@@ -726,5 +1028,11 @@ def validate(df: pd.DataFrame,
         print("\n  Category distortion families:")
         for family, count in family_counts.items():
             print(f"    {family:<24} {count}")
+
+    breakout_counts = summarize_breakout_availability_labels(breakout_availability_artifact)
+    if not breakout_counts.empty:
+        print("\n  Breakout / availability:")
+        for label, count in breakout_counts.items():
+            print(f"    {label:<28} {count}")
 
     return result

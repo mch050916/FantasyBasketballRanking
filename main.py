@@ -27,6 +27,7 @@ from model    import project_stats, compute_tau, compute_g_scores
 from output   import format_rankings, save_rankings
 from validate import (
     append_benchmark_history,
+    build_breakout_availability_summary,
     build_category_distortion_summary,
     build_validation_summary_row,
     compute_metric_deltas,
@@ -52,6 +53,8 @@ TOP_MISS_DIR = DIAGNOSTICS_DIR / "top_misses"
 MILESTONE_CONTRIBUTION_DIR = DIAGNOSTICS_DIR / "milestone_contributions"
 CATEGORY_DISTORTION_DIR = DIAGNOSTICS_DIR / "category_distortions"
 CATEGORY_DISTORTION_SUMMARY_FILE = CATEGORY_DISTORTION_DIR / "category_distortion_summary.csv"
+BREAKOUT_AVAILABILITY_DIR = DIAGNOSTICS_DIR / "breakout_availability"
+BREAKOUT_AVAILABILITY_SUMMARY_FILE = BREAKOUT_AVAILABILITY_DIR / "breakout_availability_summary.csv"
 SUPPRESSION_MAINTENANCE_FILE = DIAGNOSTICS_DIR / "non_actionable_suppression_maintenance.md"
 
 
@@ -70,6 +73,10 @@ def build_historical_snapshot_target(season: str, note: str) -> dict[str, object
 
 
 VALIDATION_TARGETS = [
+    build_historical_snapshot_target(
+        "2025-26",
+        "True holdout: our own preseason 2025-26 projections vs the completed season's exact-league result",
+    ),
     build_historical_snapshot_target("2024-25", "14-cat exact-league validation snapshot for 2024-25"),
     build_historical_snapshot_target("2023-24", "14-cat exact-league validation snapshot for 2023-24"),
     {
@@ -149,6 +156,44 @@ def save_category_distortion_artifact(result: dict[str, object]) -> None:
     path = CATEGORY_DISTORTION_DIR / f"{slugify_label(label)}_category_distortions.csv"
     write_analysis_artifact(artifact, path)
     print(f"  Distortion artf : {path}")
+
+
+def save_breakout_availability_artifact(result: dict[str, object]) -> None:
+    """Persist the latest breakout/availability diagnostic artifact for a benchmark target."""
+    artifact = result.get("breakout_availability")
+    if artifact is None or len(artifact) == 0:
+        return
+
+    label = str(result.get("label", "benchmark"))
+    path = BREAKOUT_AVAILABILITY_DIR / f"{slugify_label(label)}_breakout_availability.csv"
+    write_analysis_artifact(artifact, path)
+    print(f"  Breakout artf   : {path}")
+
+
+def print_breakout_availability_summary(summary: object) -> None:
+    """Render a compact cross-benchmark breakout/availability summary."""
+    if summary is None or len(summary) == 0:
+        return
+
+    print(f"\n{'='*60}")
+    print("Breakout / Availability Summary")
+    print(f"{'='*60}")
+    print("  Primary surface : exact-league 14-cat snapshots")
+
+    for _, row in summary.iterrows():
+        print(
+            f"    {row['BREAKOUT_AVAILABILITY_LABEL']:<28} "
+            f"{int(row['PRIMARY_HITS'])} primary hits / "
+            f"{int(row['PRIMARY_BENCHMARKS'])} snapshots / "
+            f"{int(row['SECONDARY_HITS'])} secondary"
+        )
+        print(f"      evidence: {row['EVIDENCE_LEVEL']}")
+        if row["REPRESENTATIVE_PLAYERS"]:
+            print(f"      reps: {row['REPRESENTATIVE_PLAYERS']}")
+        if row["REPRESENTATIVE_REASONS"]:
+            print(f"      reasons: {row['REPRESENTATIVE_REASONS']}")
+
+    print(f"  Summary artifact: {BREAKOUT_AVAILABILITY_SUMMARY_FILE}")
 
 
 def print_category_distortion_summary(summary: object) -> None:
@@ -462,6 +507,7 @@ def main() -> None:
             save_top_miss_artifact(result)
             save_milestone_contribution_artifact(result)
             save_category_distortion_artifact(result)
+            save_breakout_availability_artifact(result)
             history_rows.append(build_validation_summary_row(result, recorded_at))
             validation_results.append(result)
         else:
@@ -481,6 +527,12 @@ def main() -> None:
     if len(category_distortion_summary) > 0:
         write_analysis_artifact(category_distortion_summary, CATEGORY_DISTORTION_SUMMARY_FILE)
         print_category_distortion_summary(category_distortion_summary)
+
+    breakout_availability_summary = build_breakout_availability_summary(validation_results)
+    if len(breakout_availability_summary) > 0:
+        write_analysis_artifact(breakout_availability_summary, BREAKOUT_AVAILABILITY_SUMMARY_FILE)
+        print_breakout_availability_summary(breakout_availability_summary)
+
     print_run_health_summary(game_log_health, validation_results)
 
 

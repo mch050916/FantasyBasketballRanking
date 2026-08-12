@@ -1,0 +1,6 @@
+BREAKOUT_AVAILABILITY_LABEL,PRIMARY_HITS,PRIMARY_BENCHMARKS,SECONDARY_HITS,EVIDENCE_LEVEL,AVG_ABS_DELTA,REPRESENTATIVE_PLAYERS,REPRESENTATIVE_REASONS
+unclear,12,3,9,repeat_exact_league,152.5233333333333,"Devin Booker, Josh Hart, Tobias Harris",mixed or weak evidence; aging/decline | mixed or weak evidence; category-weight distortion
+availability overtrust,5,3,11,repeat_exact_league,162.60666666666665,"Joel Embiid, P.J. Washington, Luka Dončić",availability=very_low; GP_FACTOR=0.50 | availability=low; GP_FACTOR=0.75
+role-growth underreaction,6,2,6,repeat_exact_league,43.77777777777778,"Chris Paul, Brook Lopez, Dyson Daniels",role_score=2.0; MIN=28.0 | role_score=3.0; MIN=31.8
+availability undertrust,6,2,4,repeat_exact_league,55.199999999999996,"Saddiq Bey, Kristaps Porziņģis, Anfernee Simons",availability=low; GP_FACTOR=0.77 | availability=very_low; GP_FACTOR=0.58
+breakout underreaction,1,1,0,single_exact_league,51.0,Payton Pritchard,upside miss; breakout/role growth

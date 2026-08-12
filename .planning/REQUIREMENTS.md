@@ -7,8 +7,8 @@
 
 ### Breakout And Availability Diagnostics
 
-- [ ] **BAV-01**: User can distinguish breakout underreaction, role-growth signal, and availability overtrust in the biggest exact-league misses.
-- [ ] **BAV-02**: User can inspect saved diagnostic artifacts that explain why a player was classified as breakout-driven, role-growth-driven, availability-driven, or unclear.
+- [x] **BAV-01**: User can distinguish breakout underreaction, role-growth signal, and availability overtrust in the biggest exact-league misses.
+- [x] **BAV-02**: User can inspect saved diagnostic artifacts that explain why a player was classified as breakout-driven, role-growth-driven, availability-driven, or unclear.
 
 ### Role-Growth Responsiveness
 
@@ -41,8 +41,8 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| BAV-01 | Phase 11 | Pending |
-| BAV-02 | Phase 11 | Pending |
+| BAV-01 | Phase 11 | Shipped |
+| BAV-02 | Phase 11 | Shipped |
 | BAV-03 | Phase 12 | Pending |
 | BAV-04 | Phase 12 | Pending |
 | BAV-05 | Phase 13 | Pending |
@@ -55,4 +55,4 @@
 
 ---
 *Requirements defined: 2026-06-10*
-*Last updated: 2026-06-10 after v1.3 initialization*
+*Last updated: 2026-07-03 after Phase 11 planning*

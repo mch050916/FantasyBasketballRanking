@@ -1,6 +1,6 @@
 # Phase 11: Breakout And Availability Diagnostics - Context
 
-**Gathered:** 2026-06-10  
+**Gathered:** 2026-07-03  
 **Status:** Ready for planning
 
 <domain>
@@ -108,4 +108,4 @@ Phase 11 is a diagnostic phase only. It should separate the remaining exact-leag
 ---
 
 *Phase: 11-breakout-and-availability-diagnostics*  
-*Context gathered: 2026-06-10*
+*Context gathered: 2026-07-03*

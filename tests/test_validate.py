@@ -8,6 +8,8 @@ from benchmark_ingest import build_benchmark_snapshot, build_review_table
 from identity import canonical_player_key
 from validate import (
     append_benchmark_history,
+    build_breakout_availability_artifact,
+    build_breakout_availability_summary,
     build_category_distortion_artifact,
     build_category_distortion_summary,
     build_player_name,
@@ -15,10 +17,12 @@ from validate import (
     build_rank_series,
     build_top_miss_artifact,
     build_validation_summary_row,
+    classify_breakout_availability,
     compute_metric_deltas,
     find_previous_baseline,
     load_benchmark_history,
     normalize_player_name,
+    summarize_breakout_availability_labels,
     summarize_category_distortion_families,
     summarize_miss_buckets,
     summarize_milestone_contributions,
@@ -596,6 +600,187 @@ class ValidateTests(unittest.TestCase):
         self.assertEqual(balanced_row["PRIMARY_BENCHMARKS"], 2)
         self.assertEqual(balanced_row["PRIMARY_PLAYER_COUNT"], 1)
         self.assertEqual(balanced_row["FOLLOW_UP_DECISION"], "monitor_narrow")
+
+    def test_classify_breakout_availability_emits_only_locked_labels(self) -> None:
+        unclear_row = pd.Series({"delta": 10, "GP_FACTOR": 0.90, "GP": 78, "MIN": 20})
+        overtrust_row = pd.Series({"delta": -40, "GP_FACTOR": 0.55, "GP": 40, "MIN": 25})
+        undertrust_row = pd.Series({"delta": 45, "GP_FACTOR": 0.55, "GP": 40, "MIN": 25})
+        role_growth_row = pd.Series(
+            {
+                "delta": 45,
+                "GP_FACTOR": 0.90,
+                "GP": 78,
+                "MIN": 32,
+                "AST": 3.0,
+                "REB": 4.0,
+                "ST": 0.4,
+                "BLK": 0.3,
+                "3PTM": 1.0,
+            }
+        )
+        breakout_row = pd.Series(
+            {
+                "delta": 45,
+                "GP_FACTOR": 0.90,
+                "GP": 78,
+                "MIN": 20,
+                "AST": 2.0,
+                "REB": 3.0,
+                "ST": 0.3,
+                "BLK": 0.2,
+                "3PTM": 0.5,
+            }
+        )
+
+        self.assertEqual(classify_breakout_availability(unclear_row), "unclear")
+        self.assertEqual(classify_breakout_availability(overtrust_row), "availability overtrust")
+        self.assertEqual(classify_breakout_availability(undertrust_row), "availability undertrust")
+        self.assertEqual(classify_breakout_availability(role_growth_row), "role-growth underreaction")
+        self.assertEqual(classify_breakout_availability(breakout_row), "breakout underreaction")
+
+        locked_labels = {
+            "breakout underreaction",
+            "role-growth underreaction",
+            "availability overtrust",
+            "availability undertrust",
+            "unclear",
+        }
+        for row in (unclear_row, overtrust_row, undertrust_row, role_growth_row, breakout_row):
+            self.assertIn(classify_breakout_availability(row), locked_labels)
+
+    def test_build_breakout_availability_artifact_keeps_context_compact(self) -> None:
+        result = {
+            "details": pd.DataFrame(
+                [
+                    {
+                        "PLAYER_NAME": "Role Growth Case",
+                        "RANK": 90,
+                        "ACTUAL_RANK": 45,
+                        "delta": 45,
+                        "GP_FACTOR": 0.90,
+                        "GP": 78,
+                        "MIN": 32,
+                        "PTS": 15.0,
+                        "REB": 4.0,
+                        "AST": 3.0,
+                        "3PTM": 1.0,
+                        "ST": 0.4,
+                        "BLK": 0.3,
+                        "DD": 0.10,
+                        "TD": 0.00,
+                        "DD_G": 0.05,
+                        "TD_G": 0.00,
+                        "TOTAL_VALUE": 1.5,
+                    },
+                    {
+                        "PLAYER_NAME": "Availability Overtrust Case",
+                        "RANK": 20,
+                        "ACTUAL_RANK": 70,
+                        "delta": -50,
+                        "GP_FACTOR": 0.55,
+                        "GP": 38,
+                        "MIN": 28,
+                        "PTS": 17.0,
+                        "REB": 4.0,
+                        "AST": 3.0,
+                        "3PTM": 0.8,
+                        "ST": 0.3,
+                        "BLK": 0.2,
+                        "DD": 0.10,
+                        "TD": 0.00,
+                        "DD_G": 0.05,
+                        "TD_G": 0.00,
+                        "TOTAL_VALUE": 2.0,
+                    },
+                ]
+            )
+        }
+
+        artifact = build_breakout_availability_artifact(result, top_n=2)
+        label_counts = summarize_breakout_availability_labels(artifact)
+
+        self.assertIn("ROLE_SIGNAL_SCORE", artifact.columns)
+        self.assertIn("AVAILABILITY_SIGNAL", artifact.columns)
+        self.assertIn("DIAGNOSTIC_REASON", artifact.columns)
+        self.assertIn("BREAKOUT_AVAILABILITY_LABEL", artifact.columns)
+
+        role_growth_label = artifact.set_index("PLAYER_NAME").loc[
+            "Role Growth Case", "BREAKOUT_AVAILABILITY_LABEL"
+        ]
+        availability_label = artifact.set_index("PLAYER_NAME").loc[
+            "Availability Overtrust Case", "BREAKOUT_AVAILABILITY_LABEL"
+        ]
+        self.assertEqual(role_growth_label, "role-growth underreaction")
+        self.assertEqual(availability_label, "availability overtrust")
+        self.assertIn("role-growth underreaction", label_counts.index)
+        self.assertIn("availability overtrust", label_counts.index)
+
+        empty_artifact = build_breakout_availability_artifact({}, top_n=5)
+        self.assertTrue(empty_artifact.empty)
+        self.assertEqual(list(empty_artifact.columns), list(artifact.columns))
+
+    def test_build_breakout_availability_summary_keeps_exact_league_primary(self) -> None:
+        summary = build_breakout_availability_summary(
+            [
+                {
+                    "label": "actual_14cat_24_25_snapshot.csv",
+                    "benchmark_class": "historical_snapshot",
+                    "trust_tier": "snapshot_derived",
+                    "breakout_availability": pd.DataFrame(
+                        [
+                            {
+                                "PLAYER_NAME": "Player X",
+                                "delta": 45,
+                                "BREAKOUT_AVAILABILITY_LABEL": "breakout underreaction",
+                                "DIAGNOSTIC_REASON": "upside miss",
+                            }
+                        ]
+                    ),
+                },
+                {
+                    "label": "actual_14cat_23_24_snapshot.csv",
+                    "benchmark_class": "historical_snapshot",
+                    "trust_tier": "snapshot_derived",
+                    "breakout_availability": pd.DataFrame(
+                        [
+                            {
+                                "PLAYER_NAME": "Player X",
+                                "delta": 40,
+                                "BREAKOUT_AVAILABILITY_LABEL": "breakout underreaction",
+                                "DIAGNOSTIC_REASON": "upside miss",
+                            }
+                        ]
+                    ),
+                },
+                {
+                    "label": "yahoo_25_26_adp_proxy",
+                    "benchmark_class": "direct_export_market",
+                    "trust_tier": "direct_export",
+                    "breakout_availability": pd.DataFrame(
+                        [
+                            {
+                                "PLAYER_NAME": "Player Y",
+                                "delta": -30,
+                                "BREAKOUT_AVAILABILITY_LABEL": "availability overtrust",
+                                "DIAGNOSTIC_REASON": "availability=low",
+                            }
+                        ]
+                    ),
+                },
+            ]
+        )
+
+        breakout_row = summary[summary["BREAKOUT_AVAILABILITY_LABEL"] == "breakout underreaction"].iloc[0]
+        availability_row = summary[summary["BREAKOUT_AVAILABILITY_LABEL"] == "availability overtrust"].iloc[0]
+
+        self.assertEqual(breakout_row["PRIMARY_BENCHMARKS"], 2)
+        self.assertEqual(breakout_row["PRIMARY_HITS"], 2)
+        self.assertEqual(breakout_row["EVIDENCE_LEVEL"], "repeat_exact_league")
+
+        self.assertEqual(availability_row["PRIMARY_HITS"], 0)
+        self.assertEqual(availability_row["PRIMARY_BENCHMARKS"], 0)
+        self.assertEqual(availability_row["SECONDARY_HITS"], 1)
+        self.assertEqual(availability_row["EVIDENCE_LEVEL"], "secondary_only")
 
     def test_write_analysis_artifact_persists_deterministically(self) -> None:
         artifact = pd.DataFrame(
