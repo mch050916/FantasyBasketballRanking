@@ -54,6 +54,10 @@ PREDICTED_CONTEXT_COLUMNS = [
     "TOTAL_VALUE",
     "DD_G",
     "TD_G",
+    "TREND_ROLE_SCORE",
+    "TREND_ROLE_BOOST",
+    "TREND_SHIFT",
+    "TREND_COMPOSITE_SCORE",
 ]
 
 MISS_CONTEXT_COLUMNS = [
@@ -309,6 +313,9 @@ def classify_miss_bucket(row: pd.Series) -> str:
     dd = pd.to_numeric(pd.Series([row.get("DD")]), errors="coerce").iloc[0]
     td = pd.to_numeric(pd.Series([row.get("TD")]), errors="coerce").iloc[0]
     tech = pd.to_numeric(pd.Series([row.get("TECH")]), errors="coerce").iloc[0]
+    reb = pd.to_numeric(pd.Series([row.get("REB")]), errors="coerce").iloc[0]
+    blk = pd.to_numeric(pd.Series([row.get("BLK")]), errors="coerce").iloc[0]
+    pts = pd.to_numeric(pd.Series([row.get("PTS")]), errors="coerce").iloc[0]
 
     if delta <= -15 and pd.notna(gp_factor) and gp_factor < 0.78:
         return "availability miss"
@@ -321,6 +328,37 @@ def classify_miss_bucket(row: pd.Series) -> str:
     if delta >= 15 and (pd.isna(gp_factor) or gp_factor >= 0.78):
         return "breakout/role growth"
     if delta <= -15 and (pd.isna(gp_factor) or gp_factor >= 0.78):
+        # Healthy, big overrate, no milestone-stat elevation (already
+        # ruled out above) — if the player is ALSO a high-volume,
+        # one-dimensional scorer (weak REB/BLK), this is a
+        # one-dimensional-scorer overrate (e.g. Devin Booker, 2025-26
+        # true holdout: PTS=23.08), not genuine decline. Route it
+        # through the same "category-weight distortion" bucket DD/TD-driven
+        # misses use so it gets picked up by
+        # classify_category_distortion_family (naturally lands in
+        # "balanced category carry" for this shape).
+        #
+        # The PTS >= 15.0 gate is required: without it this branch fired
+        # for ANY healthy big overrate with weak REB/BLK, which swept in
+        # non-one-dimensional-scorer players too — e.g. Chris Paul
+        # (PTS=7.9, age 40, genuinely aging), Bub Carrington (PTS=9.8,
+        # rookie), Russell Westbrook (PTS=11.4), Fred VanVleet
+        # (PTS=12.6). Real data cleanly separates these (max ~12.6) from
+        # genuine one-dimensional scorers like Austin Reaves (17.5),
+        # Stephen Curry (21.46), and Booker (23.08) — 15.0 sits in that
+        # gap. (An earlier 18.0 cutoff was tried first but wrongly
+        # excluded Austin Reaves, a real "balanced category carry"
+        # true positive already cited in GitHub issue #4; 15.0 keeps
+        # him in while still excluding every confirmed false positive.)
+        #
+        # weak_reb/weak_blk fail CLOSED (require a confirmed low value)
+        # to match the DD/TD/TECH checks above — a missing REB/BLK must
+        # not silently reclassify a row.
+        high_volume_scorer = pd.notna(pts) and pts >= 15.0
+        weak_reb = pd.notna(reb) and reb < 4.5
+        weak_blk = pd.notna(blk) and blk < 0.5
+        if high_volume_scorer and weak_reb and weak_blk:
+            return "category-weight distortion"
         return "aging/decline"
     return "unclear/other"
 
@@ -376,6 +414,32 @@ def classify_category_distortion_family(row: pd.Series) -> str:
     return "balanced category carry"
 
 
+# MILESTONE_ABS_SHARE = |DD_G + TD_G| / |TOTAL_VALUE| is only meaningful
+# when TOTAL_VALUE reflects a real net contribution. When |TOTAL_VALUE| is
+# small-but-nonzero (near-replacement-level net value), the ratio explodes
+# even for a modest DD_G/TD_G — e.g. Jaren Jackson Jr.'s 2023-24 row has
+# TOTAL_VALUE=-0.034 and DD_G/TD_G summing to ~0.52, producing a share of
+# ~15.2 (a ratio that should never exceed ~1.0 in a sane world). Real
+# committed diagnostics show a clean gap between contaminating low-value
+# rows (|TOTAL_VALUE| <= ~0.63: Westbrook, Devin Vassell, Jimmy Butler,
+# DeMar DeRozan, Tyler Herro, Jaren Jackson Jr.) and genuinely large
+# milestone-driven rows (|TOTAL_VALUE| >= ~1.27: Giannis, Şengün, Zubac,
+# Josh Hart, Vučević, Josh Giddey, Bam Adebayo, LeBron). 1.0 sits in that
+# gap and reads as "at least one full G-score unit of standalone value."
+MILESTONE_SHARE_TOTAL_VALUE_FLOOR = 1.0
+
+
+def _compute_milestone_abs_share(milestone_g_sum: pd.Series, total_value: pd.Series) -> pd.Series:
+    """Return |milestone_g_sum| / |total_value|, NaN below the reliability floor.
+
+    Guards the ratio against small-but-nonzero denominators (see
+    MILESTONE_SHARE_TOTAL_VALUE_FLOOR) in addition to the exact-zero case.
+    """
+    total_abs = total_value.abs()
+    reliable_abs = total_abs.where(total_abs >= MILESTONE_SHARE_TOTAL_VALUE_FLOOR, np.nan)
+    return milestone_g_sum.abs() / reliable_abs
+
+
 def _milestone_dominant_label(dd_g: float | None, td_g: float | None) -> str:
     """Return which milestone category dominates the miss contribution."""
     dd_abs = abs(float(dd_g)) if dd_g is not None and not pd.isna(dd_g) else 0.0
@@ -408,8 +472,9 @@ def build_milestone_contribution_artifact(result: dict,
         artifact[col] = pd.to_numeric(artifact[col], errors="coerce")
 
     artifact["MILESTONE_G_SUM"] = artifact["DD_G"].fillna(0.0) + artifact["TD_G"].fillna(0.0)
-    total_abs = artifact["TOTAL_VALUE"].abs().replace(0, np.nan)
-    artifact["MILESTONE_ABS_SHARE"] = artifact["MILESTONE_G_SUM"].abs() / total_abs
+    artifact["MILESTONE_ABS_SHARE"] = _compute_milestone_abs_share(
+        artifact["MILESTONE_G_SUM"], artifact["TOTAL_VALUE"]
+    )
     artifact["MILESTONE_DOMINANT"] = artifact.apply(
         lambda row: _milestone_dominant_label(row.get("DD_G"), row.get("TD_G")),
         axis=1,
@@ -437,10 +502,9 @@ def build_category_distortion_artifact(result: dict,
             artifact[col] = pd.NA
         artifact[col] = pd.to_numeric(artifact[col], errors="coerce")
 
-    total_abs = artifact["TOTAL_VALUE"].abs().replace(0, np.nan)
-    artifact["MILESTONE_ABS_SHARE"] = (
-        artifact["DD_G"].fillna(0.0) + artifact["TD_G"].fillna(0.0)
-    ).abs() / total_abs
+    artifact["MILESTONE_ABS_SHARE"] = _compute_milestone_abs_share(
+        artifact["DD_G"].fillna(0.0) + artifact["TD_G"].fillna(0.0), artifact["TOTAL_VALUE"]
+    )
 
     distortion_only = artifact[artifact["MISS_BUCKET"] == "category-weight distortion"].copy()
     if distortion_only.empty:
@@ -578,10 +642,9 @@ def build_breakout_availability_artifact(result: dict,
             artifact[col] = pd.NA
         artifact[col] = pd.to_numeric(artifact[col], errors="coerce")
 
-    total_abs = artifact["TOTAL_VALUE"].abs().replace(0, np.nan)
-    artifact["MILESTONE_ABS_SHARE"] = (
-        artifact["DD_G"].fillna(0.0) + artifact["TD_G"].fillna(0.0)
-    ).abs() / total_abs
+    artifact["MILESTONE_ABS_SHARE"] = _compute_milestone_abs_share(
+        artifact["DD_G"].fillna(0.0) + artifact["TD_G"].fillna(0.0), artifact["TOTAL_VALUE"]
+    )
 
     for col in ["GP", "MIN", "GP_FACTOR", "PTS", "REB", "AST", "3PTM", "ST", "BLK"]:
         if col not in artifact.columns:

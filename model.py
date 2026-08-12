@@ -51,6 +51,7 @@ TREND_SIGNAL_SCALES = {
 
 RECENT_WEIGHT_MIN = 0.30
 RECENT_WEIGHT_MAX = 0.85
+ROLE_BOOST_SATURATION = 0.18
 
 
 # ── Kappa ─────────────────────────────────────────────────────────────────────
@@ -122,7 +123,7 @@ def compute_trend_profile(player_season_stats: dict[str, pd.Series],
                           available_seasons: list[str],
                           base_weights: list[float],
                           trend_boost: float = 0.14,
-                          role_boost_cap: float = 0.08) -> dict[str, object]:
+                          role_boost_cap: float = 0.12) -> dict[str, object]:
     """
     Build one explainable multicategory trend profile for a player.
 
@@ -184,8 +185,19 @@ def compute_trend_profile(player_season_stats: dict[str, pd.Series],
 
     role_boost = 0.0
     if minutes_growth >= 0.10 and composite_score > 0.03:
+        # role_boost's nominal cap can combine with a maxed-out trend_shift to
+        # push desired_recent_weight past RECENT_WEIGHT_MAX, which would then
+        # get silently truncated by _rebalance_recent_weight's clamp below —
+        # the truncation amount would depend on trend_shift, not on role_boost
+        # itself, discarding an unpredictable chunk of the calibrated boost.
+        # Instead, cap role_boost to whatever headroom is actually left under
+        # RECENT_WEIGHT_MAX once base_weights[0] and trend_shift are applied,
+        # so the sum never needs clamping through this path in the first
+        # place. RECENT_WEIGHT_MAX itself is intentionally left untouched.
+        available_headroom = max(0.0, RECENT_WEIGHT_MAX - base_weights[0] - trend_shift)
+        effective_role_boost_cap = min(role_boost_cap, available_headroom)
         role_boost = float(
-            np.clip(role_score / 0.25, 0.0, 1.0) * role_boost_cap
+            np.clip(role_score / ROLE_BOOST_SATURATION, 0.0, 1.0) * effective_role_boost_cap
         )
 
     desired_recent_weight = base_weights[0] + trend_shift + role_boost
@@ -205,7 +217,7 @@ def compute_trend_weights(player_season_stats: dict[str, pd.Series],
                           available_seasons: list[str],
                           base_weights: list[float],
                           trend_boost: float = 0.14,
-                          role_boost_cap: float = 0.08) -> list[float]:
+                          role_boost_cap: float = 0.12) -> list[float]:
     """
     Adjust season weights using one multicategory composite trend score.
 
@@ -429,6 +441,10 @@ def project_stats(season_dfs: list[pd.DataFrame],
             "GP_FACTOR": round(gp_factor, 3),
             "AGE": projection_age,
             "DECLINE_FACTOR": round(decline_factor, 3),
+            "TREND_ROLE_SCORE": round(float(trend_profile["role_score"]), 3),
+            "TREND_ROLE_BOOST": round(float(trend_profile["role_boost"]), 3),
+            "TREND_SHIFT": round(float(trend_profile["trend_shift"]), 3),
+            "TREND_COMPOSITE_SCORE": round(float(trend_profile["composite_score"]), 3),
         }
 
         # ── Counting categories — GP-adjusted ───────────────────────────

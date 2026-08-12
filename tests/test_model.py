@@ -5,6 +5,7 @@ import pandas as pd
 
 from config import LEAGUE_CONFIG
 from model import (
+    RECENT_WEIGHT_MAX,
     calibrate_category_values,
     calibrate_milestone_value,
     compute_decline_factor,
@@ -153,9 +154,234 @@ class ProjectStatsTests(unittest.TestCase):
             base_weights=[0.625, 0.375],
         )
 
+        # This scenario is the fully-headroom-constrained case named in
+        # finding #3 of the whole-branch review: composite_score clips to its
+        # max (0.5), so trend_shift is fully maxed at 0.14, and role_score
+        # also saturates the ratio to 1.0. Under the headroom-aware cap
+        # (option (c) from docs/superpowers/specs/2026-08-12-role-growth-
+        # calibration-followup-research.md #3), role_boost is no longer the
+        # nominal role_boost_cap (0.12) — it's capped at whatever headroom is
+        # left under RECENT_WEIGHT_MAX (0.85) after base_weights[0] (0.625)
+        # and trend_shift (0.14): available_headroom = 0.85 - 0.625 - 0.14 =
+        # 0.085, so effective_role_boost_cap = min(0.12, 0.085) = 0.085, and
+        # since the ratio clips to 1.0, role_boost == 0.085 (verified by
+        # running compute_trend_profile directly against this scenario).
+        # Before this fix, role_boost computed to the full 0.12, and
+        # base_weights[0] + trend_shift + role_boost = 0.885 was silently
+        # truncated to 0.85 by _rebalance_recent_weight's clamp — discarding
+        # 0.035 of the nominal boost unpredictably. Now weights[0] arrives at
+        # 0.85 directly through the headroom-aware calculation itself, with
+        # the downstream clamp acting as a no-op safety net rather than the
+        # thing doing the truncating.
         self.assertGreater(trend_profile["role_boost"], 0.0)
-        self.assertLessEqual(trend_profile["role_boost"], 0.08)
+        self.assertAlmostEqual(trend_profile["role_boost"], 0.085, places=6)
         self.assertLessEqual(trend_profile["weights"][0], 0.85)
+        self.assertAlmostEqual(trend_profile["weights"][0], 0.85, places=6)
+
+    def test_role_boost_saturates_for_moderate_role_growth(self) -> None:
+        player_season_stats = {
+            "2024-25": pd.Series(
+                {
+                    "PTS": 18.0,
+                    "AST": 4.0,
+                    "REB": 5.0,
+                    "3PTM": 1.5,
+                    "ST": 1.0,
+                    "BLK": 0.5,
+                    "MIN": 33.0,
+                }
+            ),
+            "2023-24": pd.Series(
+                {
+                    "PTS": 15.0,
+                    "AST": 3.3,
+                    "REB": 4.3,
+                    "3PTM": 1.2,
+                    "ST": 0.9,
+                    "BLK": 0.45,
+                    "MIN": 27.0,
+                }
+            ),
+        }
+
+        trend_profile = compute_trend_profile(
+            player_season_stats=player_season_stats,
+            available_seasons=["2024-25", "2023-24"],
+            base_weights=[0.625, 0.375],
+        )
+
+        # role_score here is ~0.22 — below the OLD 0.25 saturation point
+        # (would only have produced a partial ~0.069 boost under the old
+        # constants) but above the NEW 0.18 saturation point, so the ratio
+        # role_score / ROLE_BOOST_SATURATION clips to 1.0. This is the exact
+        # shape of miss the issue names: real minutes/production growth that
+        # the old boost mechanism under-delivered on.
+        #
+        # Under the headroom-aware cap (finding #3, option (c)), role_boost
+        # is min(role_boost_cap, headroom) rather than a fixed 0.12 budget.
+        # Here trend_shift is NOT maxed (composite_score ~0.19, below the
+        # 0.22 threshold for a fully-maxed trend_shift), so there's more
+        # headroom than in test_role_change_boost_is_capped, but still
+        # slightly less than the nominal 0.12: trend_shift computes to
+        # ~0.12075, so available_headroom = 0.85 - 0.625 - 0.12075 ~= 0.10425,
+        # which is < role_boost_cap (0.12), so role_boost ~= 0.10425 (verified
+        # by running compute_trend_profile directly against this scenario).
+        # This still demonstrates the boost reaching close to its cap for a
+        # realistic moderate-growth player — just no longer exactly capped at
+        # 0.12, since headroom (not the nominal cap alone) is now the
+        # binding constraint even in this non-fully-maxed case.
+        self.assertGreater(trend_profile["role_score"], 0.19)
+        self.assertLess(trend_profile["role_score"], 0.25)
+        self.assertGreaterEqual(trend_profile["role_boost"], 0.10)
+        self.assertAlmostEqual(trend_profile["role_boost"], 0.10424981314199067, places=6)
+
+    def test_role_boost_never_forces_truncation_past_recent_weight_max(self) -> None:
+        # Regression test for finding #3 of the whole-branch review
+        # (docs/superpowers/specs/2026-08-12-role-growth-calibration-
+        # followup-research.md). Real diagnostics (TREND_ROLE_BOOST /
+        # TREND_SHIFT, exposed on this branch) showed Josh Hart, Dyson
+        # Daniels, and Amen Thompson all had trend_shift == 0.14 (fully
+        # maxed) and nominal role_boost == 0.12 (fully saturated), whose sum
+        # with base_weights[0] (0.625) is 0.885 — silently truncated to
+        # RECENT_WEIGHT_MAX (0.85) by _rebalance_recent_weight before this
+        # fix, discarding 0.035 of the calibrated boost unpredictably. This
+        # scenario reproduces that shape: composite_score and role_score
+        # both clip to their maxima, so trend_shift maxes at 0.14 and the
+        # role_score/ROLE_BOOST_SATURATION ratio saturates to 1.0.
+        player_season_stats = {
+            "2024-25": pd.Series(
+                {
+                    "PTS": 24.0,
+                    "AST": 8.0,
+                    "REB": 7.0,
+                    "3PTM": 2.8,
+                    "ST": 1.6,
+                    "BLK": 0.9,
+                    "MIN": 36.0,
+                }
+            ),
+            "2023-24": pd.Series(
+                {
+                    "PTS": 10.0,
+                    "AST": 3.0,
+                    "REB": 3.0,
+                    "3PTM": 1.0,
+                    "ST": 0.7,
+                    "BLK": 0.4,
+                    "MIN": 21.0,
+                }
+            ),
+        }
+
+        trend_profile = compute_trend_profile(
+            player_season_stats=player_season_stats,
+            available_seasons=["2024-25", "2023-24"],
+            base_weights=[0.625, 0.375],
+        )
+
+        self.assertAlmostEqual(trend_profile["trend_shift"], 0.14, places=6)
+
+        base_weight = 0.625
+        desired_recent_weight = (
+            base_weight + trend_profile["trend_shift"] + trend_profile["role_boost"]
+        )
+
+        # The whole point of the fix: no truncation is needed downstream
+        # because desired_recent_weight never exceeds RECENT_WEIGHT_MAX
+        # through this path in the first place.
+        self.assertLessEqual(desired_recent_weight, RECENT_WEIGHT_MAX)
+        self.assertAlmostEqual(desired_recent_weight, RECENT_WEIGHT_MAX, places=6)
+
+        # role_boost adapted down from the nominal cap (0.12) rather than
+        # being silently clamped elsewhere — proving the headroom-aware cap
+        # fired, not just that the old clamp happened to land at the same
+        # place.
+        nominal_role_boost_cap = 0.12
+        self.assertLess(trend_profile["role_boost"], nominal_role_boost_cap)
+        self.assertGreater(trend_profile["role_boost"], 0.0)
+
+    def test_project_stats_row_exposes_trend_profile_values(self) -> None:
+        # Same player shape as test_role_change_boost_is_capped, but built as
+        # full season DataFrames so we can run it through project_stats() and
+        # confirm the row's TREND_* fields match compute_trend_profile()'s
+        # direct output for the same input — a plumbing regression guard.
+        season_recent = pd.DataFrame(
+            [
+                {
+                    "PLAYER_NAME": "Breakout Player",
+                    "AGE": 24,
+                    "GP": 82,
+                    "MIN": 36.0,
+                    "FGM": 9.0,
+                    "FGA": 18.0,
+                    "FG%": 0.500,
+                    "3PTM": 2.8,
+                    "FTM": 4.0,
+                    "PTS": 24.0,
+                    "REB": 7.0,
+                    "AST": 8.0,
+                    "ST": 1.6,
+                    "BLK": 0.9,
+                    "TO": 2.5,
+                    "PF": 2.0,
+                }
+            ]
+        )
+        season_prior = pd.DataFrame(
+            [
+                {
+                    "PLAYER_NAME": "Breakout Player",
+                    "AGE": 23,
+                    "GP": 82,
+                    "MIN": 21.0,
+                    "FGM": 4.0,
+                    "FGA": 9.0,
+                    "FG%": 0.444,
+                    "3PTM": 1.0,
+                    "FTM": 2.0,
+                    "PTS": 10.0,
+                    "REB": 3.0,
+                    "AST": 3.0,
+                    "ST": 0.7,
+                    "BLK": 0.4,
+                    "TO": 1.2,
+                    "PF": 1.6,
+                }
+            ]
+        )
+
+        projected = project_stats(
+            season_dfs=[season_recent, season_prior],
+            weights=[0.625, 0.375],
+            derived_stats={},
+            tech_per_game={},
+            seasons=["2024-25", "2023-24"],
+        )
+
+        row = projected.loc[projected["PLAYER_NAME"] == "Breakout Player"].iloc[0]
+
+        expected_trend_profile = compute_trend_profile(
+            player_season_stats={
+                "2024-25": season_recent.iloc[0],
+                "2023-24": season_prior.iloc[0],
+            },
+            available_seasons=["2024-25", "2023-24"],
+            base_weights=[0.625, 0.375],
+        )
+
+        self.assertAlmostEqual(
+            row["TREND_ROLE_SCORE"], round(float(expected_trend_profile["role_score"]), 3), places=6
+        )
+        self.assertAlmostEqual(
+            row["TREND_ROLE_BOOST"], round(float(expected_trend_profile["role_boost"]), 3), places=6
+        )
+        self.assertAlmostEqual(
+            row["TREND_SHIFT"], round(float(expected_trend_profile["trend_shift"]), 3), places=6
+        )
+        self.assertAlmostEqual(
+            row["TREND_COMPOSITE_SCORE"], round(float(expected_trend_profile["composite_score"]), 3), places=6
+        )
+        self.assertGreater(row["TREND_ROLE_BOOST"], 0.0)
 
     def test_decline_factor_requires_age_and_negative_trend_alignment(self) -> None:
         older_negative = compute_decline_factor(age=35, composite_score=-0.22)

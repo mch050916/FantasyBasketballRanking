@@ -1,4 +1,5 @@
 DISTORTION_FAMILY,PRIMARY_HITS,PRIMARY_BENCHMARKS,PRIMARY_PLAYER_COUNT,SECONDARY_HITS,EVIDENCE_LEVEL,FOLLOW_UP_DECISION,AVG_ABS_DELTA,REPRESENTATIVE_PLAYERS
-milestone carry,24,3,14,12,repeat_exact_league,active_target,60.07380952380952,"Giannis Antetokounmpo, Alperen Şengün, Jaren Jackson Jr."
-balanced category carry,4,2,3,8,repeat_exact_league,active_target,117.04166666666666,"Jaden McDaniels, Toumani Camara, Luguentz Dort"
+milestone carry,14,3,10,9,repeat_exact_league,active_target,70.175,"Josh Hart, Giannis Antetokounmpo, Ivica Zubac"
+balanced category carry,13,3,10,11,repeat_exact_league,active_target,84.825,"Devin Booker, Stephen Curry, Jaden McDaniels"
+big-man stat carry,3,3,1,0,repeat_exact_league,monitor_narrow,23.0,Rudy Gobert
 guard creation carry,0,0,0,2,secondary_only,support_only,354.0,Tyrese Haliburton

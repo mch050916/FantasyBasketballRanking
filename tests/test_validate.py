@@ -7,6 +7,7 @@ import pandas as pd
 from benchmark_ingest import build_benchmark_snapshot, build_review_table
 from identity import canonical_player_key
 from validate import (
+    PREDICTED_CONTEXT_COLUMNS,
     append_benchmark_history,
     build_breakout_availability_artifact,
     build_breakout_availability_summary,
@@ -18,6 +19,8 @@ from validate import (
     build_top_miss_artifact,
     build_validation_summary_row,
     classify_breakout_availability,
+    classify_category_distortion_family,
+    classify_miss_bucket,
     compute_metric_deltas,
     find_previous_baseline,
     load_benchmark_history,
@@ -57,6 +60,46 @@ class ValidateTests(unittest.TestCase):
 
         self.assertEqual(result["matched_players"], 2)
         self.assertEqual(result["status"], "weak_matches")
+
+    def test_validate_details_carries_trend_profile_columns(self) -> None:
+        # Guards the plumbing added for the role-growth calibration follow-up:
+        # TREND_ROLE_SCORE/TREND_ROLE_BOOST/TREND_SHIFT/TREND_COMPOSITE_SCORE
+        # must be listed in PREDICTED_CONTEXT_COLUMNS (the gate that decides
+        # what survives validate()'s merge into `details`), and must actually
+        # come through when present on the projected DataFrame.
+        for col in (
+            "TREND_ROLE_SCORE",
+            "TREND_ROLE_BOOST",
+            "TREND_SHIFT",
+            "TREND_COMPOSITE_SCORE",
+        ):
+            self.assertIn(col, PREDICTED_CONTEXT_COLUMNS)
+
+        rankings = pd.DataFrame(
+            [
+                {
+                    "PLAYER_NAME": "Nikola Jokić",
+                    "RANK": 1,
+                    "TREND_ROLE_SCORE": 0.271,
+                    "TREND_ROLE_BOOST": 0.12,
+                    "TREND_SHIFT": 0.05,
+                    "TREND_COMPOSITE_SCORE": 0.18,
+                }
+            ]
+        )
+        known = pd.DataFrame([{"Player Name": "Nikola Jokic", "Rank": 1}])
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            csv_path = Path(tmpdir) / "known.csv"
+            known.to_csv(csv_path, index=False)
+            result = validate(rankings, str(csv_path))
+
+        details = result["details"]
+        self.assertIn("TREND_ROLE_SCORE", details.columns)
+        self.assertIn("TREND_ROLE_BOOST", details.columns)
+        self.assertIn("TREND_SHIFT", details.columns)
+        self.assertIn("TREND_COMPOSITE_SCORE", details.columns)
+        self.assertEqual(details["TREND_ROLE_BOOST"].iloc[0], 0.12)
 
     def test_build_player_name_supports_split_columns(self) -> None:
         known = pd.DataFrame(
@@ -375,6 +418,146 @@ class ValidateTests(unittest.TestCase):
         self.assertIn("breakout/role growth", bucket_counts.index)
         self.assertIn("category-weight distortion", bucket_counts.index)
 
+    def test_classify_miss_bucket_flags_healthy_one_dimensional_overrate(self) -> None:
+        # Shaped after the real Devin Booker miss from the 2025-26 true
+        # holdout: predicted #39, actual #119, healthy all season, no
+        # elevated DD/TD/TECH, weak REB/BLK. Currently falls through to
+        # "aging/decline" by elimination.
+        booker_like_row = pd.Series(
+            {
+                "delta": -80,
+                "GP_FACTOR": 0.88,
+                "PTS": 23.08,
+                "REB": 3.74,
+                "AST": 6.17,
+                "BLK": 0.30,
+                "DD": 0.18,
+                "TD": 0.0,
+                "TECH": 0.029,
+            }
+        )
+
+        self.assertEqual(
+            classify_miss_bucket(booker_like_row),
+            "category-weight distortion",
+        )
+        self.assertEqual(
+            classify_category_distortion_family(booker_like_row),
+            "balanced category carry",
+        )
+
+    def test_classify_miss_bucket_keeps_aging_decline_for_non_concentrated_profiles(self) -> None:
+        # A healthy overrate that ISN'T one-dimensional (decent REB/BLK)
+        # should still fall to "aging/decline" — the new branch must not
+        # over-fire on every healthy overrate.
+        balanced_decline_row = pd.Series(
+            {
+                "delta": -20,
+                "GP_FACTOR": 0.90,
+                "PTS": 12.0,
+                "REB": 6.0,
+                "AST": 3.0,
+                "BLK": 0.8,
+                "DD": 0.10,
+                "TD": 0.0,
+                "TECH": 0.01,
+            }
+        )
+
+        self.assertEqual(classify_miss_bucket(balanced_decline_row), "aging/decline")
+
+    def test_classify_miss_bucket_does_not_flag_low_scoring_healthy_overrates(self) -> None:
+        # Real false positives found in a subsequent review of the
+        # Booker-branch fix: healthy, big-overrate players with weak
+        # REB/BLK but LOW PTS are not one-dimensional scorers — they're
+        # genuine aging/decline (or rookie/role-shift) misses and must
+        # not be swept into "category-weight distortion" just because
+        # REB/BLK happen to be weak too.
+        chris_paul_like_row = pd.Series(
+            {
+                "delta": -436,
+                "GP_FACTOR": 0.904,
+                "PTS": 7.918092280677733,
+                "REB": 3.2757694994625677,
+                "AST": 6.359757702093891,
+                "BLK": 0.189656,
+                "DD": 0.12504577856213622,
+                "TD": 0.0,
+                "TECH": 0.019530587539173652,
+            }
+        )
+        bub_carrington_like_row = pd.Series(
+            {
+                "delta": -370,
+                "GP_FACTOR": 1.0,
+                "PTS": 9.841463414634147,
+                "REB": 4.158536585365853,
+                "AST": 4.439024390243903,
+                "BLK": 0.256098,
+                "DD": 0.056818181818181816,
+                "TD": 0.0,
+                "TECH": 0.027600000000000003,
+            }
+        )
+        westbrook_like_row = pd.Series(
+            {
+                "delta": -73,
+                "GP_FACTOR": 0.902,
+                "PTS": 11.426174353658539,
+                "REB": 4.3747304573170736,
+                "AST": 5.174016963414634,
+                "BLK": 0.415443,
+                "DD": 0.13596810506566606,
+                "TD": 0.03884803001876173,
+                "TECH": 0.023729833536585365,
+            }
+        )
+
+        self.assertEqual(classify_miss_bucket(chris_paul_like_row), "aging/decline")
+        self.assertEqual(classify_miss_bucket(bub_carrington_like_row), "aging/decline")
+        self.assertEqual(classify_miss_bucket(westbrook_like_row), "aging/decline")
+
+    def test_classify_miss_bucket_still_flags_real_booker_holdout_row(self) -> None:
+        # Confirms the PTS-concentration threshold doesn't exclude the
+        # real true positive it was added to protect: Devin Booker's
+        # 2025-26 true-holdout row (PTS=23.08).
+        booker_row = pd.Series(
+            {
+                "delta": -81,
+                "GP_FACTOR": 0.88,
+                "PTS": 23.080659532935194,
+                "REB": 3.7436237735333364,
+                "AST": 6.170923008103348,
+                "BLK": 0.257713,
+                "DD": 0.1806141422726606,
+                "TD": 0.0,
+                "TECH": 0.029056300138114274,
+            }
+        )
+        self.assertEqual(classify_miss_bucket(booker_row), "category-weight distortion")
+
+    def test_classify_miss_bucket_still_flags_real_austin_reaves_boundary_row(self) -> None:
+        # An earlier 18.0 PTS threshold wrongly excluded this real row
+        # (Austin Reaves, 2025-26 snapshot, PTS=17.54) — he was already a
+        # confirmed "balanced category carry" true positive cited by name
+        # in GitHub issue #4 before this fix. The threshold was lowered
+        # to 15.0 specifically to keep this boundary case correct while
+        # still excluding every confirmed false positive (max PTS ~12.6).
+        reaves_row = pd.Series(
+            {
+                "delta": -31,
+                "GP_FACTOR": 0.918,
+                "PTS": 17.541258759484922,
+                "REB": 4.087120061682169,
+                "AST": 5.228808633079077,
+                "BLK": 0.27741609887549407,
+                "DD": 0.10073760561034889,
+                "TD": 0.011193067290038765,
+                "TECH": 0.022303,
+            }
+        )
+        self.assertEqual(classify_miss_bucket(reaves_row), "category-weight distortion")
+
     def test_build_milestone_contribution_artifact_separates_dd_and_td(self) -> None:
         result = {
             "details": pd.DataFrame(
@@ -419,6 +602,78 @@ class ValidateTests(unittest.TestCase):
         self.assertGreater(summary["avg_td_g"], 0.0)
         self.assertIn("DD", summary["dominant_counts"])
         self.assertIn("TD", summary["dominant_counts"])
+
+    def test_build_milestone_contribution_artifact_floors_tiny_total_value_denominator(self) -> None:
+        # A small-but-nonzero TOTAL_VALUE (near-replacement-level net
+        # contribution) blows up MILESTONE_ABS_SHARE when divided into a
+        # normal-sized DD_G/TD_G sum. Real example: Jaren Jackson Jr.'s
+        # 2023-24 row has TOTAL_VALUE=-0.034 and DD_G/TD_G summing to
+        # ~0.52, producing a share of ~15.2 (a ratio that should never
+        # exceed ~1.0). The floor should treat the ratio as unreliable
+        # (NaN) rather than exploding, while leaving a normal-sized
+        # TOTAL_VALUE row (Player A, unchanged from the sibling test)
+        # untouched.
+        result = {
+            "details": pd.DataFrame(
+                [
+                    {
+                        "PLAYER_NAME": "Player A",
+                        "RANK": 18,
+                        "ACTUAL_RANK": 78,
+                        "delta": -60,
+                        "GP_FACTOR": 0.92,
+                        "DD": 0.45,
+                        "TD": 0.02,
+                        "DD_G": 1.20,
+                        "TD_G": 0.10,
+                        "TOTAL_VALUE": 3.0,
+                    },
+                    {
+                        "PLAYER_NAME": "Jaren Jackson Jr.-like",
+                        "RANK": 40,
+                        "ACTUAL_RANK": 68,
+                        "delta": 28,
+                        "GP_FACTOR": 0.90,
+                        "DD": 0.06,
+                        "TD": 0.0,
+                        "DD_G": -0.17,
+                        "TD_G": -0.35,
+                        "TOTAL_VALUE": -0.034,
+                    },
+                ]
+            )
+        }
+
+        artifact = build_milestone_contribution_artifact(result, top_n=2)
+        tiny_row = artifact[artifact["PLAYER_NAME"] == "Jaren Jackson Jr.-like"].iloc[0]
+        normal_row = artifact[artifact["PLAYER_NAME"] == "Player A"].iloc[0]
+
+        self.assertTrue(pd.isna(tiny_row["MILESTONE_ABS_SHARE"]))
+        self.assertAlmostEqual(normal_row["MILESTONE_ABS_SHARE"], 1.30 / 3.0, places=6)
+
+    def test_classify_category_distortion_family_does_not_misfile_tiny_total_value_as_milestone_carry(self) -> None:
+        # Once MILESTONE_ABS_SHARE is floored to NaN for a tiny TOTAL_VALUE
+        # row, classify_category_distortion_family must not fall back to
+        # "milestone carry" for a player whose DD/TD/AST profile doesn't
+        # otherwise clear that family's thresholds.
+        tiny_value_row = pd.Series(
+            {
+                "MILESTONE_ABS_SHARE": float("nan"),
+                "PTS": 12.0,
+                "REB": 4.84,
+                "AST": 1.84,
+                "3PTM": 1.0,
+                "BLK": 1.35,
+                "TO": 1.9,
+                "FG%": 0.47,
+                "DD": 0.064,
+                "TD": 0.0,
+            }
+        )
+        self.assertEqual(
+            classify_category_distortion_family(tiny_value_row),
+            "balanced category carry",
+        )
 
     def test_build_category_distortion_artifact_keeps_family_output_compact(self) -> None:
         result = {
