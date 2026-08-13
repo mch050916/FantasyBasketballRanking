@@ -479,8 +479,55 @@ class ValidateTests(unittest.TestCase):
         )
         self.assertEqual(
             classify_category_distortion_family(booker_like_row),
-            "balanced category carry",
+            "concentrated scorer carry",
         )
+
+    def test_classify_category_distortion_family_splits_concentrated_scorers_from_the_rest(self) -> None:
+        # Real evidence from the balanced-category-carry investigation (see
+        # GitHub issue #4's investigation comment and issue #8): 6 confirmed
+        # high-usage overrated players and 6 confirmed low-usage/defensive
+        # underrated players (+ Jaden McDaniels, whose static predicted
+        # profile matches the underrated group even though one season's
+        # actual outcome separately labeled him overrated) -- this is the
+        # full known population this branch was derived from, not a sample.
+        # NOTE: passing on this evidence is a regression guard (the code
+        # implements the intended split), not validation that the pts>=17.0/
+        # blocks<0.50 thresholds generalize -- see the plan doc's epistemic
+        # status section. Real validation is out-of-sample data this branch
+        # wasn't derived from.
+        concentrated_scorers = {
+            "Austin Reaves": {"PTS": 17.541259, "REB": 4.087120, "AST": 5.228809, "BLK": 0.277416},
+            "De'Aaron Fox": {"PTS": 20.304762, "REB": 3.858804, "AST": 4.938959, "BLK": 0.335330},
+            "DeMar DeRozan": {"PTS": 21.062275, "REB": 3.718307, "AST": 4.423756, "BLK": 0.442405},
+            "Devin Booker": {"PTS": 23.080660, "REB": 3.743624, "AST": 6.170923, "BLK": 0.257713},
+            "Mikal Bridges": {"PTS": 18.441817, "REB": 3.738925, "AST": 3.695754, "BLK": 0.457620},
+            "Stephen Curry": {"PTS": 21.461422, "REB": 3.784324, "AST": 4.873427, "BLK": 0.351093},
+        }
+        not_concentrated = {
+            "Dillon Brooks": {"PTS": 12.296763, "REB": 3.239429, "AST": 1.525713, "BLK": 0.171308},
+            "Jaren Jackson Jr.": {"PTS": 19.292777, "REB": 4.838961, "AST": 1.840728, "BLK": 1.347030},
+            "Jimmy Butler": {"PTS": 12.828389, "REB": 3.631303, "AST": 3.550322, "BLK": 0.209685},
+            "Luguentz Dort": {"PTS": 9.328564, "REB": 3.547921, "AST": 1.398375, "BLK": 0.507343},
+            "Toumani Camara": {"PTS": 10.059699, "REB": 5.281261, "AST": 1.960723, "BLK": 0.576549},
+            "Jaden McDaniels": {"PTS": 11.461861, "REB": 4.969254, "AST": 1.797296, "BLK": 0.803736},
+        }
+        filler = {"TO": 2.0, "FG%": 0.47, "DD": 0.1, "TD": 0.0}
+
+        for name, stats in concentrated_scorers.items():
+            row = pd.Series({**stats, **filler})
+            self.assertEqual(
+                classify_category_distortion_family(row),
+                "concentrated scorer carry",
+                f"{name} should classify as concentrated scorer carry",
+            )
+
+        for name, stats in not_concentrated.items():
+            row = pd.Series({**stats, **filler})
+            self.assertEqual(
+                classify_category_distortion_family(row),
+                "unclassified (category-weight distortion)",
+                f"{name} should not classify as concentrated scorer carry",
+            )
 
     def test_classify_miss_bucket_keeps_aging_decline_for_non_concentrated_profiles(self) -> None:
         # A healthy overrate that ISN'T one-dimensional (decent REB/BLK)
@@ -708,7 +755,7 @@ class ValidateTests(unittest.TestCase):
         )
         self.assertEqual(
             classify_category_distortion_family(tiny_value_row),
-            "balanced category carry",
+            "unclassified (category-weight distortion)",
         )
 
     def test_build_category_distortion_artifact_keeps_family_output_compact(self) -> None:
@@ -785,7 +832,7 @@ class ValidateTests(unittest.TestCase):
         self.assertIn("DISTORTION_FAMILY", artifact.columns)
         self.assertIn("MILESTONE_ABS_SHARE", artifact.columns)
         self.assertNotIn("FGM", artifact.columns)
-        self.assertEqual(artifact.iloc[0]["DISTORTION_FAMILY"], "balanced category carry")
+        self.assertEqual(artifact.iloc[0]["DISTORTION_FAMILY"], "unclassified (category-weight distortion)")
         self.assertIn("milestone carry", family_counts.index)
         self.assertIn("guard creation carry", family_counts.index)
 
@@ -865,7 +912,7 @@ class ValidateTests(unittest.TestCase):
                             {
                                 "PLAYER_NAME": "Toumani Camara",
                                 "delta": -16,
-                                "DISTORTION_FAMILY": "balanced category carry",
+                                "DISTORTION_FAMILY": "concentrated scorer carry",
                             }
                         ]
                     ),
@@ -879,7 +926,7 @@ class ValidateTests(unittest.TestCase):
                             {
                                 "PLAYER_NAME": "Toumani Camara",
                                 "delta": -16,
-                                "DISTORTION_FAMILY": "balanced category carry",
+                                "DISTORTION_FAMILY": "concentrated scorer carry",
                             }
                         ]
                     ),
@@ -887,10 +934,60 @@ class ValidateTests(unittest.TestCase):
             ]
         )
 
-        balanced_row = summary[summary["DISTORTION_FAMILY"] == "balanced category carry"].iloc[0]
-        self.assertEqual(balanced_row["PRIMARY_BENCHMARKS"], 2)
-        self.assertEqual(balanced_row["PRIMARY_PLAYER_COUNT"], 1)
-        self.assertEqual(balanced_row["FOLLOW_UP_DECISION"], "monitor_narrow")
+        concentrated_row = summary[summary["DISTORTION_FAMILY"] == "concentrated scorer carry"].iloc[0]
+        self.assertEqual(concentrated_row["PRIMARY_BENCHMARKS"], 2)
+        self.assertEqual(concentrated_row["PRIMARY_PLAYER_COUNT"], 1)
+        self.assertEqual(concentrated_row["FOLLOW_UP_DECISION"], "monitor_narrow")
+
+    def test_build_category_distortion_summary_excludes_unclassified_from_priority(self) -> None:
+        # An "unclassified"-prefixed family (a structural default, not a
+        # named phenomenon -- see GitHub issue #8) must never read
+        # active_target/monitor_narrow, no matter how strong the raw hit
+        # counts look. Fixture deliberately has 2 primary benchmarks and
+        # 2 distinct players -- exactly what earns "active_target" for a
+        # real family (see the repeat-signal test above) -- to prove the
+        # exclusion isn't just "weak evidence never got there naturally".
+        summary = build_category_distortion_summary(
+            [
+                {
+                    "label": "actual_14cat_24_25_snapshot.csv",
+                    "benchmark_class": "historical_snapshot",
+                    "trust_tier": "snapshot_derived",
+                    "category_distortions": pd.DataFrame(
+                        [
+                            {
+                                "PLAYER_NAME": "Player A",
+                                "delta": -40,
+                                "DISTORTION_FAMILY": "unclassified (category-weight distortion)",
+                            }
+                        ]
+                    ),
+                },
+                {
+                    "label": "actual_14cat_23_24_snapshot.csv",
+                    "benchmark_class": "historical_snapshot",
+                    "trust_tier": "snapshot_derived",
+                    "category_distortions": pd.DataFrame(
+                        [
+                            {
+                                "PLAYER_NAME": "Player B",
+                                "delta": -40,
+                                "DISTORTION_FAMILY": "unclassified (category-weight distortion)",
+                            }
+                        ]
+                    ),
+                },
+            ]
+        )
+
+        unclassified_row = summary[
+            summary["DISTORTION_FAMILY"] == "unclassified (category-weight distortion)"
+        ].iloc[0]
+        self.assertEqual(unclassified_row["PRIMARY_BENCHMARKS"], 2)
+        self.assertEqual(unclassified_row["PRIMARY_PLAYER_COUNT"], 2)
+        self.assertEqual(unclassified_row["EVIDENCE_LEVEL"], "repeat_exact_league")
+        self.assertNotIn(unclassified_row["FOLLOW_UP_DECISION"], {"active_target", "monitor_narrow"})
+        self.assertEqual(unclassified_row["FOLLOW_UP_DECISION"], "not_prioritized")
 
     def test_classify_breakout_availability_emits_only_locked_labels(self) -> None:
         unclear_row = pd.Series({"delta": 10, "GP_FACTOR": 0.90, "GP": 78, "MIN": 20})

@@ -335,8 +335,8 @@ def classify_miss_bucket(row: pd.Series) -> str:
         # true holdout: PTS=23.08), not genuine decline. Route it
         # through the same "category-weight distortion" bucket DD/TD-driven
         # misses use so it gets picked up by
-        # classify_category_distortion_family (naturally lands in
-        # "balanced category carry" for this shape).
+        # classify_category_distortion_family (lands in
+        # "concentrated scorer carry" for this shape).
         #
         # The PTS >= 15.0 gate is required: without it this branch fired
         # for ANY healthy big overrate with weak REB/BLK, which swept in
@@ -347,8 +347,9 @@ def classify_miss_bucket(row: pd.Series) -> str:
         # genuine one-dimensional scorers like Austin Reaves (17.5),
         # Stephen Curry (21.46), and Booker (23.08) — 15.0 sits in that
         # gap. (An earlier 18.0 cutoff was tried first but wrongly
-        # excluded Austin Reaves, a real "balanced category carry"
-        # true positive already cited in GitHub issue #4; 15.0 keeps
+        # excluded Austin Reaves, a real "concentrated scorer carry"
+        # (formerly "balanced category carry") true positive already
+        # cited in GitHub issue #4; 15.0 keeps
         # him in while still excluding every confirmed false positive.)
         #
         # weak_reb/weak_blk fail CLOSED (require a confirmed low value)
@@ -411,7 +412,9 @@ def classify_category_distortion_family(row: pd.Series) -> str:
         return "guard creation carry"
     if fg_pct >= 0.53 and turnovers <= 2.0:
         return "efficiency carry"
-    return "balanced category carry"
+    if pts >= 17.0 and blocks < 0.50:
+        return "concentrated scorer carry"
+    return "unclassified (category-weight distortion)"
 
 
 # MILESTONE_ABS_SHARE = |DD_G + TD_G| / |TOTAL_VALUE| is only meaningful
@@ -838,7 +841,13 @@ def build_category_distortion_summary(results: list[dict[str, object]]) -> pd.Da
         else:
             evidence_level = "secondary_only"
 
-        if evidence_level == "repeat_exact_league" and (
+        if str(family).startswith("unclassified"):
+            # A structural default (the terminal else-branch of a
+            # classification chain) is not a positively-defined phenomenon
+            # and must never top a priority ranking, regardless of hit
+            # count -- see GitHub issue #8's proposed taxonomy rule.
+            follow_up_decision = "not_prioritized"
+        elif evidence_level == "repeat_exact_league" and (
             primary_player_count >= 2 or primary_hits >= 4
         ):
             follow_up_decision = "active_target"
