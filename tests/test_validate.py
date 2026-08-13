@@ -529,10 +529,15 @@ class ValidateTests(unittest.TestCase):
                 f"{name} should not classify as concentrated scorer carry",
             )
 
-    def test_classify_miss_bucket_keeps_aging_decline_for_non_concentrated_profiles(self) -> None:
+    def test_classify_miss_bucket_keeps_unclassified_for_non_concentrated_profiles(self) -> None:
         # A healthy overrate that ISN'T one-dimensional (decent REB/BLK)
-        # should still fall to "aging/decline" — the new branch must not
-        # over-fire on every healthy overrate.
+        # should still fall through to "unclassified (healthy overrate)" —
+        # the concentrated-scorer branch must not over-fire on every
+        # healthy overrate. No TREND_SHIFT here either, so it also doesn't
+        # qualify for "trend overprojection" (see GitHub issue #5's
+        # investigation: "aging/decline" was itself a fallthrough with no
+        # age signal, replaced by a real positive branch keyed on
+        # TREND_SHIFT plus an honest unclassified remainder).
         balanced_decline_row = pd.Series(
             {
                 "delta": -20,
@@ -547,7 +552,7 @@ class ValidateTests(unittest.TestCase):
             }
         )
 
-        self.assertEqual(classify_miss_bucket(balanced_decline_row), "aging/decline")
+        self.assertEqual(classify_miss_bucket(balanced_decline_row), "unclassified (healthy overrate)")
 
     def test_classify_miss_bucket_does_not_flag_low_scoring_healthy_overrates(self) -> None:
         # Real false positives found in a subsequent review of the
