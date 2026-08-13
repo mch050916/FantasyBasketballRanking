@@ -1,0 +1,55 @@
+SEASON_BENCHMARK,PLAYER_NAME,RANK,ACTUAL_RANK,DELTA,BREAKOUT_AVAILABILITY_LABEL,AVAILABILITY_SIGNAL,GP_FACTOR,GP_2024_25,GP_2023_24
+actual_14cat_23_24_snapshot.csv,P.J. Washington,65,124,-59,availability overtrust,low,0.751,57.0,73.0
+actual_14cat_23_24_snapshot.csv,Bilal Coulibaly,88,123,-35,availability overtrust,low,0.727,59.0,63.0
+actual_14cat_23_24_snapshot.csv,Kawhi Leonard,33,58,-25,availability overtrust,very_low,0.616,37.0,68.0
+actual_14cat_23_24_snapshot.csv,Andrew Wiggins,74,99,-25,availability overtrust,low,0.752,60.0,71.0
+actual_14cat_23_24_snapshot.csv,Scottie Barnes,16,39,-23,availability overtrust,low,0.767,65.0,60.0
+actual_14cat_23_24_snapshot.csv,RJ Barrett,49,72,-23,availability overtrust,low,0.707,58.0,58.0
+actual_14cat_23_24_snapshot.csv,Julius Randle,69,87,-18,availability overtrust,low,0.719,69.0,46.0
+actual_14cat_23_24_snapshot.csv,Paul George,79,95,-16,availability overtrust,low,0.664,41.0,74.0
+actual_14cat_23_24_snapshot.csv,Kelly Oubre Jr.,91,106,-15,availability overtrust,low,0.757,60.0,68.0
+actual_14cat_24_25_snapshot.csv,Luka Dončić,6,61,-55,availability overtrust,low,0.719,50.0,70.0
+actual_14cat_24_25_snapshot.csv,Scottie Barnes,16,66,-50,availability overtrust,low,0.767,65.0,60.0
+actual_14cat_24_25_snapshot.csv,Kristaps Porziņģis,71,115,-44,availability overtrust,very_low,0.58,42.0,57.0
+actual_14cat_24_25_snapshot.csv,Andrew Wiggins,74,113,-39,availability overtrust,low,0.752,60.0,71.0
+actual_14cat_24_25_snapshot.csv,Anthony Davis,8,39,-31,availability overtrust,low,0.733,51.0,76.0
+actual_14cat_24_25_snapshot.csv,Julius Randle,69,96,-27,availability overtrust,low,0.719,69.0,46.0
+actual_14cat_24_25_snapshot.csv,Tyrese Maxey,32,58,-26,availability overtrust,low,0.708,52.0,70.0
+actual_14cat_24_25_snapshot.csv,Jimmy Butler,52,72,-20,availability overtrust,low,0.696,55.0,60.0
+actual_14cat_25_26_snapshot.csv,Joel Embiid,17,91,-74,availability overtrust,very_low,0.5,19.0,39.0
+actual_14cat_25_26_snapshot.csv,Jimmy Butler,52,81,-29,availability overtrust,low,0.696,55.0,60.0
+actual_14cat_23_24_snapshot.csv,Kristaps Porziņģis,71,17,54,availability undertrust,very_low,0.58,42.0,57.0
+actual_14cat_23_24_snapshot.csv,Anfernee Simons,117,64,53,availability undertrust,low,0.733,70.0,46.0
+actual_14cat_23_24_snapshot.csv,Walker Kessler,107,55,52,availability undertrust,low,0.718,58.0,64.0
+actual_14cat_23_24_snapshot.csv,Trey Murphy III,68,16,52,availability undertrust,low,0.654,53.0,57.0
+actual_14cat_23_24_snapshot.csv,LaMelo Ball,99,53,46,availability undertrust,very_low,0.5,47.0,22.0
+actual_14cat_23_24_snapshot.csv,Isaiah Hartenstein,100,56,44,availability undertrust,low,0.731,57.0,75.0
+actual_14cat_23_24_snapshot.csv,Cam Thomas,124,84,40,availability undertrust,very_low,0.5,25.0,66.0
+actual_14cat_23_24_snapshot.csv,Norman Powell,97,62,35,availability undertrust,low,0.761,60.0,76.0
+actual_14cat_23_24_snapshot.csv,Franz Wagner,67,33,34,availability undertrust,low,0.77,60.0,72.0
+actual_14cat_23_24_snapshot.csv,Donovan Mitchell,47,14,33,availability undertrust,low,0.773,71.0,55.0
+actual_14cat_23_24_snapshot.csv,Zach LaVine,77,44,33,availability undertrust,low,0.699,74.0,25.0
+actual_14cat_23_24_snapshot.csv,CJ McCollum,92,60,32,availability undertrust,low,0.735,56.0,66.0
+actual_14cat_23_24_snapshot.csv,Jimmy Butler,52,30,22,availability undertrust,low,0.696,55.0,60.0
+actual_14cat_23_24_snapshot.csv,Ja Morant,59,42,17,availability undertrust,very_low,0.61,50.0,9.0
+actual_14cat_23_24_snapshot.csv,Lauri Markkanen,84,68,16,availability undertrust,low,0.62,47.0,55.0
+actual_14cat_23_24_snapshot.csv,Damian Lillard,24,9,15,availability undertrust,low,0.77,58.0,73.0
+actual_14cat_24_25_snapshot.csv,Walker Kessler,107,67,40,availability undertrust,low,0.718,58.0,64.0
+actual_14cat_24_25_snapshot.csv,Anfernee Simons,117,78,39,availability undertrust,low,0.733,70.0,46.0
+actual_14cat_24_25_snapshot.csv,Zach LaVine,77,48,29,availability undertrust,low,0.699,74.0,25.0
+actual_14cat_24_25_snapshot.csv,Jakob Poeltl,90,70,20,availability undertrust,low,0.679,57.0,50.0
+actual_14cat_24_25_snapshot.csv,Donovan Mitchell,47,32,15,availability undertrust,low,0.773,71.0,55.0
+actual_14cat_25_26_snapshot.csv,Saddiq Bey,108,36,72,availability undertrust,low,0.768,,63.0
+actual_14cat_25_26_snapshot.csv,LaMelo Ball,99,60,39,availability undertrust,very_low,0.5,47.0,22.0
+actual_14cat_25_26_snapshot.csv,Paolo Banchero,53,16,37,availability undertrust,low,0.702,46.0,80.0
+actual_14cat_25_26_snapshot.csv,CJ McCollum,92,56,36,availability undertrust,low,0.735,56.0,66.0
+actual_14cat_25_26_snapshot.csv,Donovan Mitchell,47,13,34,availability undertrust,low,0.773,71.0,55.0
+actual_14cat_25_26_snapshot.csv,Deandre Ayton,110,78,32,availability undertrust,very_low,0.561,40.0,55.0
+actual_14cat_25_26_snapshot.csv,Jalen Johnson,35,4,31,availability undertrust,very_low,0.502,36.0,56.0
+actual_14cat_25_26_snapshot.csv,Julius Randle,69,40,29,availability undertrust,low,0.719,69.0,46.0
+actual_14cat_25_26_snapshot.csv,Brandon Miller,114,86,28,availability undertrust,very_low,0.5,27.0,74.0
+actual_14cat_25_26_snapshot.csv,Kawhi Leonard,33,6,27,availability undertrust,very_low,0.616,37.0,68.0
+actual_14cat_25_26_snapshot.csv,Tyrese Maxey,32,8,24,availability undertrust,low,0.708,52.0,70.0
+actual_14cat_25_26_snapshot.csv,Lauri Markkanen,84,61,23,availability undertrust,low,0.62,47.0,55.0
+actual_14cat_25_26_snapshot.csv,Trey Murphy III,68,46,22,availability undertrust,low,0.654,53.0,57.0
+actual_14cat_25_26_snapshot.csv,Andrew Wiggins,74,53,21,availability undertrust,low,0.752,60.0,71.0
