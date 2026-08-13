@@ -417,30 +417,46 @@ def classify_category_distortion_family(row: pd.Series) -> str:
     return "unclassified (category-weight distortion)"
 
 
-# MILESTONE_ABS_SHARE = |DD_G + TD_G| / |TOTAL_VALUE| is only meaningful
-# when TOTAL_VALUE reflects a real net contribution. When |TOTAL_VALUE| is
-# small-but-nonzero (near-replacement-level net value), the ratio explodes
-# even for a modest DD_G/TD_G — e.g. Jaren Jackson Jr.'s 2023-24 row has
-# TOTAL_VALUE=-0.034 and DD_G/TD_G summing to ~0.52, producing a share of
-# ~15.2 (a ratio that should never exceed ~1.0 in a sane world). Real
-# committed diagnostics show a clean gap between contaminating low-value
-# rows (|TOTAL_VALUE| <= ~0.63: Westbrook, Devin Vassell, Jimmy Butler,
-# DeMar DeRozan, Tyler Herro, Jaren Jackson Jr.) and genuinely large
-# milestone-driven rows (|TOTAL_VALUE| >= ~1.27: Giannis, Şengün, Zubac,
-# Josh Hart, Vučević, Josh Giddey, Bam Adebayo, LeBron). 1.0 sits in that
-# gap and reads as "at least one full G-score unit of standalone value."
+# MILESTONE_ABS_SHARE = |DD_G + TD_G| / TOTAL_VALUE is only meaningful when
+# TOTAL_VALUE reflects a real, positive net contribution. Two distinct ways
+# that breaks, both guarded by requiring TOTAL_VALUE >= this floor (sign-
+# aware, not just |TOTAL_VALUE| >= floor):
+#   1. Small-but-nonzero TOTAL_VALUE (near-replacement-level): the ratio
+#      explodes even for a modest DD_G/TD_G — e.g. Jaren Jackson Jr.'s
+#      2023-24 row has TOTAL_VALUE=-0.034 and DD_G/TD_G summing to ~0.52,
+#      producing a share of ~15.2 (should never exceed ~1.0). Real
+#      committed diagnostics show a clean gap between contaminating
+#      low-value rows (|TOTAL_VALUE| <= ~0.63: Westbrook, Devin Vassell,
+#      Jimmy Butler, DeMar DeRozan, Tyler Herro, Jaren Jackson Jr.) and
+#      genuinely large milestone-driven rows (|TOTAL_VALUE| >= ~1.27:
+#      Giannis, Şengün, Zubac, Josh Hart, Vučević, Josh Giddey, Bam
+#      Adebayo, LeBron). 1.0 sits in that gap and reads as "at least one
+#      full G-score unit of standalone value."
+#   2. TOTAL_VALUE well past the floor in magnitude, but negative — a
+#      below-replacement player with negative milestone G-scores too.
+#      "Share of value" is meaningless with no positive value to share.
+#      Real example: Jordan Poole, TOTAL_VALUE=-2.07, DD_G/TD_G summing
+#      to -1.22, |−1.22| / |−2.07| = 0.59 reads as a real signal for a
+#      player whose weak DD/TD is part of why he's below replacement, not
+#      carrying him. A magnitude-only guard (|TOTAL_VALUE| >= floor)
+#      passes this case; only a sign-aware guard catches it.
 MILESTONE_SHARE_TOTAL_VALUE_FLOOR = 1.0
 
 
 def _compute_milestone_abs_share(milestone_g_sum: pd.Series, total_value: pd.Series) -> pd.Series:
-    """Return |milestone_g_sum| / |total_value|, NaN below the reliability floor.
+    """Return |milestone_g_sum| / total_value, NaN below the reliability floor.
 
     Guards the ratio against small-but-nonzero denominators (see
     MILESTONE_SHARE_TOTAL_VALUE_FLOOR) in addition to the exact-zero case.
+    Requires TOTAL_VALUE >= floor (sign-aware), not just |TOTAL_VALUE| >=
+    floor -- "share of value" is only meaningful when there's real positive
+    value to share. A magnitude-only guard lets a below-replacement player
+    with negative TOTAL_VALUE and negative milestone G-scores produce a
+    ratio that reads as a real positive signal (e.g. Jordan Poole:
+    TOTAL_VALUE=-2.07, DD_G/TD_G summing to -1.22, share=0.59).
     """
-    total_abs = total_value.abs()
-    reliable_abs = total_abs.where(total_abs >= MILESTONE_SHARE_TOTAL_VALUE_FLOOR, np.nan)
-    return milestone_g_sum.abs() / reliable_abs
+    reliable_value = total_value.where(total_value >= MILESTONE_SHARE_TOTAL_VALUE_FLOOR, np.nan)
+    return milestone_g_sum.abs() / reliable_value
 
 
 def _milestone_dominant_label(dd_g: float | None, td_g: float | None) -> str:

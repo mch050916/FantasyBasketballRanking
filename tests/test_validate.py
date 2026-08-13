@@ -734,6 +734,54 @@ class ValidateTests(unittest.TestCase):
         self.assertTrue(pd.isna(tiny_row["MILESTONE_ABS_SHARE"]))
         self.assertAlmostEqual(normal_row["MILESTONE_ABS_SHARE"], 1.30 / 3.0, places=6)
 
+    def test_build_milestone_contribution_artifact_floors_negative_total_value_past_the_magnitude_floor(self) -> None:
+        # The magnitude floor alone isn't enough: a real below-replacement
+        # player can have |TOTAL_VALUE| well past MILESTONE_SHARE_TOTAL_VALUE_
+        # FLOOR while TOTAL_VALUE itself is negative, with negative DD_G/TD_G
+        # too. Real example: Jordan Poole, TOTAL_VALUE=-2.07, DD_G=-0.87,
+        # TD_G=-0.35 -- |milestone_g_sum|/|total_value| = 1.22/2.07 = 0.59,
+        # a ratio that reads as a real positive "milestone carry" signal for
+        # a player who is below replacement partly BECAUSE of weak DD/TD, not
+        # carried by them. "Share of value" is meaningless when there's no
+        # positive value to share -- must be NaN, not a magnitude-only check.
+        result = {
+            "details": pd.DataFrame(
+                [
+                    {
+                        "PLAYER_NAME": "Jordan Poole-like",
+                        "RANK": 90,
+                        "ACTUAL_RANK": 120,
+                        "delta": -30,
+                        "GP_FACTOR": 0.95,
+                        "DD": 0.01,
+                        "TD": 0.0,
+                        "DD_G": -0.87,
+                        "TD_G": -0.35,
+                        "TOTAL_VALUE": -2.07,
+                    },
+                    {
+                        "PLAYER_NAME": "Player A",
+                        "RANK": 18,
+                        "ACTUAL_RANK": 78,
+                        "delta": -60,
+                        "GP_FACTOR": 0.92,
+                        "DD": 0.45,
+                        "TD": 0.02,
+                        "DD_G": 1.20,
+                        "TD_G": 0.10,
+                        "TOTAL_VALUE": 3.0,
+                    },
+                ]
+            )
+        }
+
+        artifact = build_milestone_contribution_artifact(result, top_n=2)
+        poole_row = artifact[artifact["PLAYER_NAME"] == "Jordan Poole-like"].iloc[0]
+        normal_row = artifact[artifact["PLAYER_NAME"] == "Player A"].iloc[0]
+
+        self.assertTrue(pd.isna(poole_row["MILESTONE_ABS_SHARE"]))
+        self.assertAlmostEqual(normal_row["MILESTONE_ABS_SHARE"], 1.30 / 3.0, places=6)
+
     def test_classify_category_distortion_family_does_not_misfile_tiny_total_value_as_milestone_carry(self) -> None:
         # Once MILESTONE_ABS_SHARE is floored to NaN for a tiny TOTAL_VALUE
         # row, classify_category_distortion_family must not fall back to
