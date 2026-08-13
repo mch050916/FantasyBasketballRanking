@@ -56,6 +56,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
 
+from identity import canonical_player_key
 from main import VALIDATION_TARGETS
 from validate import validate
 
@@ -216,6 +217,63 @@ def paired_bootstrap(before_details: pd.DataFrame, after_details: pd.DataFrame,
             "pct_improved": float(np.mean(mae_delta < 0) * 100),
         },
     }
+
+
+def collateral_damage_report(before_details: pd.DataFrame, after_details: pd.DataFrame,
+                             target_players: set[str]) -> pd.DataFrame:
+    """
+    Part A of the narrow-change replacement criterion (docs/adr/0001's Power
+    check section): flag any player OUTSIDE target_players whose rank moved
+    further than the mechanical reordering ripple from the target set can
+    explain.
+
+    If K players are the declared, intended target of a change, any single
+    non-target player's rank can shift by at most K purely from being crossed
+    by target players re-sorting past them in the pool ordering -- each
+    target player contributes at most +/-1 to a given non-target player's
+    rank, regardless of how many other crossings happen elsewhere.
+
+    This bound catches pure reordering ripple, but NOT the pipeline's other
+    ripple source: compute_g_scores() normalizes every category against
+    pool-wide Box-Cox mean/std, so changing one player's raw stats shifts
+    that normalization slightly for every other player too, independent of
+    reordering -- confirmed directly on issue #2's real data (a non-target
+    player's TOTAL_VALUE moved measurably with GP_FACTOR/DECLINE_FACTOR/
+    AVAILABILITY_RISK_FACTOR byte-identical before/after). That's why this
+    report also carries each flagged player's TOTAL_VALUE delta when the
+    column is available -- a human still has to judge "tiny renormalization
+    noise" from "something real changed," this function only narrows who to
+    look at.
+
+    target_players: names as they'd appear in PLAYER_NAME, matched via the
+    same canonical identity key identity.py/validate.py use everywhere else.
+    """
+    target_keys = {canonical_player_key(name) for name in target_players}
+    ripple_bound = len(target_keys)
+
+    merge_cols = ["PLAYER_KEY", "RANK"]
+    has_value = "TOTAL_VALUE" in before_details.columns and "TOTAL_VALUE" in after_details.columns
+    if has_value:
+        merge_cols = merge_cols + ["TOTAL_VALUE"]
+
+    paired = pd.merge(
+        before_details[["PLAYER_NAME"] + merge_cols],
+        after_details[merge_cols],
+        on="PLAYER_KEY",
+        suffixes=("_before", "_after"),
+    )
+    paired["rank_delta"] = paired["RANK_after"] - paired["RANK_before"]
+
+    non_target = paired[~paired["PLAYER_KEY"].isin(target_keys)].copy()
+    flagged = non_target[non_target["rank_delta"].abs() > ripple_bound].copy()
+    flagged = flagged.sort_values("rank_delta", key=lambda s: s.abs(), ascending=False)
+
+    out_cols = ["PLAYER_NAME", "RANK_before", "RANK_after", "rank_delta"]
+    if has_value:
+        flagged["value_delta"] = flagged["TOTAL_VALUE_after"] - flagged["TOTAL_VALUE_before"]
+        out_cols = out_cols + ["TOTAL_VALUE_before", "TOTAL_VALUE_after", "value_delta"]
+
+    return flagged[out_cols].reset_index(drop=True)
 
 
 def classify_season(sp_delta: float | None, mae_delta: float | None,
@@ -385,6 +443,44 @@ def print_paired_bootstrap_report(before: pd.DataFrame, after: pd.DataFrame,
               f"improved in {mae['pct_improved']:.1f}% of resamples")
 
 
+def print_collateral_damage_report(before: pd.DataFrame, after: pd.DataFrame,
+                                   target_players: set[str]) -> None:
+    """Part A of the narrow-change replacement criterion: print flagged non-target movers per benchmark."""
+    targets = exact_league_targets()
+    if not targets:
+        return
+
+    print(f"\nCollateral damage check (targets: {', '.join(sorted(target_players))})")
+    print("=" * 78)
+
+    for target in targets:
+        path = target["path"]
+        label = target.get("label", path)
+        if not Path(path).exists():
+            continue
+
+        before_details = run_quiet(before, target).get("details")
+        after_details = run_quiet(after, target).get("details")
+        if before_details is None or after_details is None or before_details.empty or after_details.empty:
+            print(f"\n{label}: no matched players")
+            continue
+
+        flagged = collateral_damage_report(before_details, after_details, target_players)
+        print(f"\n{label}: {len(flagged)} non-target player(s) moved beyond the ripple bound")
+        if not flagged.empty:
+            has_value = "value_delta" in flagged.columns
+            for _, row in flagged.iterrows():
+                line = (f"  {row['PLAYER_NAME']:<28} rank {int(row['RANK_before'])} -> "
+                        f"{int(row['RANK_after'])} ({row['rank_delta']:+d})")
+                if has_value:
+                    line += f"  value {row['TOTAL_VALUE_before']:.4f} -> {row['TOTAL_VALUE_after']:.4f} ({row['value_delta']:+.4f})"
+                print(line)
+            if has_value:
+                print("  (a large rank_delta with a tiny value_delta is likely pool-wide Box-Cox "
+                      "renormalization ripple, not a real change to that player's own evaluation --"
+                      " judge by value_delta, not rank_delta, before treating this as a problem)")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Compare aggregate Spearman/MAE across the exact-league benchmarks for two rankings snapshots.",
@@ -416,6 +512,12 @@ def main() -> None:
         "--mae-threshold", type=float, default=None,
         help="Minimum |delta| for a season's MAE move to count as regressed/improved",
     )
+    parser.add_argument(
+        "--target-players", metavar="NAME,NAME,...",
+        help="Comma-separated list of the change's declared intended target players. When given, "
+             "adds the Part-A collateral-damage report (docs/adr/0001): any other player whose "
+             "rank moved more than the target set's own reordering ripple can explain is flagged.",
+    )
     args = parser.parse_args()
 
     if args.noise_floor:
@@ -432,6 +534,10 @@ def main() -> None:
 
     if args.bootstrap:
         print_paired_bootstrap_report(before, after, args.bootstrap_iterations, args.seed)
+
+    if args.target_players:
+        target_players = {name.strip() for name in args.target_players.split(",") if name.strip()}
+        print_collateral_damage_report(before, after, target_players)
 
 
 if __name__ == "__main__":

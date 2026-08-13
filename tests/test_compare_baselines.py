@@ -11,6 +11,7 @@ import pandas as pd
 from compare_baselines import (
     bootstrap_single_run,
     classify_season,
+    collateral_damage_report,
     exact_league_targets,
     paired_bootstrap,
     run_quiet,
@@ -224,6 +225,102 @@ class PairedBootstrapTests(unittest.TestCase):
 
         self.assertGreater(result["mae_delta"]["pct_improved"], 90.0)
         self.assertLess(result["mae_delta"]["median"], 0.0)
+
+
+class CollateralDamageReportTests(unittest.TestCase):
+    def _paired(self, deltas: dict[str, int]) -> tuple[pd.DataFrame, pd.DataFrame]:
+        # deltas: {player: after_rank - before_rank}. Before ranks are just
+        # 1..n in insertion order; after ranks are shifted by the given delta.
+        names = list(deltas.keys())
+        before = pd.DataFrame({
+            "PLAYER_KEY": [n.lower().replace(" ", "") for n in names],
+            "PLAYER_NAME": names,
+            "RANK": list(range(1, len(names) + 1)),
+        })
+        after = before.copy()
+        after["RANK"] = [before.loc[i, "RANK"] + deltas[names[i]] for i in range(len(names))]
+        return before, after
+
+    def test_flags_non_target_move_beyond_the_ripple_bound(self) -> None:
+        # 1 target player -> ripple bound is 1. A non-target player moving by
+        # 5 cannot be explained by a single target player's reordering.
+        before, after = self._paired({"Joel Embiid": -3, "Someone Else": 5, "Third Player": 0})
+
+        report = collateral_damage_report(before, after, target_players={"Joel Embiid"})
+
+        self.assertEqual(report["PLAYER_NAME"].tolist(), ["Someone Else"])
+
+    def test_allows_ripple_within_the_bound(self) -> None:
+        # 1 target player -> ripple bound is 1. A non-target player moving by
+        # exactly 1 is within what a single re-ranked target player explains.
+        before, after = self._paired({"Joel Embiid": -3, "Someone Else": 1})
+
+        report = collateral_damage_report(before, after, target_players={"Joel Embiid"})
+
+        self.assertTrue(report.empty)
+
+    def test_ignores_target_player_movement_regardless_of_size(self) -> None:
+        before, after = self._paired({"Joel Embiid": -50, "Someone Else": 0})
+
+        report = collateral_damage_report(before, after, target_players={"Joel Embiid"})
+
+        self.assertTrue(report.empty)
+        self.assertNotIn("Joel Embiid", report["PLAYER_NAME"].tolist())
+
+    def test_empty_when_nothing_moves(self) -> None:
+        before, after = self._paired({"Joel Embiid": 0, "Someone Else": 0, "Third Player": 0})
+
+        report = collateral_damage_report(before, after, target_players={"Joel Embiid"})
+
+        self.assertTrue(report.empty)
+
+    def test_bound_scales_with_target_set_size(self) -> None:
+        # 2 target players -> ripple bound is 2. A non-target player moving by
+        # 2 is within bound; moving by 3 is not.
+        before, after = self._paired({
+            "Joel Embiid": -3, "Stephen Curry": -2,
+            "Within Bound": 2, "Beyond Bound": 3,
+        })
+
+        report = collateral_damage_report(
+            before, after, target_players={"Joel Embiid", "Stephen Curry"},
+        )
+
+        self.assertEqual(report["PLAYER_NAME"].tolist(), ["Beyond Bound"])
+
+    def test_matches_target_players_by_canonical_identity(self) -> None:
+        # Accents/casing shouldn't matter for target matching, same as every
+        # other identity match in this codebase.
+        before, after = self._paired({"Nikola Jokic": -3, "Someone Else": 1})
+
+        report = collateral_damage_report(before, after, target_players={"Nikola Jokić"})
+
+        self.assertTrue(report.empty)
+
+    def test_carries_value_delta_when_total_value_present(self) -> None:
+        # compute_g_scores() normalizes every category against pool-wide
+        # Box-Cox stats, so a flagged non-target player's own rank can move
+        # even when their TOTAL_VALUE barely changed (renormalization ripple,
+        # not a real change) -- the report needs to carry both numbers so a
+        # human can tell the difference.
+        before = pd.DataFrame({
+            "PLAYER_KEY": ["joelembiid", "joshhart"],
+            "PLAYER_NAME": ["Joel Embiid", "Josh Hart"],
+            "RANK": [17, 20],
+            "TOTAL_VALUE": [3.5, 2.097397],
+        })
+        after = pd.DataFrame({
+            "PLAYER_KEY": ["joelembiid", "joshhart"],
+            "RANK": [20, 18],
+            "TOTAL_VALUE": [3.0, 2.105054],
+        })
+
+        report = collateral_damage_report(before, after, target_players={"Joel Embiid"})
+
+        self.assertEqual(report["PLAYER_NAME"].tolist(), ["Josh Hart"])
+        self.assertAlmostEqual(report.loc[0, "TOTAL_VALUE_before"], 2.097397)
+        self.assertAlmostEqual(report.loc[0, "TOTAL_VALUE_after"], 2.105054)
+        self.assertAlmostEqual(report.loc[0, "value_delta"], 2.105054 - 2.097397)
 
 
 if __name__ == "__main__":

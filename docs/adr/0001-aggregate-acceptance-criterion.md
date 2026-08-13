@@ -32,18 +32,43 @@ The case issue #2 will actually hit — availability shading moving a player acr
 | 2024-25 | 87 | 0.629 (0.481, 0.753) | 21.45 (18.09, 24.95) |
 | 2023-24 | 98 | 0.688 (0.567, 0.787) | 20.76 (17.61, 24.08) |
 
-## Issue #2 threshold (availability calibration)
+## Power check: verify the metric can detect the declared effect size (added 2026-08-14)
 
-Declared before implementation starts:
+Issue #2 surfaced a bug in this ADR itself, in the opposite direction from the one issue #1 surfaced. Issue #1 gated a decision on a metric with no statistical power to detect a real family-level effect at n=6. Issue #2's 80% threshold gated a decision on a metric with no statistical power to detect a real *single-player* effect: one correct rank move in a 72–98-player pool cannot shift aggregate Spearman `pct_improved` past 80% regardless of correctness — that's arithmetic, not a tuning problem. Both are the same underlying mistake: using an underpowered instrument to make a ship/no-ship call. The fix is the same principle both times — check the instrument can detect the declared effect *before* trusting it, not after.
 
-- No season shows `pct_improved` below 30% on Spearman.
-- At least two of the three seasons show `pct_improved` at or above 80%.
+**Before any threshold is declared in a plan doc, three steps are now required:**
 
-**Reasoning:**
+1. **State the expected effect size explicitly** — how many players are expected to move, and by roughly what rank magnitude. Not a vibe, a number, checked against real data where possible (issue #2's original "~5 affected players" estimate was a guess, not checked against the actual GP distribution — see below).
+2. **Check whether the chosen metric can detect that effect at the chosen bar.** If a change is expected to move 1–2 players, aggregate pool-wide Spearman `pct_improved` cannot clear 80% no matter how correct the change is. This should be established at plan time, arithmetically, not discovered after implementation.
+3. **If the metric is underpowered for the expected effect, the plan doc declares a different, equally pre-committed criterion instead** — not a looser version of the same one. See the narrow-change replacement criterion below for the pattern this ADR now recommends.
 
-- 80% rather than the conventional 95% is deliberate. Availability calibration's realistic ceiling is ~0.01–0.03 aggregate Spearman, because only about five of 72–98 matched players per season are availability misses (Embiid, Luka, Scottie Barnes, P.J. Washington, Porzingis). Demanding 95% would reject a genuine improvement of the size this issue can actually produce, and the predictable consequence is loosening the threshold after seeing results — the exact failure mode this ADR exists to prevent. 80% means "comfortably more likely real than not."
-- The 30% floor is a regression guard. It catches the case where availability misses are fixed by systematically shading everyone else downward.
-- This threshold is specific to issue #2's expected effect size. Issues with larger expected effects should declare a higher bar.
+**This does not loosen the 80%/30% bar.** That threshold stands, unchanged, for changes with a broad expected effect (multiple players, meaningful aggregate movement) — issue #2's case doesn't call it into question, it just isn't the right instrument for issue #2's *particular* effect size.
+
+### Replacement criterion for narrowly-scoped changes
+
+For a change whose honest expected effect is a small, specific set of players (not a pool-wide shift), aggregate Spearman/MAE is the wrong instrument. Two-part replacement, developed for issue #2:
+
+**Part A — Collateral damage floor.** No player outside the intended target set may move outside the pool's own noise floor. This formalizes what had been an ad hoc manual audit (issue #2's implementer caught 13-player collateral damage by hand at an earlier, looser threshold) into an automated, repeatable check — `compare_baselines.py --target-players "Name,Name"` flags any non-target player whose rank moved further than the target set's own reordering could mechanically explain (K target players bound any single non-target player's rank move to K, since each target player crossing them contributes at most ±1).
+
+That mechanical bound catches reordering ripple but not the pipeline's *other* ripple source, found while building this: `compute_g_scores()` normalizes every category against pool-wide Box-Cox mean/std, so changing one player's raw stats shifts that normalization slightly for every other player too — confirmed directly on issue #2's real data (Josh Hart's rank moved 20→18 with `GP_FACTOR`/`DECLINE_FACTOR`/`AVAILABILITY_RISK_FACTOR` byte-identical before/after; `TOTAL_VALUE` moved only 2.0974→2.1051, ~0.4%). The report therefore also carries each flagged player's `TOTAL_VALUE` delta, so a human can tell a real change from renormalization noise — the tool narrows who to look at, it doesn't make the final call.
+
+**Part B — Out-of-sample rule behavior.** Whether the mechanism is *correct* is not answerable on the season it was fitted against — checking that a rule built to catch a specific player's miss does in fact catch that miss is close to tautological (code written to move Embiid moves Embiid; that's not independent evidence). It's answerable on seasons that have their own instances of the pattern the rule targets, independent of what motivated the rule's design. Concretely for availability: does the rule fire on the real availability misses in the *other* exact-league benchmarks, using their own independently-computed `BREAKOUT_AVAILABILITY_LABEL` diagnostics as ground truth (not hand-picked examples)? Does it fire on anyone it shouldn't (particularly `availability undertrust` cases, where firing would actively hurt)? Unlike the targeted-player check, this can come back negative — and did (see below): it's a genuine test of generalization, not tuning.
+
+### Issue #2 outcome, evaluated against the new criterion (2026-08-14)
+
+The 80%/30% aggregate gate failed as designed and was correctly not overridden — `pct_improved` on Spearman came in at 67.6% / 42.1% / 22.5% across the three seasons, with all three deltas' 95% CIs straddling zero (noise, not signal, at the pool level). The original "~5 affected players" estimate behind 80% was wrong for what got built: `compute_availability_risk_factor` fires for exactly 1 player in the real 130-player pool (Embiid, `AVAILABILITY_RISK_FACTOR` 0.893, moving #17→#20 toward a true #91 finish).
+
+Evaluated instead against the replacement criterion:
+
+- **Exclusion counters:** 0 before-only / 0 after-only on all three benchmarks (72/87/98 matched, unchanged) — the qualifying player set did not shift, so the paired comparison above was measuring what it claimed to, cleanly.
+- **Part A, collateral damage:** `--target-players "Joel Embiid"` flags exactly 1 non-target player across all three benchmarks — Josh Hart, rank 20→18, `TOTAL_VALUE` 2.0974→2.1051 (+0.4%). This is the Box-Cox renormalization ripple described above, not a real change to Hart's own evaluation (his own factors are unchanged). No genuine collateral damage found.
+- **Part B, out-of-sample rule behavior:** checked directly against `identity.py`/`model.py` on the peer's branch (3509eef), not against the peer's own report of it. Pulled every `availability overtrust` (real chronic-miss pattern) and `availability undertrust` (firing here would hurt) player from the 2024-25 and 2023-24 benchmarks' own `BREAKOUT_AVAILABILITY_LABEL` diagnostics — seasons the rule was not fitted against — and ran `compute_availability_risk_factor` on each player's actual raw BBR games-played, independent of the model's own cached output:
+  - 14 independently-diagnosed `availability overtrust` misses across the two seasons (Luka Dončić, Scottie Barnes, Kristaps Porziņģis, Andrew Wiggins, Anthony Davis, Julius Randle, Tyrese Maxey, Jimmy Butler, P.J. Washington, Bilal Coulibaly, Kawhi Leonard, RJ Barrett, Paul George, Kelly Oubre Jr.) — **the rule fired on 0 of them.** Several sit close to the threshold (Porziņģis 0.51/0.70, Kawhi 0.45/0.83, George exactly 0.50/0.90) but none has *both* loaded seasons under the 41/82 cutoff, which the rule requires by design (recurring, not one bad season).
+  - 15 `availability undertrust` cases (where firing would actively hurt, including LaMelo Ball — the one false positive that drove the earlier, looser-threshold gate failure) — **the rule fired on 0 of them.** Zero false positives, confirmed against the full 130-player pool, not just this list.
+  - Net: the mechanism is precise (no false positives anywhere in the pool) but does not generalize — it caught 1 of 15 real chronic-availability misses across the three exact-league seasons combined (Embiid only), missing the other 14 entirely.
+- **Scope note:** this is not a temporal walk-forward backtest (re-projecting as of a date before 2023-24/2024-25 began) — the repo only holds 2 BBR season files, so a genuine "what would the model have said before that season started" test isn't currently possible without new historical GP data. What was checked is the rule's real, current output against independently-diagnosed misses in two seasons it wasn't fitted against, which answers the question this criterion was designed to ask (does it fire correctly outside the fitted case) without requiring new data ingestion.
+
+No ship/no-ship call is recorded here — that's a decision for the repo owner, not something this ADR or the tooling decides for them.
 
 ## Consequences
 
