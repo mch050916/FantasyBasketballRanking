@@ -97,7 +97,11 @@ VALIDATION_TARGETS = [
         "trust_tier": "direct_export",
         "name_col": ["First Name", "Last Name"],
         "rank_col": "OR",
-        "note": "Live Yahoo season-to-date rank snapshot from the export's OR column",
+        "rank_ceiling_from_pool_size": True,
+        "note": "Live Yahoo season-to-date rank snapshot from the export's OR column. "
+                "OR ranks across Yahoo's full rostered-player universe (~700 players), "
+                "far larger than our own pool — rank_ceiling_from_pool_size caps the "
+                "comparison to our pool size so rank deltas stay commensurate.",
     },
     {
         "path": "actual_9cat_24_25.csv",
@@ -485,6 +489,7 @@ def main() -> None:
                 benchmark_class=target.get("benchmark_class"),
                 trust_tier=target.get("trust_tier"),
             )
+            rank_ceiling = pool_size if target.get("rank_ceiling_from_pool_size") else target.get("rank_ceiling")
             result = validate(
                 rankings,
                 path,
@@ -492,6 +497,7 @@ def main() -> None:
                 rank_col=target.get("rank_col", "Rank"),
                 rank_from_metric=target.get("rank_from_metric", False),
                 rank_metric_ascending=target.get("rank_metric_ascending", True),
+                rank_ceiling=rank_ceiling,
                 label=target.get("label"),
                 note=target.get("note"),
                 benchmark_class=target.get("benchmark_class"),

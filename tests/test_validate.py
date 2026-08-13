@@ -139,6 +139,42 @@ class ValidateTests(unittest.TestCase):
         self.assertEqual(result["status"], "no_matches")
         self.assertEqual(result["matched_players"], 0)
 
+    def test_validate_rank_ceiling_excludes_players_outside_pool_and_fixes_mae(self) -> None:
+        # Guards the yahoo_25_26_live_snapshot fix: when the known CSV ranks across
+        # a much larger player universe than our own pool, raw rank deltas for
+        # players who fell far outside that universe inflate MAE for reasons that
+        # have nothing to do with model quality. rank_ceiling should drop them.
+        rankings = pd.DataFrame(
+            [
+                {"PLAYER_NAME": "Player A", "RANK": 1},
+                {"PLAYER_NAME": "Player B", "RANK": 2},
+                {"PLAYER_NAME": "Player C", "RANK": 3},
+            ]
+        )
+        known = pd.DataFrame(
+            [
+                {"Player Name": "Player A", "Rank": 2},
+                {"Player Name": "Player B", "Rank": 3},
+                # Player C collapsed to a deep-universe rank (e.g. season-ending
+                # injury) — outside our own 3-player pool entirely.
+                {"Player Name": "Player C", "Rank": 700},
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            csv_path = Path(tmpdir) / "known.csv"
+            known.to_csv(csv_path, index=False)
+            unbounded = validate(rankings, str(csv_path), min_matched_players=1)
+            bounded = validate(rankings, str(csv_path), min_matched_players=1, rank_ceiling=3)
+
+        self.assertEqual(unbounded["matched_players"], 3)
+        self.assertEqual(unbounded["excluded_by_rank_ceiling"], 0)
+
+        self.assertEqual(bounded["matched_players"], 2)
+        self.assertEqual(bounded["excluded_by_rank_ceiling"], 1)
+        self.assertLess(bounded["mae"], unbounded["mae"])
+        self.assertNotIn("Player C", bounded["details"]["PLAYER_NAME"].tolist())
+
     def test_validate_uses_override_backed_deterministic_matching(self) -> None:
         rankings = pd.DataFrame([{"PLAYER_NAME": "Jimmy Butler", "RANK": 12}])
         known = pd.DataFrame([{"Player Name": "Jimmy Butler III", "Rank": 11}])

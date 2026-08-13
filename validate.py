@@ -919,6 +919,7 @@ def validate(df: pd.DataFrame,
              rank_metric_ascending: bool = True,
              top_n_misses: int = 10,
              min_matched_players: int = 10,
+             rank_ceiling: int | None = None,
              label: str | None = None,
              note: str | None = None,
              benchmark_class: str | None = None,
@@ -934,6 +935,13 @@ def validate(df: pd.DataFrame,
     name_col    : column name for player names in the known CSV
     rank_col    : column name for actual ranks in the known CSV
     top_n_misses: how many biggest misses to print
+    rank_ceiling: when set, drop matched players whose ACTUAL_RANK exceeds this
+                  value before scoring. Needed when the known CSV ranks across a
+                  much larger player universe than our own pool (e.g. a full
+                  league's rostered players vs our roster-relevant top N) — without
+                  it, raw rank deltas are computed across two differently-sized
+                  rank spaces, which inflates MAE for reasons that have nothing to
+                  do with model quality (see the yahoo_25_26_live_snapshot fix).
 
     Returns
     -------
@@ -965,12 +973,19 @@ def validate(df: pd.DataFrame,
         how="inner",
     )
 
+    excluded_by_rank_ceiling = 0
+    if rank_ceiling is not None and not merged.empty:
+        within_ceiling = merged["ACTUAL_RANK"] <= rank_ceiling
+        excluded_by_rank_ceiling = int((~within_ceiling).sum())
+        merged = merged[within_ceiling].copy()
+
     result = {
         "status": "no_matches",
         "spearman": None,
         "hit_rate": None,
         "mae": None,
         "matched_players": len(merged),
+        "excluded_by_rank_ceiling": excluded_by_rank_ceiling,
         "details": merged,
         "label": label or Path(known_csv).name,
         "benchmark_class": benchmark_class,
@@ -1041,6 +1056,9 @@ def validate(df: pd.DataFrame,
 
     print(f"  Status          : {status}")
     print(f"  Players matched : {len(merged)}")
+    if rank_ceiling is not None:
+        print(f"  Rank ceiling    : ≤{rank_ceiling} "
+              f"({excluded_by_rank_ceiling} matched player(s) excluded — actual rank fell outside our pool)")
     if np.isnan(corr):
         print("  Spearman r      : n/a  (need at least 2 matched players)")
     else:
