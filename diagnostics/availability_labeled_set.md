@@ -21,16 +21,19 @@ the pattern in more than one season, and can appear under *different*
 labels in different seasons — e.g. Jimmy Butler is `overtrust` in 2024-25
 and `undertrust` in 2023-24).
 
-**Built for:** the availability-risk detection-condition redesign (see the
-issue that replaces #2 — link added when filed). Design against recall on
-the `availability overtrust` rows; use `availability undertrust` as the
-false-positive guard; report both.
+**Built for:** the availability-risk detection-condition redesign (issue #6,
+which replaced #2). Design against recall on the `availability overtrust`
+rows; use `availability undertrust` as the false-positive guard; report both.
 
-**Depleting-resource note:** this set was built by hand-inspecting exactly
-the three exact-league benchmarks the acceptance gate also uses. Using it as
-a design target and *also* as part of later acceptance evaluation is the
-same problem `docs/adr/0001` calls out for the holdout seasons themselves —
-a metric computed against data a design decision was tuned against has
-reduced power to independently confirm that decision. Treat this set as
-partially spent for evaluation purposes once it's been used to shape the
-detection condition's design.
+**SPENT as of 2026-08-14 — do not treat as a fresh evaluation set.** Average-
+ratio, floor, and swing/consistency thresholds over `GP_2024_25`/`GP_2023_24`
+were all swept against this exact set while investigating #6 (see #6's
+close-out comment for the full sweep and the separability finding: no
+GP-ratio-only shape cleanly separates the two labels — false positives arrive
+about as fast as true positives across the whole threshold range). That
+means this set has already been used as a *design* target, not just an
+*evaluation* target — the same depleting-resource problem `docs/adr/0001`
+describes for the holdout seasons themselves. Any future detection condition
+"validated" against this set without fresh evidence (a different signal
+entirely, not another GP-ratio reshuffling) should not be trusted on that
+validation alone.
