@@ -18,8 +18,6 @@ Everything else is automatic.
 from pathlib import Path
 from datetime import datetime
 
-import pandas as pd
-
 from benchmark_ingest import assess_benchmark_readiness, benchmark_snapshot_filename
 from config   import LEAGUE_CONFIG
 from data     import load_bbr_csv, filter_qualified, fetch_game_logs, \
@@ -50,6 +48,7 @@ BBR_FILES = [
 ]
 
 OUTPUT_FILE     = "durant_rankings_2025_26.csv"
+ROOKIE_OUTPUT_FILE = "durant_rankings_rookies_2025_26.csv"
 DIAGNOSTICS_DIR = Path("diagnostics")
 BENCHMARK_HISTORY_FILE = DIAGNOSTICS_DIR / "benchmark_history.csv"
 TOP_MISS_DIR = DIAGNOSTICS_DIR / "top_misses"
@@ -453,9 +452,6 @@ def main() -> None:
         cache_file=config["draft_history_cache"],
     )
     rookie_rows = build_rookie_rows(draft_history, existing_players=set(projected["PLAYER_NAME"]))
-    if not rookie_rows.empty:
-        projected = pd.concat([projected, rookie_rows], ignore_index=True)
-        print(f"   Added {len(rookie_rows)} rookies with no prior NBA history")
 
     rankings = compute_g_scores(projected, player_tau, league_tau, config)
 
@@ -467,6 +463,24 @@ def main() -> None:
     print(format_rankings(rankings, config, top_n=30))
 
     save_rankings(rankings, OUTPUT_FILE)
+
+    # ── Rookies — ranked separately, not mixed into the veteran pool ───────
+    # Rookies with no prior NBA history can't meaningfully compete for the
+    # main pool's MIN-based cutoff (a debut season's diluted per-game minutes
+    # will almost never clear an established-veteran floor). Instead of
+    # forcing them through that cutoff, rank them against each other using
+    # the same G-score machinery, scored against their own population's
+    # distribution, and save as a separate file. This is a speculative,
+    # lower-confidence list: rookies are projected from a historical
+    # draft-slot production baseline (see rookie_baseline.py), not real
+    # in-season data, and rookies sharing a draft-slot bucket share identical
+    # projected stats -- ties within a bucket are expected, not a bug.
+    if not rookie_rows.empty:
+        rookie_rankings = compute_g_scores(rookie_rows, {}, league_tau, config)
+        print(f"\n\nROOKIE WATCH LIST — {len(rookie_rankings)} incoming rookies, ranked separately")
+        print("(speculative: historical draft-slot production baselines, not real in-season data)")
+        print(format_rankings(rookie_rankings, config, top_n=len(rookie_rankings)))
+        save_rankings(rookie_rankings, ROOKIE_OUTPUT_FILE)
 
     # ── Validation ───────────────────────────────────────────────────────
     validation_results: list[dict[str, object]] = []
