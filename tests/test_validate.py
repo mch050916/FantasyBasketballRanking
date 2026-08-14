@@ -457,8 +457,9 @@ class ValidateTests(unittest.TestCase):
     def test_classify_miss_bucket_flags_healthy_one_dimensional_overrate(self) -> None:
         # Shaped after the real Devin Booker miss from the 2025-26 true
         # holdout: predicted #39, actual #119, healthy all season, no
-        # elevated DD/TD/TECH, weak REB/BLK. Currently falls through to
-        # "aging/decline" by elimination.
+        # elevated DD/TD/TECH, weak REB/BLK. Caught by the one-dimensional
+        # scorer check before it would ever reach the trend-overprojection/
+        # unclassified fallthrough below.
         booker_like_row = pd.Series(
             {
                 "delta": -80,
@@ -599,6 +600,47 @@ class ValidateTests(unittest.TestCase):
 
         for row in (avdija_like_row, westbrook_like_row, okongwu_like_row, thompson_like_row):
             self.assertEqual(classify_miss_bucket(row), "trend overprojection")
+
+    def test_classify_miss_bucket_flags_unclassified_below_trend_shift_threshold(self) -> None:
+        # Pins the >= 0.085 threshold itself from below, not just from
+        # missing data: these two real players from the same 12-player
+        # investigated population DO carry a TREND_SHIFT value, but it's
+        # well under the 0.085 floor, so they must fall through to
+        # "unclassified (healthy overrate)" rather than firing the new
+        # branch. Without a below-threshold row like this, mutating the
+        # code to drop the ">= 0.085" comparison entirely (i.e. firing on
+        # any non-null TREND_SHIFT) would still pass every other test.
+        bridges_like_row = pd.Series(
+            {
+                "delta": -50,
+                "GP_FACTOR": 0.803,
+                "PTS": 16.513200,
+                "REB": 5.976451,
+                "AST": 2.955507,
+                "BLK": 0.498068,
+                "DD": 0.165313,
+                "TD": 0.011808,
+                "TECH": 0.015176,
+                "TREND_SHIFT": 0.007,
+            }
+        )
+        harris_like_row = pd.Series(
+            {
+                "delta": -59,
+                "GP_FACTOR": 0.874,
+                "PTS": 13.213405,
+                "REB": 5.333794,
+                "AST": 2.259010,
+                "BLK": 0.628127,
+                "DD": 0.063318,
+                "TD": 0.0,
+                "TECH": 0.018562,
+                "TREND_SHIFT": -0.069,
+            }
+        )
+
+        for row in (bridges_like_row, harris_like_row):
+            self.assertEqual(classify_miss_bucket(row), "unclassified (healthy overrate)")
 
     def test_classify_miss_bucket_keeps_unclassified_for_non_concentrated_profiles(self) -> None:
         # A healthy overrate that ISN'T one-dimensional (decent REB/BLK)
