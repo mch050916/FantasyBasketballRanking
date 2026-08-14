@@ -529,6 +529,77 @@ class ValidateTests(unittest.TestCase):
                 f"{name} should not classify as concentrated scorer carry",
             )
 
+    def test_classify_miss_bucket_flags_trend_overprojection(self) -> None:
+        # GitHub issue #5: these 4 players are currently mislabeled
+        # "aging/decline" despite having no real age-decline signal —
+        # Avdija (23-24), Okongwu (24), Thompson (22) aren't remotely
+        # decline-age, and Westbrook's own TREND_SHIFT is strongly
+        # positive (the model over-projected his role growth, the
+        # opposite of a decline story an age gate would have asserted).
+        # What they share instead is a real, measured positive
+        # TREND_SHIFT that didn't pay off in the actual outcome. Real
+        # projected values from a full pipeline rerun against all 3
+        # exact-league benchmarks (2025-26/2024-25/2023-24).
+        avdija_like_row = pd.Series(
+            {
+                "delta": -49,
+                "GP_FACTOR": 0.889,
+                "PTS": 14.468253,
+                "REB": 6.429995,
+                "AST": 3.445216,
+                "BLK": 0.430418,
+                "DD": 0.201433,
+                "TD": 0.023698,
+                "TECH": 0.025994,
+                "TREND_SHIFT": 0.085,
+            }
+        )
+        westbrook_like_row = pd.Series(
+            {
+                "delta": -73,
+                "GP_FACTOR": 0.902,
+                "PTS": 11.426174,
+                "REB": 4.374730,
+                "AST": 5.174017,
+                "BLK": 0.415443,
+                "DD": 0.135968,
+                "TD": 0.038848,
+                "TECH": 0.023730,
+                "TREND_SHIFT": 0.140,
+            }
+        )
+        okongwu_like_row = pd.Series(
+            {
+                "delta": -18,
+                "GP_FACTOR": 0.848,
+                "PTS": 10.693791,
+                "REB": 7.148129,
+                "AST": 1.740867,
+                "BLK": 0.813506,
+                "DD": 0.319372,
+                "TD": 0.0,
+                "TECH": 0.027602,
+                "TREND_SHIFT": 0.140,
+            }
+        )
+        thompson_like_row = pd.Series(
+            {
+                "delta": -20,
+                "GP_FACTOR": 0.829,
+                "PTS": 11.088722,
+                "REB": 6.577346,
+                "AST": 3.031935,
+                "BLK": 0.984705,
+                "DD": 0.212217,
+                "TD": 0.030317,
+                "TECH": 0.023492,
+                "TREND_SHIFT": 0.140,
+            }
+        )
+
+        for row in (avdija_like_row, westbrook_like_row, okongwu_like_row, thompson_like_row):
+            self.assertEqual(classify_miss_bucket(row), "trend overprojection")
+
     def test_classify_miss_bucket_keeps_unclassified_for_non_concentrated_profiles(self) -> None:
         # A healthy overrate that ISN'T one-dimensional (decent REB/BLK)
         # should still fall through to "unclassified (healthy overrate)" —
@@ -558,9 +629,12 @@ class ValidateTests(unittest.TestCase):
         # Real false positives found in a subsequent review of the
         # Booker-branch fix: healthy, big-overrate players with weak
         # REB/BLK but LOW PTS are not one-dimensional scorers — they're
-        # genuine aging/decline (or rookie/role-shift) misses and must
-        # not be swept into "category-weight distortion" just because
-        # REB/BLK happen to be weak too.
+        # not caught by the category-weight-distortion branch. None of
+        # these three rows carry a TREND_SHIFT value, so per issue #5's
+        # fix they fail closed to the honest "unclassified (healthy
+        # overrate)" remainder rather than being swept into
+        # "category-weight distortion" OR asserting an unverified
+        # "aging/decline" story.
         chris_paul_like_row = pd.Series(
             {
                 "delta": -436,
@@ -601,9 +675,9 @@ class ValidateTests(unittest.TestCase):
             }
         )
 
-        self.assertEqual(classify_miss_bucket(chris_paul_like_row), "aging/decline")
-        self.assertEqual(classify_miss_bucket(bub_carrington_like_row), "aging/decline")
-        self.assertEqual(classify_miss_bucket(westbrook_like_row), "aging/decline")
+        self.assertEqual(classify_miss_bucket(chris_paul_like_row), "unclassified (healthy overrate)")
+        self.assertEqual(classify_miss_bucket(bub_carrington_like_row), "unclassified (healthy overrate)")
+        self.assertEqual(classify_miss_bucket(westbrook_like_row), "unclassified (healthy overrate)")
 
     def test_classify_miss_bucket_still_flags_real_booker_holdout_row(self) -> None:
         # Confirms the PTS-concentration threshold doesn't exclude the

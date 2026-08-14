@@ -360,7 +360,31 @@ def classify_miss_bucket(row: pd.Series) -> str:
         weak_blk = pd.notna(blk) and blk < 0.5
         if high_volume_scorer and weak_reb and weak_blk:
             return "category-weight distortion"
-        return "aging/decline"
+
+        # No milestone-stat elevation and not a one-dimensional scorer —
+        # the old fallthrough here was "aging/decline", asserted with no
+        # AGE signal at all (GitHub issue #5). Age-gating this branch was
+        # investigated and disproven: Russell Westbrook (36, a real
+        # decline case) has the MOST positive TREND_SHIFT in the whole
+        # bucket, so an age gate would label him "aging/decline" while
+        # his own trend numbers say the model over-projected his role
+        # growth — asserting a cause the data contradicts, same failure
+        # mode issue #8 tracks. TREND_SHIFT (already computed by
+        # compute_trend_profile in model.py, already threaded through
+        # PREDICTED_CONTEXT_COLUMNS) is the axis that actually separates
+        # this bucket cleanly: see
+        # docs/superpowers/specs/2026-08-14-aging-decline-trend-overprojection-design.md.
+        # 0.085 is a real threshold, not the metric's ceiling — 0.140 is
+        # trend_boost's hard clip value (model.py compute_trend_profile),
+        # hit by a wide range of underlying composite scores, so this is
+        # a floor, not a two-sided band.
+        # Fails closed on missing/NaN TREND_SHIFT, matching weak_reb/
+        # weak_blk's pattern above: a missing value never gets swept into
+        # a branch that requires a confirmed positive condition.
+        trend_shift = pd.to_numeric(pd.Series([row.get("TREND_SHIFT")]), errors="coerce").iloc[0]
+        if pd.notna(trend_shift) and trend_shift >= 0.085:
+            return "trend overprojection"
+        return "unclassified (healthy overrate)"
     return "unclear/other"
 
 
