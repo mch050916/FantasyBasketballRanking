@@ -18,13 +18,16 @@ Everything else is automatic.
 from pathlib import Path
 from datetime import datetime
 
+import pandas as pd
+
 from benchmark_ingest import assess_benchmark_readiness, benchmark_snapshot_filename
 from config   import LEAGUE_CONFIG
 from data     import load_bbr_csv, filter_qualified, fetch_game_logs, \
                      fetch_tech_per_game, derive_stats_from_logs, \
-                     build_non_actionable_suppression_report
+                     build_non_actionable_suppression_report, fetch_draft_history
 from model    import project_stats, compute_tau, compute_g_scores
 from output   import format_rankings, save_rankings
+from rookie_baseline import build_rookie_rows
 from validate import (
     append_benchmark_history,
     build_breakout_availability_summary,
@@ -444,6 +447,15 @@ def main() -> None:
     projected = project_stats(season_dfs, weights, derived_stats, tech_per_game, seasons=BBR_FILES)
     projected = projected.dropna(subset=["PTS"])
     print(f"   {len(projected)} players with projections")
+
+    draft_history = fetch_draft_history(
+        draft_years=config["draft_years"],
+        cache_file=config["draft_history_cache"],
+    )
+    rookie_rows = build_rookie_rows(draft_history, existing_players=set(projected["PLAYER_NAME"]))
+    if not rookie_rows.empty:
+        projected = pd.concat([projected, rookie_rows], ignore_index=True)
+        print(f"   Added {len(rookie_rows)} rookies with no prior NBA history")
 
     rankings = compute_g_scores(projected, player_tau, league_tau, config)
 

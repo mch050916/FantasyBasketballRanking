@@ -1,6 +1,8 @@
 import unittest
 
-from rookie_baseline import get_rookie_baseline
+import pandas as pd
+
+from rookie_baseline import build_rookie_rows, get_rookie_baseline
 
 
 class RookieBaselineTests(unittest.TestCase):
@@ -59,3 +61,53 @@ class RookieBaselineTests(unittest.TestCase):
         first["PTS"] = -999.0
         second = get_rookie_baseline(1)
         self.assertAlmostEqual(second["PTS"], 13.547, places=3)
+
+
+class BuildRookieRowsTests(unittest.TestCase):
+    def test_drafted_player_with_no_prior_history_gets_a_row(self) -> None:
+        draft_history = {"AJ Dybantsa": {"overall_pick": 1, "round_number": 1}}
+        rows = build_rookie_rows(draft_history, existing_players=set())
+
+        self.assertEqual(len(rows), 1)
+        row = rows.iloc[0]
+        self.assertEqual(row["PLAYER_NAME"], "AJ Dybantsa")
+        self.assertAlmostEqual(row["PTS"], 13.547, places=3)
+        self.assertAlmostEqual(row["GP"], 70.333, places=3)
+
+    def test_player_already_in_existing_players_is_skipped(self) -> None:
+        # Simulates a player who somehow already has BBR history (e.g. a
+        # prior-class draftee who appears in draft_history again for some
+        # reason) -- must not be double-counted.
+        draft_history = {"Cameron Boozer": {"overall_pick": 3, "round_number": 1}}
+        rows = build_rookie_rows(draft_history, existing_players={"Cameron Boozer"})
+
+        self.assertTrue(rows.empty)
+
+    def test_matching_is_identity_aware_not_exact_string_only(self) -> None:
+        # existing_players and draft_history names should be matched via
+        # canonical_player_key (accent/punctuation-insensitive), same as
+        # every other cross-source match in this pipeline.
+        draft_history = {"Bilal Coulibaly": {"overall_pick": 7, "round_number": 1}}
+        rows = build_rookie_rows(draft_history, existing_players={"bilal coulibaly"})
+
+        self.assertTrue(rows.empty)
+
+    def test_undrafted_or_out_of_range_picks_are_excluded(self) -> None:
+        draft_history = {
+            "Second Rounder": {"overall_pick": 60, "round_number": 2},
+            "Out Of Range": {"overall_pick": 61, "round_number": 2},
+        }
+        rows = build_rookie_rows(draft_history, existing_players=set())
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows.iloc[0]["PLAYER_NAME"], "Second Rounder")
+
+    def test_empty_draft_history_returns_empty_dataframe_with_expected_columns(self) -> None:
+        rows = build_rookie_rows({}, existing_players=set())
+
+        self.assertTrue(rows.empty)
+        expected_columns = {
+            "PLAYER_NAME", "GP", "MIN", "PTS", "REB", "AST", "ST", "BLK",
+            "TO", "PF", "FGM", "FGA", "FG%", "3PTM", "FTM", "DD", "TD", "TECH",
+        }
+        self.assertEqual(set(rows.columns), expected_columns)

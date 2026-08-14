@@ -6,7 +6,8 @@ env/
 # NBA API cache files — large binary pickles, regenerated automatically
 game_log_cache.pkl
 tech_cache.pkl
- 
+draft_history_cache.pkl
+
 # Generated output — not source, reproduced by running main.py
 durant_rankings_*.csv
  

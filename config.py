@@ -91,6 +91,10 @@ LEAGUE_CONFIG = {
     # Must match the BBR CSV files you have — see main.py.
     "game_log_seasons": ["2024-25", "2023-24"],
 
+    # Draft year(s) to check for incoming rookies with no prior NBA history.
+    # Update each season to the upcoming/most recent draft class.
+    "draft_years": ["2026"],
+
     # How many players to fetch game logs for.
     # 150 covers the 130-player draft pool with a buffer.
     # Raising this improves tau accuracy at ~1.5 min per extra 100 players.
@@ -102,6 +106,7 @@ LEAGUE_CONFIG = {
 
     # ── Cache files ────────────────────────────────────────────────────────
     # Delete these files to force a fresh NBA API fetch.
-    "game_log_cache": "game_log_cache.pkl",
-    "tech_cache":     "tech_cache.pkl",
+    "game_log_cache":     "game_log_cache.pkl",
+    "tech_cache":         "tech_cache.pkl",
+    "draft_history_cache": "draft_history_cache.pkl",
 }

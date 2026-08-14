@@ -23,6 +23,10 @@ Sample sizes (2023-2025 draft classes): 1-5 n=15, 6-14 n=26, 15-30 n=46,
 31-60 n=75.
 """
 
+import pandas as pd
+
+from identity import canonical_player_key
+
 TECH_DEFAULT = 0.05   # matches data.py:fetch_tech_per_game's own fallback estimate
 
 ROOKIE_BASELINE_BY_PICK_BUCKET: dict[tuple[int, int], dict[str, float]] = {
@@ -64,3 +68,42 @@ def get_rookie_baseline(overall_pick: int) -> dict[str, float] | None:
         if lo <= overall_pick <= hi:
             return dict(baseline)
     return None
+
+
+ROOKIE_ROW_COLUMNS = [
+    "PLAYER_NAME", "GP", "MIN", "PTS", "REB", "AST", "ST", "BLK",
+    "TO", "PF", "FGM", "FGA", "FG%", "3PTM", "FTM", "DD", "TD", "TECH",
+]
+
+
+def build_rookie_rows(draft_history: dict[str, dict[str, int]],
+                      existing_players: set[str]) -> pd.DataFrame:
+    """
+    Build synthetic projection rows for drafted players with no prior NBA
+    history, from the historical draft-slot baseline.
+
+    Skips any player already present in existing_players (matched via
+    canonical_player_key, same identity scheme every other cross-source
+    match in this pipeline uses) -- they already have real projections
+    from project_stats() and must not be double-counted. Skips undrafted
+    or out-of-baseline-range picks (get_rookie_baseline returns None).
+    """
+    existing_keys = {canonical_player_key(name) for name in existing_players}
+
+    rows = []
+    for player_name, pick_info in draft_history.items():
+        if canonical_player_key(player_name) in existing_keys:
+            continue
+
+        baseline = get_rookie_baseline(pick_info["overall_pick"])
+        if baseline is None:
+            continue
+
+        row = {"PLAYER_NAME": player_name}
+        row.update(baseline)
+        rows.append(row)
+
+    if not rows:
+        return pd.DataFrame(columns=ROOKIE_ROW_COLUMNS)
+
+    return pd.DataFrame(rows)[ROOKIE_ROW_COLUMNS]
