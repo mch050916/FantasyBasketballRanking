@@ -10,6 +10,9 @@ draft_history_cache.pkl
 
 # Generated output — not source, reproduced by running main.py
 durant_rankings_*.csv
+
+# Ad-hoc before/after snapshots for compare_baselines.py, scratch only
+diagnostics/baselines/
  
 # Python bytecode
 __pycache__/
