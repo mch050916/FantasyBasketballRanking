@@ -240,6 +240,26 @@ def _load_cached_tech_per_game(cache_path: Path,
     return payload, cache_status
 
 
+def _draft_history_cache_metadata(draft_years: list[str]) -> dict[str, list[str]]:
+    return {"draft_years": list(draft_years)}
+
+
+def _load_cached_draft_history(cache_path: Path,
+                               draft_years: list[str]) -> tuple[dict[str, dict[str, int]] | None, dict[str, str | bool | dict | None]]:
+    payload, cache_status = _read_cache_envelope(cache_path, "draft_history")
+    if not cache_status["valid"]:
+        return None, cache_status
+
+    expected_metadata = _draft_history_cache_metadata(draft_years)
+    metadata = cache_status["metadata"]
+    if metadata != expected_metadata:
+        return None, _invalid_cache_status("draft-history cache metadata mismatch")
+    if not isinstance(payload, dict):
+        return None, _invalid_cache_status("draft-history cache payload is not a player map")
+
+    return payload, cache_status
+
+
 def _missing_game_log_pairs(game_logs: dict[str, dict[str, pd.DataFrame]],
                             player_names: list[str],
                             seasons: list[str]) -> list[tuple[str, str]]:
@@ -685,6 +705,53 @@ def fetch_tech_per_game(seasons: list[str],
         _tech_cache_metadata(seasons, season_weights),
     )
     print(f"   TECH data cached for {len(result)} players")
+
+    return result
+
+
+def fetch_draft_history(draft_years: list[str], cache_file: str) -> dict[str, dict[str, int]]:
+    """
+    Fetch draft-pick results for the given draft years from the NBA API.
+
+    Returns: { player_name -> {"overall_pick": int, "round_number": int} }
+
+    Caches results to disk -- delete the cache file to force a fresh fetch.
+    """
+    cache_path = Path(cache_file)
+    if cache_path.exists():
+        cached, cache_status = _load_cached_draft_history(cache_path, draft_years)
+        if cache_status["valid"]:
+            print("   Loading draft history from cache...")
+            return cached
+        print(f"   Rebuilding draft-history cache: {cache_status['reason']}")
+
+    from nba_api.stats.endpoints import DraftHistory
+
+    result: dict[str, dict[str, int]] = {}
+
+    for year in draft_years:
+        try:
+            time.sleep(1.5)
+            print(f"   Fetching draft results for {year}...")
+            dh = DraftHistory(season_year_nullable=year)
+            df = dh.get_data_frames()[0]
+            for _, row in df.iterrows():
+                name = row["PLAYER_NAME"]
+                result[name] = {
+                    "overall_pick": int(row["OVERALL_PICK"]),
+                    "round_number": int(row["ROUND_NUMBER"]),
+                }
+            print(f"   Draft history fetched for {len(df)} picks in {year}")
+        except Exception as e:
+            print(f"   [warn] Draft history fetch failed for {year}: {e}")
+
+    _write_cache_envelope(
+        cache_path,
+        "draft_history",
+        result,
+        _draft_history_cache_metadata(draft_years),
+    )
+    print(f"   Draft history cached for {len(result)} players")
 
     return result
 
