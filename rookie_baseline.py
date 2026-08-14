@@ -33,7 +33,7 @@ ROOKIE_BASELINE_BY_PICK_BUCKET: dict[tuple[int, int], dict[str, float]] = {
         "DD": 0.0, "TD": 0.0, "TECH": TECH_DEFAULT,
     },
     (6, 14): {
-        "GP": 57.308, "MIN": 18.723, "PTS": 7.235, "REB": 3.604, "AST": 1.73,
+        "GP": 57.308, "MIN": 18.723, "PTS": 7.235, "REB": 3.604, "AST": 1.573,
         "ST": 0.585, "BLK": 0.508, "TO": 1.015, "PF": 1.688, "FGM": 2.719,
         "FGA": 6.065, "FG%": 0.434, "3PTM": 0.873, "FTM": 0.942,
         "DD": 0.0, "TD": 0.0, "TECH": TECH_DEFAULT,

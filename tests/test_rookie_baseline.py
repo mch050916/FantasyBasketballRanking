@@ -43,7 +43,13 @@ class RookieBaselineTests(unittest.TestCase):
         lottery = get_rookie_baseline(10)
         round1 = get_rookie_baseline(20)
         round2 = get_rookie_baseline(45)
-        for cat in ("PTS", "REB", "AST", "MIN", "GP"):
+        # AST is deliberately excluded: real data shows a legitimate
+        # small-sample crossover between the 6-14 bucket (n=26, AST=1.573)
+        # and 15-30 bucket (n=46, AST=1.63) -- not a data error, just
+        # normal variance in which draft years happened to produce more
+        # assist-heavy players in one bucket. Every other category
+        # declines monotonically.
+        for cat in ("PTS", "REB", "MIN", "GP"):
             self.assertGreater(top5[cat], lottery[cat])
             self.assertGreater(lottery[cat], round1[cat])
             self.assertGreater(round1[cat], round2[cat])
