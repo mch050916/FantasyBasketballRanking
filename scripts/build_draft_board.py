@@ -19,6 +19,13 @@ OUTPUT_PATH = REPO_ROOT / "draft_board_2026_27.html"
 Z_COLS = ["PTS_G", "REB_G", "AST_G", "ST_G", "BLK_G", "TO_G",
           "FG%_G", "FTM_G", "3PTM_G", "DD_G", "TD_G", "TECH_G"]
 Z_LABELS = ["PTS", "REB", "AST", "ST", "BLK", "TO", "FG%", "FTM", "3PM", "DD", "TD", "TECH"]
+# DD/TD/TECH are the "milestone" group, hidden by default -- TD specifically is
+# a near-constant column (105/130 players share its exact floor value, see the
+# category-weighting GitHub issue filed 2026-08-15), so it wastes a column's
+# worth of width in the default view; DD/TECH ride along in the same toggle
+# for one simple control rather than three. Kept last in the list so the
+# default/extended split is just a slice, not a filter.
+CORE_COUNT = 9
 
 
 def build_data() -> dict:
@@ -38,6 +45,17 @@ def build_data() -> dict:
             if r["Player"] not in pos_lookup:
                 pos_lookup[r["Player"]] = (str(r["Pos"]).split("-")[0], str(r["Team"]))
 
+    # Per-column normalization: divide each category's G-score by that
+    # category's OWN pool-wide stdev, so a bar's height means "how many of
+    # THIS category's own standard deviations from average," not raw G-score
+    # magnitude. Without this, columns with naturally larger post-weight
+    # spread (DD stdev 0.71) visually dominate columns that are just as
+    # informative but tighter (PTS stdev 0.12) -- same root cause as the
+    # variance-share finding in the category-weighting issue, just showing
+    # up as a display bug here rather than a scoring one. ddof=0 to match
+    # model.py's own `transformed.std()` convention (numpy default).
+    col_stdev = {c: float(rankings[c].std(ddof=0)) for c in Z_COLS}
+
     vets = []
     for _, r in rankings.iterrows():
         pos, team = pos_lookup.get(r["PLAYER_NAME"], ("", ""))
@@ -50,7 +68,7 @@ def build_data() -> dict:
             "team": team,
             "val": round(float(r["TOTAL_VALUE"]), 3),
             "note": note,
-            "z": [round(float(r[c]), 3) if pd.notna(r[c]) else 0.0 for c in Z_COLS],
+            "z": [round(float(r[c]) / col_stdev[c], 3) if pd.notna(r[c]) else 0.0 for c in Z_COLS],
         })
 
     roos = []
@@ -175,35 +193,38 @@ tr.drafted .note-badge{opacity:.35;}
   border-bottom:1px solid var(--border);background:var(--surface);
 }
 
-/* z-score profile: 12 tiny diverging bars per row */
-/* One continuous strip per player -- a silhouette, not 12 mini-charts.
-   --zslot is the per-category column width; the same repeating band
-   pattern is painted behind both the header labels and every row's bars
-   so a column can be traced straight down without counting. */
-:root{ --zslot: 24px; --zcols: 12; }
+/* z-score profile: one continuous strip per player -- a silhouette to
+   pattern-match, not N mini-charts. --zslot is the per-category column
+   width; --zcols is set by JS (9 default, 12 with milestones toggled on).
+   The same 1px gridline pattern is painted behind the header labels and
+   every row's bars at identical column boundaries, so a column can be
+   traced straight down without counting. */
+:root{ --zslot: 26px; --zcols: 9; }
+.zgrid{
+  background-image:repeating-linear-gradient(to right,
+    var(--border) 0, var(--border) 1px, transparent 1px, transparent var(--zslot));
+}
 .zbars{
   position:relative;height:26px;width:calc(var(--zslot) * var(--zcols));
   background:var(--surface-alt);border-radius:3px;overflow:hidden;flex:none;
-  background-image:repeating-linear-gradient(to right,
-    transparent 0, transparent var(--zslot),
-    rgba(255,255,255,.035) var(--zslot), rgba(255,255,255,.035) calc(var(--zslot) * 2));
 }
 .zbars .baseline{position:absolute;left:0;right:0;top:50%;height:1px;background:var(--border-strong);}
 .zbars .bar{position:absolute;width:calc(var(--zslot) - 3px);margin-left:1.5px;}
 .zbars .bar.pos{background:var(--pos-z);bottom:50%;}
 .zbars .bar.neg{background:var(--neg-z);top:50%;}
-.zhead{
-  display:flex;width:calc(var(--zslot) * var(--zcols));
-  background-image:repeating-linear-gradient(to right,
-    transparent 0, transparent var(--zslot),
-    rgba(255,255,255,.035) var(--zslot), rgba(255,255,255,.035) calc(var(--zslot) * 2));
-}
+.zhead{display:flex;width:calc(var(--zslot) * var(--zcols));}
 .zhead span{width:var(--zslot);font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:-.02em;color:var(--text-dim);text-align:center;overflow:hidden;}
-.zlegend{display:flex;align-items:center;gap:14px;margin-left:16px;font-family:var(--mono);font-size:11px;color:var(--text-dim);white-space:nowrap;}
+.zlegend{display:flex;align-items:center;gap:12px;margin-left:16px;font-family:var(--mono);font-size:11px;color:var(--text-dim);white-space:nowrap;}
 .zlegend .sw{display:inline-block;width:9px;height:9px;border-radius:1px;margin-right:5px;vertical-align:-1px;}
 .zlegend .sw.pos{background:var(--pos-z);}
 .zlegend .sw.neg{background:var(--neg-z);}
 .zlegend .scale{color:var(--text);font-weight:600;}
+.milestone-toggle{
+  font-family:var(--mono);font-size:11px;font-weight:600;color:var(--text-dim);
+  background:var(--surface);border:1px solid var(--border-strong);border-radius:3px;
+  padding:3px 8px;cursor:pointer;
+}
+.milestone-toggle.on{color:var(--bg);background:var(--accent);border-color:var(--accent);}
 
 /* ---------- rookies ---------- */
 .disclaimer{
@@ -236,6 +257,7 @@ tr.drafted .note-badge{opacity:.35;}
   <div class="controls" id="vetControls">
     <input class="search" id="search" type="text" placeholder="Search name…" autocomplete="off">
     <div class="chips" id="posChips"></div>
+    <button class="milestone-toggle" id="milestoneToggle" type="button">+ DD / TD / TECH</button>
     <div class="stats" id="statLine"></div>
   </div>
   <div class="controls" id="rooControls" style="display:none">
@@ -254,7 +276,7 @@ tr.drafted .note-badge{opacity:.35;}
           <th class="num">Val</th>
           <th>
             <div style="display:flex;align-items:center;">
-              <div class="zhead" id="zHeadRow"></div>
+              <div class="zhead zgrid" id="zHeadRow"></div>
               <div class="zlegend" id="zLegend"></div>
             </div>
           </th>
@@ -311,29 +333,54 @@ tr.drafted .note-badge{opacity:.35;}
 
   function zKey(kind, name){ return kind + ":" + name; }
 
-  /* ---------- z-score profile strip: one silhouette per player, not 12 mini-charts ---------- */
-  var Z_SCALE = 1.6; /* z magnitude that fills a full half-strip -- also drives the legend text */
-  var ZSLOT = 24;
+  /* ---------- z-score profile strip: one silhouette per player, not N mini-charts ----------
+     Each player's `z` array is ALREADY normalized per-category (divided by that
+     category's own pool stdev) at build time -- see build_draft_board.py -- so a
+     bar's height means "how unusual IN THIS CATEGORY," not raw G-score magnitude,
+     which would otherwise let naturally-wide categories (DD) visually swamp
+     naturally-tight ones (PTS) that are just as informative. */
+  var Z_SCALE = 2.0; /* normalized-stdev magnitude that fills a full half-strip */
+  var ZSLOT = 26;
+  var CORE_COUNT = 9; /* PTS..3PM shown by default; DD/TD/TECH behind the milestone toggle */
+  var showMilestones = false;
+  var zRows = []; /* {el, z} for every rendered strip, so the toggle can re-render in place */
+
+  function visibleCount(){ return showMilestones ? Z_LABELS.length : CORE_COUNT; }
+
   function zBarsHTML(zArr){
+    var n = visibleCount();
     var out = '<span class="baseline"></span>';
-    for (var i = 0; i < zArr.length; i++){
+    for (var i = 0; i < n; i++){
       var z = zArr[i];
       var pct = Math.max(0, Math.min(50, Math.abs(z) / Z_SCALE * 50));
       var cls = z >= 0 ? "pos" : "neg";
-      var title = Z_LABELS[i] + " " + (z >= 0 ? "+" : "") + z.toFixed(2);
+      var title = Z_LABELS[i] + " " + (z >= 0 ? "+" : "") + z.toFixed(2) + " (category std. dev.)";
       out += '<span class="bar ' + cls + '" title="' + title + '" style="left:' + (i * ZSLOT) + 'px;height:' + pct + '%"></span>';
     }
     return out;
   }
 
-  var zHead = "";
-  for (var i = 0; i < Z_LABELS.length; i++){
-    zHead += "<span>" + Z_LABELS[i].slice(0,3) + "</span>";
+  function renderZHead(){
+    var n = visibleCount();
+    var head = "";
+    for (var i = 0; i < n; i++) head += "<span>" + Z_LABELS[i].slice(0,3) + "</span>";
+    document.getElementById("zHeadRow").innerHTML = head;
+    document.documentElement.style.setProperty("--zcols", n);
   }
-  document.getElementById("zHeadRow").innerHTML = zHead;
-  document.getElementById("zLegend").innerHTML =
-    '<span class="sw pos"></span>above avg &nbsp;&nbsp;<span class="sw neg"></span>below avg' +
-    ' &nbsp;&nbsp;<span class="scale">· full-height bar = ' + Z_SCALE.toFixed(1) + ' std. dev. from the pool average</span>';
+
+  function renderZLegend(){
+    document.getElementById("zLegend").innerHTML =
+      '<span class="sw pos"></span>above avg &nbsp;&nbsp;<span class="sw neg"></span>below avg' +
+      ' &nbsp;&nbsp;<span class="scale">· full-height bar = ' + Z_SCALE.toFixed(1) +
+      ' std. dev. from the pool average, IN THAT CATEGORY</span>';
+  }
+
+  function renderAllZBars(){
+    renderZHead();
+    for (var i = 0; i < zRows.length; i++){
+      zRows[i].el.innerHTML = zBarsHTML(zRows[i].z);
+    }
+  }
 
   /* ---------- veterans table ---------- */
   var vetBody = document.getElementById("vetBody");
@@ -353,7 +400,7 @@ tr.drafted .note-badge{opacity:.35;}
       '<td class="name-cell"><span class="name">' + esc(v.name) + '</span>' +
         '<span class="meta">' + esc(v.pos) + (v.team ? " · " + esc(v.team) : "") + '</span>' + noteBadge + '</td>' +
       '<td class="num val">' + v.val.toFixed(2) + '</td>' +
-      '<td><div class="zbars">' + zBarsHTML(v.z) + '</div></td>';
+      '<td><div class="zbars zgrid">' + zBarsHTML(v.z) + '</div></td>';
 
     var noteRow = null;
     if (v.note){
@@ -380,6 +427,7 @@ tr.drafted .note-badge{opacity:.35;}
     vetBody.appendChild(tr);
     if (noteRow) vetBody.appendChild(noteRow);
     vetRows.push({tr: tr, name: v.name, pos: v.pos, key: key});
+    zRows.push({el: tr.querySelector(".zbars"), z: v.z});
   });
 
   /* position chips */
@@ -395,6 +443,13 @@ tr.drafted .note-badge{opacity:.35;}
       applyFilter();
     });
     chipsWrap.appendChild(b);
+  });
+
+  var milestoneToggle = document.getElementById("milestoneToggle");
+  milestoneToggle.addEventListener("click", function(){
+    showMilestones = !showMilestones;
+    milestoneToggle.classList.toggle("on", showMilestones);
+    renderAllZBars();
   });
 
   var searchEl = document.getElementById("search");
@@ -501,6 +556,8 @@ tr.drafted .note-badge{opacity:.35;}
     });
   });
 
+  renderZHead();
+  renderZLegend();
   updateStats();
   updateRooStats();
   syncStickyOffset();
