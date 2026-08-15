@@ -176,18 +176,34 @@ tr.drafted .note-badge{opacity:.35;}
 }
 
 /* z-score profile: 12 tiny diverging bars per row */
-.zbars{display:flex;gap:2px;align-items:center;}
-.zbar{width:26px;height:24px;background:var(--surface-alt);border-radius:2px;position:relative;overflow:hidden;flex:none;}
-.zbar i{position:absolute;left:0;right:0;display:block;}
-.zbar i.pos{background:var(--pos-z);bottom:50%;}
-.zbar i.neg{background:var(--neg-z);top:50%;}
-.zbar .mid{position:absolute;left:0;right:0;top:50%;height:1px;background:var(--border-strong);}
-.zhead{display:flex;gap:3px;align-items:center;}
-.zhead span{width:26px;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:-.02em;color:var(--text-dim);text-align:center;overflow:hidden;}
+/* One continuous strip per player -- a silhouette, not 12 mini-charts.
+   --zslot is the per-category column width; the same repeating band
+   pattern is painted behind both the header labels and every row's bars
+   so a column can be traced straight down without counting. */
+:root{ --zslot: 24px; --zcols: 12; }
+.zbars{
+  position:relative;height:26px;width:calc(var(--zslot) * var(--zcols));
+  background:var(--surface-alt);border-radius:3px;overflow:hidden;flex:none;
+  background-image:repeating-linear-gradient(to right,
+    transparent 0, transparent var(--zslot),
+    rgba(255,255,255,.035) var(--zslot), rgba(255,255,255,.035) calc(var(--zslot) * 2));
+}
+.zbars .baseline{position:absolute;left:0;right:0;top:50%;height:1px;background:var(--border-strong);}
+.zbars .bar{position:absolute;width:calc(var(--zslot) - 3px);margin-left:1.5px;}
+.zbars .bar.pos{background:var(--pos-z);bottom:50%;}
+.zbars .bar.neg{background:var(--neg-z);top:50%;}
+.zhead{
+  display:flex;width:calc(var(--zslot) * var(--zcols));
+  background-image:repeating-linear-gradient(to right,
+    transparent 0, transparent var(--zslot),
+    rgba(255,255,255,.035) var(--zslot), rgba(255,255,255,.035) calc(var(--zslot) * 2));
+}
+.zhead span{width:var(--zslot);font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:-.02em;color:var(--text-dim);text-align:center;overflow:hidden;}
 .zlegend{display:flex;align-items:center;gap:14px;margin-left:16px;font-family:var(--mono);font-size:11px;color:var(--text-dim);white-space:nowrap;}
 .zlegend .sw{display:inline-block;width:9px;height:9px;border-radius:1px;margin-right:5px;vertical-align:-1px;}
 .zlegend .sw.pos{background:var(--pos-z);}
 .zlegend .sw.neg{background:var(--neg-z);}
+.zlegend .scale{color:var(--text-faint);}
 
 /* ---------- rookies ---------- */
 .disclaimer{
@@ -239,7 +255,7 @@ tr.drafted .note-badge{opacity:.35;}
           <th>
             <div style="display:flex;align-items:center;">
               <div class="zhead" id="zHeadRow"></div>
-              <div class="zlegend"><span class="sw pos"></span>above avg &nbsp;&nbsp;<span class="sw neg"></span>below avg</div>
+              <div class="zlegend" id="zLegend"></div>
             </div>
           </th>
         </tr>
@@ -295,16 +311,17 @@ tr.drafted .note-badge{opacity:.35;}
 
   function zKey(kind, name){ return kind + ":" + name; }
 
-  /* ---------- z-score bar cell ---------- */
-  var Z_SCALE = 1.6; /* z magnitude that fills a full half-bar */
+  /* ---------- z-score profile strip: one silhouette per player, not 12 mini-charts ---------- */
+  var Z_SCALE = 1.6; /* z magnitude that fills a full half-strip -- also drives the legend text */
+  var ZSLOT = 24;
   function zBarsHTML(zArr){
-    var out = "";
+    var out = '<span class="baseline"></span>';
     for (var i = 0; i < zArr.length; i++){
       var z = zArr[i];
       var pct = Math.max(0, Math.min(50, Math.abs(z) / Z_SCALE * 50));
       var cls = z >= 0 ? "pos" : "neg";
       var title = Z_LABELS[i] + " " + (z >= 0 ? "+" : "") + z.toFixed(2);
-      out += '<span class="zbar" title="' + title + '"><span class="mid"></span><i class="' + cls + '" style="height:' + pct + '%"></i></span>';
+      out += '<span class="bar ' + cls + '" title="' + title + '" style="left:' + (i * ZSLOT) + 'px;height:' + pct + '%"></span>';
     }
     return out;
   }
@@ -314,6 +331,9 @@ tr.drafted .note-badge{opacity:.35;}
     zHead += "<span>" + Z_LABELS[i].slice(0,3) + "</span>";
   }
   document.getElementById("zHeadRow").innerHTML = zHead;
+  document.getElementById("zLegend").innerHTML =
+    '<span class="sw pos"></span>above avg &nbsp;&nbsp;<span class="sw neg"></span>below avg' +
+    ' &nbsp;&nbsp;<span class="scale">· full bar = ±' + Z_SCALE.toFixed(1) + 'z</span>';
 
   /* ---------- veterans table ---------- */
   var vetBody = document.getElementById("vetBody");
