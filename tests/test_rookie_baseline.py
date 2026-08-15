@@ -109,5 +109,6 @@ class BuildRookieRowsTests(unittest.TestCase):
         expected_columns = {
             "PLAYER_NAME", "GP", "MIN", "PTS", "REB", "AST", "ST", "BLK",
             "TO", "PF", "FGM", "FGA", "FG%", "3PTM", "FTM", "DD", "TD", "TECH",
+            "OVERALL_PICK",
         }
         self.assertEqual(set(rows.columns), expected_columns)

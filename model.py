@@ -362,7 +362,9 @@ def project_stats(season_dfs: list[pd.DataFrame],
                   weights: list[float],
                   derived_stats: dict[str, dict[str, float]],
                   tech_per_game: dict[str, float],
-                  seasons: list[str] | None = None) -> pd.DataFrame:
+                  seasons: list[str] | None = None,
+                  raw_player_sets: list[set[str]] | None = None,
+                  raw_gp_by_season: list[dict[str, int]] | None = None) -> pd.DataFrame:
     """
     Compute GP-adjusted, trend-aware per-game projections for each player.
 
@@ -378,6 +380,15 @@ def project_stats(season_dfs: list[pd.DataFrame],
 
     Percentage categories (FG%) are not GP-adjusted — they're ratios
     independent of games played.
+
+    `raw_player_sets`/`raw_gp_by_season` (optional, aligned by index with
+    `seasons`/`season_dfs`) carry each season's *pre-qualification-filter*
+    player names/GP, so a player entirely missing from the newest season can
+    be told apart from one who played a few games but didn't clear
+    `filter_qualified`'s bar — those are different situations and get
+    different `DATA_AVAILABILITY_NOTE` text. Without them, everything falls
+    back to season-absence language for the flag's own inputs (unit tests
+    that construct pre-qualified `season_dfs` directly, mainly).
     """
     if seasons is None:
         seasons = [f"season_{i}" for i in range(len(season_dfs))]
@@ -414,6 +425,35 @@ def project_stats(season_dfs: list[pd.DataFrame],
         total_w           = sum(raw_weights)
         norm_weights      = [w / total_w for w in raw_weights]
 
+        # A player missing from the most recent requested season's *qualified*
+        # data (filter_qualified dropped them, or they have no row at all)
+        # silently drops out of `available_seasons` above and the blend falls
+        # back to whichever season they do have, with no signal that this
+        # happened. GP_FACTOR/DECLINE_FACTOR can't fix this -- they only see
+        # seasons that exist for the player, never the absence of one. This
+        # can't distinguish cause (injury, trade, retirement, ...), so it
+        # names the source season and leaves judgment to whoever's drafting,
+        # who does know why -- see GitHub issue #11 and CLAUDE.md 2026-08-15.
+        # Two distinct situations, worded differently so neither is claimed
+        # inaccurately: truly no row for that season at all, vs. some games
+        # played but below filter_qualified's bar (a real, if thin, season).
+        data_availability_note = ""
+        if seasons and seasons[0] not in available_seasons:
+            newest_season  = seasons[0]
+            fallback_source = available_seasons[0]
+            raw_names = raw_player_sets[0] if raw_player_sets else None
+            raw_gp    = raw_gp_by_season[0] if raw_gp_by_season else None
+            if raw_names is not None and player in raw_names:
+                gp_note = f" ({int(raw_gp[player])} GP)" if raw_gp and player in raw_gp else ""
+                data_availability_note = (
+                    f"Below qualification threshold in {newest_season}{gp_note} "
+                    f"-- projected from {fallback_source}"
+                )
+            else:
+                data_availability_note = (
+                    f"No {newest_season} data -- projected from {fallback_source}"
+                )
+
         # Step 1: trend-aware weight adjustment
         trend_profile = compute_trend_profile(
             player_season_stats=player_season_stats,
@@ -446,6 +486,7 @@ def project_stats(season_dfs: list[pd.DataFrame],
             "GP_FACTOR": round(gp_factor, 3),
             "AGE": projection_age,
             "DECLINE_FACTOR": round(decline_factor, 3),
+            "DATA_AVAILABILITY_NOTE": data_availability_note,
             "TREND_ROLE_SCORE": round(float(trend_profile["role_score"]), 3),
             "TREND_ROLE_BOOST": round(float(trend_profile["role_boost"]), 3),
             "TREND_SHIFT": round(float(trend_profile["trend_shift"]), 3),

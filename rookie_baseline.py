@@ -70,9 +70,25 @@ def get_rookie_baseline(overall_pick: int) -> dict[str, float] | None:
     return None
 
 
+def pick_bucket_label(overall_pick: int) -> str | None:
+    """
+    Return the draft-slot bucket label for a pick (e.g. "Picks 1-5"), or
+    None if out of range. Rookies sharing a bucket share identical baseline
+    stats by construction -- this is the real, non-manufactured grouping to
+    tier the rookie watch list by, instead of the arbitrary tie-break order
+    a numeric RANK 1-60 would otherwise assert (see GitHub issue, rookie
+    tiers change, 2026-08-15).
+    """
+    for (lo, hi) in ROOKIE_BASELINE_BY_PICK_BUCKET:
+        if lo <= overall_pick <= hi:
+            return f"Picks {lo}-{hi}"
+    return None
+
+
 ROOKIE_ROW_COLUMNS = [
     "PLAYER_NAME", "GP", "MIN", "PTS", "REB", "AST", "ST", "BLK",
     "TO", "PF", "FGM", "FGA", "FG%", "3PTM", "FTM", "DD", "TD", "TECH",
+    "OVERALL_PICK",
 ]
 
 
@@ -101,6 +117,7 @@ def build_rookie_rows(draft_history: dict[str, dict[str, int]],
 
         row = {"PLAYER_NAME": player_name}
         row.update(baseline)
+        row["OVERALL_PICK"] = pick_info["overall_pick"]
         rows.append(row)
 
     if not rows:

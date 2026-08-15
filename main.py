@@ -24,7 +24,7 @@ from data     import load_bbr_csv, filter_qualified, fetch_game_logs, \
                      fetch_tech_per_game, derive_stats_from_logs, \
                      build_non_actionable_suppression_report, fetch_draft_history
 from model    import project_stats, compute_tau, compute_g_scores
-from output   import format_rankings, save_rankings
+from output   import format_rankings, save_rankings, format_rookie_tiers, save_rookie_tiers
 from rookie_baseline import build_rookie_rows
 from validate import (
     append_benchmark_history,
@@ -405,9 +405,11 @@ def main() -> None:
 
     season_dfs = []
     season_player_sets: list[set[str]] = []
+    season_raw_gp: list[dict[str, int]] = []
     for path in BBR_FILES:
         raw_df = load_bbr_csv(path)
         season_player_sets.append(set(raw_df["PLAYER_NAME"]))
+        season_raw_gp.append(dict(zip(raw_df["PLAYER_NAME"], raw_df["GP"])))
         df = filter_qualified(raw_df, config)
         season_dfs.append(df)
         print(f"   {path}: {len(df)} qualified players")
@@ -480,7 +482,12 @@ def main() -> None:
     # ── 5. Project stats and compute G-scores ────────────────────────────
     print("\n[5/5] Projecting stats and computing G-scores...")
 
-    projected = project_stats(season_dfs, weights, derived_stats, tech_per_game, seasons=BBR_FILES)
+    projected = project_stats(
+        season_dfs, weights, derived_stats, tech_per_game,
+        seasons=config["game_log_seasons"],
+        raw_player_sets=season_player_sets,
+        raw_gp_by_season=season_raw_gp,
+    )
     projected = projected.dropna(subset=["PTS"])
     print(f"   {len(projected)} players with projections")
 
@@ -501,6 +508,21 @@ def main() -> None:
 
     save_rankings(rankings, OUTPUT_FILE)
 
+    # ── Data availability notes ─────────────────────────────────────────────
+    # Players entirely absent from the newest BBR season (not just a low-GP
+    # season, no row at all) get silently projected from an older season --
+    # GP_FACTOR/DECLINE_FACTOR can't see this, since they only ever look at
+    # seasons that exist for the player. No cause data exists anywhere in
+    # this pipeline to say why (injury, trade, retirement, ...), so this is
+    # a flag, not a discount -- named source season, judgment left to
+    # whoever's drafting. See GitHub issue #11.
+    availability_notes = rankings[rankings["DATA_AVAILABILITY_NOTE"] != ""]
+    if not availability_notes.empty:
+        print(f"\n\nDATA AVAILABILITY NOTES — {len(availability_notes)} player(s)")
+        for _, note_row in availability_notes.sort_values("RANK").iterrows():
+            print(f"  #{int(note_row['RANK']):<3d} {note_row['PLAYER_NAME']:<24s} "
+                  f"{note_row['DATA_AVAILABILITY_NOTE']}")
+
     # ── Rookies — ranked separately, not mixed into the veteran pool ───────
     # Rookies with no prior NBA history can't meaningfully compete for the
     # main pool's MIN-based cutoff (a debut season's diluted per-game minutes
@@ -510,14 +532,15 @@ def main() -> None:
     # distribution, and save as a separate file. This is a speculative,
     # lower-confidence list: rookies are projected from a historical
     # draft-slot production baseline (see rookie_baseline.py), not real
-    # in-season data, and rookies sharing a draft-slot bucket share identical
-    # projected stats -- ties within a bucket are expected, not a bug.
+    # in-season data. Displayed as tiers, not a RANK 1-N: rookies sharing a
+    # draft-slot bucket share identical projected stats by construction, so
+    # a numeric rank would assert an ordering precision that doesn't exist.
     if not rookie_rows.empty:
         rookie_rankings = compute_g_scores(rookie_rows, {}, league_tau, config)
         print(f"\n\nROOKIE WATCH LIST — {len(rookie_rankings)} incoming rookies, ranked separately")
         print("(speculative: historical draft-slot production baselines, not real in-season data)")
-        print(format_rankings(rookie_rankings, config, top_n=len(rookie_rankings)))
-        save_rankings(rookie_rankings, ROOKIE_OUTPUT_FILE)
+        print(format_rookie_tiers(rookie_rankings))
+        save_rookie_tiers(rookie_rankings, ROOKIE_OUTPUT_FILE)
 
     # ── Validation ───────────────────────────────────────────────────────
     validation_results: list[dict[str, object]] = []
