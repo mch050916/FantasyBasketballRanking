@@ -8,6 +8,7 @@ from data import (
     _classify_missing_game_log_pairs,
     _empty_game_log_result,
     _build_game_log_fetch_health,
+    _load_cached_draft_history,
     _load_cached_game_logs,
     _load_cached_tech_per_game,
     _missing_game_log_pairs,
@@ -118,6 +119,27 @@ class DataTests(unittest.TestCase):
         self.assertIsNone(result)
         self.assertFalse(cache_status["valid"])
         self.assertEqual(cache_status["reason"], "TECH cache metadata mismatch")
+
+    def test_load_cached_draft_history_rejects_year_mismatch(self) -> None:
+        envelope = _build_cache_envelope(
+            "draft_history",
+            {"AJ Dybantsa": {"overall_pick": 1, "round_number": 1}},
+            {"draft_years": ["2026"]},
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_path = Path(tmpdir) / "draft_history_cache.pkl"
+            with open(cache_path, "wb") as f:
+                pickle.dump(envelope, f)
+
+            result, cache_status = _load_cached_draft_history(
+                cache_path,
+                ["2025"],
+            )
+
+        self.assertIsNone(result)
+        self.assertFalse(cache_status["valid"])
+        self.assertEqual(cache_status["reason"], "draft-history cache metadata mismatch")
 
     def test_load_cached_game_logs_rejects_unreadable_payload(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
