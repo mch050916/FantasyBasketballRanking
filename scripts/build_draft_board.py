@@ -203,7 +203,7 @@ tr.drafted .note-badge{opacity:.35;}
 .zlegend .sw{display:inline-block;width:9px;height:9px;border-radius:1px;margin-right:5px;vertical-align:-1px;}
 .zlegend .sw.pos{background:var(--pos-z);}
 .zlegend .sw.neg{background:var(--neg-z);}
-.zlegend .scale{color:var(--text-faint);}
+.zlegend .scale{color:var(--text);font-weight:600;}
 
 /* ---------- rookies ---------- */
 .disclaimer{
@@ -333,7 +333,7 @@ tr.drafted .note-badge{opacity:.35;}
   document.getElementById("zHeadRow").innerHTML = zHead;
   document.getElementById("zLegend").innerHTML =
     '<span class="sw pos"></span>above avg &nbsp;&nbsp;<span class="sw neg"></span>below avg' +
-    ' &nbsp;&nbsp;<span class="scale">· full bar = ±' + Z_SCALE.toFixed(1) + 'z</span>';
+    ' &nbsp;&nbsp;<span class="scale">· full-height bar = ' + Z_SCALE.toFixed(1) + ' std. dev. from the pool average</span>';
 
   /* ---------- veterans table ---------- */
   var vetBody = document.getElementById("vetBody");
