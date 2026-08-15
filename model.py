@@ -481,6 +481,25 @@ def project_stats(season_dfs: list[pd.DataFrame],
             composite_score=float(trend_profile["composite_score"]),
         )
 
+        # A player with no game-log entry in ANY fetched season (never
+        # matched by the NBA-API fetch at all, not just missing the newest
+        # one) has no `derived_stats` entry -- DD/TD then hard-default to
+        # 0.0 below, indistinguishable from a genuine zero-double-double
+        # rate. This is a distinct claim from `data_availability_note`
+        # above (which season the *other* stats came from) -- a player can
+        # be true for both at once (e.g. Chris Paul: thin-but-real 2025-26
+        # BBR season AND zero game logs anywhere), so both are recorded
+        # rather than one overwriting the other. See CLAUDE.md 2026-08-15.
+        player_derived = derived_stats.get(player, {})
+        defaulted_fields = [f for f in ("DD", "TD") if f not in player_derived]
+        defaulted_fields_note = (
+            f"{'/'.join(defaulted_fields)} not available -- defaulted to zero"
+            if defaulted_fields else ""
+        )
+        data_availability_note = "; ".join(
+            n for n in (data_availability_note, defaulted_fields_note) if n
+        )
+
         row = {
             "PLAYER_NAME": player,
             "GP_FACTOR": round(gp_factor, 3),
@@ -518,7 +537,6 @@ def project_stats(season_dfs: list[pd.DataFrame],
         )
 
         # ── DD and TD — GP-adjusted ──────────────────────────────────────
-        player_derived = derived_stats.get(player, {})
         row["DD"] = player_derived.get("DD", 0.0) * gp_factor * decline_factor
         row["TD"] = player_derived.get("TD", 0.0) * gp_factor * decline_factor
 
