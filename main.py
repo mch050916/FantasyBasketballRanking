@@ -43,12 +43,34 @@ from validate import (
 # ── Season data files — update this list each season ────────────────────────
 # Most recent season first. Must match game_log_seasons in config.py.
 BBR_FILES = [
+    "basketball_reference_2025_26_total_stats.csv",
     "basketball_reference_2024_25_total_stats.csv",
     "basketball_reference_2023_24_total_stats.csv",
 ]
 
-OUTPUT_FILE     = "durant_rankings_2025_26.csv"
-ROOKIE_OUTPUT_FILE = "durant_rankings_rookies_2025_26.csv"
+
+def derive_projection_season_label(most_recent_completed_season: str) -> tuple[str, str]:
+    """
+    Derive the season being projected — one year after the most recent
+    completed season — as (underscore_slug, dash_label), e.g.
+    "2025-26" -> ("2026_27", "2026-27").
+
+    Kept derived rather than hand-maintained so a rollover that updates
+    BBR_FILES/game_log_seasons can't silently leave stale season labels in
+    output filenames or console text (see CLAUDE.md, 2026-08-15 entry).
+    """
+    start_year = int(most_recent_completed_season.split("-")[0])
+    next_start = start_year + 1
+    next_end_suffix = str((next_start + 1) % 100).zfill(2)
+    return f"{next_start}_{next_end_suffix}", f"{next_start}-{next_end_suffix}"
+
+
+PROJECTION_SEASON_SLUG, PROJECTION_SEASON_LABEL = derive_projection_season_label(
+    LEAGUE_CONFIG["game_log_seasons"][0]
+)
+
+OUTPUT_FILE     = f"durant_rankings_{PROJECTION_SEASON_SLUG}.csv"
+ROOKIE_OUTPUT_FILE = f"durant_rankings_rookies_{PROJECTION_SEASON_SLUG}.csv"
 DIAGNOSTICS_DIR = Path("diagnostics")
 BENCHMARK_HISTORY_FILE = DIAGNOSTICS_DIR / "benchmark_history.csv"
 TOP_MISS_DIR = DIAGNOSTICS_DIR / "top_misses"
@@ -75,10 +97,25 @@ def build_historical_snapshot_target(season: str, note: str) -> dict[str, object
 
 
 VALIDATION_TARGETS = [
-    build_historical_snapshot_target(
-        "2025-26",
-        "True holdout: our own preseason 2025-26 projections vs the completed season's exact-league result",
-    ),
+    {
+        "path": benchmark_snapshot_filename("2026-27"),
+        "label": benchmark_snapshot_filename("2026-27"),
+        # Deliberately NOT "historical_snapshot" -- 2026-27 hasn't happened yet, so this
+        # entry has no backing file and must stay out of exact_league_targets() in
+        # compare_baselines.py (which assumes all "historical_snapshot" targets have real
+        # data to paired-bootstrap against). It'll show up as "[skip] Validation file not
+        # found" in main.py's own validation loop until the season completes and the
+        # snapshot file is added -- that transition is the point.
+        "benchmark_class": "pending_holdout",
+        "trust_tier": "not_yet_available",
+        "name_col": "Player Name",
+        "rank_col": "Rank",
+        "note": "Live preseason holdout for 2026-27 -- not yet available; this season isn't "
+        "in the model's input blend, so it will be the first genuine out-of-sample test "
+        "once it completes. See docs/adr/0001-aggregate-acceptance-criterion.md's "
+        "2026-08-15 note: every benchmark below is retrodictive, not held out.",
+    },
+    build_historical_snapshot_target("2025-26", "14-cat exact-league validation snapshot for 2025-26"),
     build_historical_snapshot_target("2024-25", "14-cat exact-league validation snapshot for 2024-25"),
     build_historical_snapshot_target("2023-24", "14-cat exact-league validation snapshot for 2023-24"),
     {
@@ -457,7 +494,7 @@ def main() -> None:
 
     # ── Output ───────────────────────────────────────────────────────────
     pool_size = config["num_teams"] * config["roster_size"]
-    print(f"\n\nTOP 30 PLAYERS — 2025-26 PROJECTIONS")
+    print(f"\n\nTOP 30 PLAYERS — {PROJECTION_SEASON_LABEL} PROJECTIONS")
     print(f"(pool: {pool_size} players | {config['num_teams']} teams × "
           f"{config['roster_size']} roster spots)")
     print(format_rankings(rankings, config, top_n=30))

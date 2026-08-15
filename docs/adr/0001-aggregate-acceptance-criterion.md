@@ -70,8 +70,16 @@ Evaluated instead against the replacement criterion:
 
 No ship/no-ship call is recorded here — that's a decision for the repo owner, not something this ADR or the tooling decides for them.
 
+## 2026-08-15: All three exact-league benchmarks are now retrodictive, not held out
+
+Adding `basketball_reference_2025_26_total_stats.csv` to `BBR_FILES` (to roll the pipeline forward and project 2026-27) closes a gap that was already most of the way open: `BBR_FILES` has *always* included the seasons backing the 2024-25 and 2023-24 exact-league benchmarks — they were never held out, just not labeled as such. `main.py`'s `VALIDATION_TARGETS` did carry one entry explicitly labeled `"True holdout: our own preseason 2025-26 projections vs the completed season's exact-league result"` — but as of this rollover, 2025-26's own real stats are now 50% of the weighted input (`season_weights[0] = 0.5`) feeding the very projection that entry scores. That label is no longer accurate and has been removed; the entry is now a plain historical validation snapshot, same as 2024-25 and 2023-24.
+
+**The reframe this forces:** every number this ADR records — the noise-floor bootstrap bands, every paired `pct_improved` comparison, issue #1's and #2's acceptance-gate evaluations — was computed against benchmarks the model had direct access to as training input. None of it is out-of-sample evidence of generalization. It's still useful (it caught issue #1's underpowered metric, correctly failed issue #2's gate, and Part B's *rule-behavior* check in the issue #2 outcome section above is a genuine exception — it tested `compute_availability_risk_factor` against independently-diagnosed labels rather than fitted rank correlation, so that specific check's out-of-sample claim still holds). But rank-correlation/MAE-style aggregate numbers measured against these three benchmarks should be read as retrodictive fit, not held-out performance, by anyone revisiting this ADR.
+
+`VALIDATION_TARGETS` now carries a `2026-27` entry in the "not yet available" state (no snapshot file exists until that season completes) — that will be the first genuine out-of-sample test since this pipeline started tracking exact-league benchmarks. Until then, there is no held-out signal available at all; only the retrodictive fit above and the narrowly-scoped collateral-damage/rule-behavior checks this ADR's power-check section already prescribes for effects too small for aggregate metrics to see.
+
 ## Consequences
 
-- 2025-26 is no longer a virgin holdout — it was partially spent validating issue #1, and every future decision made while watching it spends more. All three exact-league seasons are a depleting resource; evaluating across all three (not just the freshest) is deliberate, not incidental.
+- No exact-league benchmark currently in `VALIDATION_TARGETS` is a genuine holdout — see 2026-08-15 above. All three (2025-26, 2024-25, 2023-24) are seasons the model's own input blend can see; the depleting-resource framing below still applies to how much they've each been *looked at* while making decisions, but that's a separate, smaller concern than not being held out in the first place.
 - A plan doc that doesn't declare a numeric threshold before implementation isn't ready to implement against this criterion.
 - Both bootstrap modes use a fixed default seed (42) for reproducibility; re-running `--noise-floor` or `--bootstrap` against unchanged inputs reproduces the same bands exactly.

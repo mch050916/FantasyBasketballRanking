@@ -89,7 +89,7 @@ LEAGUE_CONFIG = {
     # ── NBA API fetch settings ─────────────────────────────────────────────
     # Seasons to pull game logs for (most recent first).
     # Must match the BBR CSV files you have — see main.py.
-    "game_log_seasons": ["2024-25", "2023-24"],
+    "game_log_seasons": ["2025-26", "2024-25", "2023-24"],
 
     # Draft year(s) to check for incoming rookies with no prior NBA history.
     # Update each season to the upcoming/most recent draft class.

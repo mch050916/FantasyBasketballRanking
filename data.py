@@ -768,10 +768,15 @@ def derive_stats_from_logs(game_logs: dict[str, dict[str, pd.DataFrame]]) \
 
     For players appearing in multiple seasons, uses the most recent season's
     value rather than averaging, since recency matters most for projection.
+    If a player has no game log for the most recent season (e.g. an NBA API
+    fetch gap), silently falls through to their next available season and
+    prints a line naming the player, the field (DD/TD), and which season got
+    substituted — this doesn't change the fallback behavior, just surfaces it.
 
     Returns: { player_name -> { 'DD': float, 'TD': float } }
     """
     derived: dict[str, dict[str, float]] = {}
+    most_recent_season = next(iter(game_logs), None)
 
     # Iterate seasons in order (most recent first, as game_logs is ordered)
     for season, season_logs in game_logs.items():
@@ -789,8 +794,14 @@ def derive_stats_from_logs(game_logs: dict[str, dict[str, pd.DataFrame]]) \
 
             if "DD" not in derived[player_name] and "DD2" in logs.columns:
                 derived[player_name]["DD"] = logs["DD2"].sum() / gp
+                if season != most_recent_season:
+                    print(f"   DD fallback: {player_name} has no {most_recent_season} "
+                          f"game log — DD sourced from {season} instead")
 
             if "TD" not in derived[player_name] and "TD3" in logs.columns:
                 derived[player_name]["TD"] = logs["TD3"].sum() / gp
+                if season != most_recent_season:
+                    print(f"   TD fallback: {player_name} has no {most_recent_season} "
+                          f"game log — TD sourced from {season} instead")
 
     return derived

@@ -1,6 +1,6 @@
 # Non-Actionable Suppression Maintenance
 
-- Current season: `2024-25`
+- Current season: `2025-26`
 - Registry: `.planning/non_actionable_suppressions.csv`
 - Active entries: `0`
 - Expired entries: `0`

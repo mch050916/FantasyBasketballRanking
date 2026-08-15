@@ -1,6 +1,6 @@
 DISTORTION_FAMILY,PRIMARY_HITS,PRIMARY_BENCHMARKS,PRIMARY_PLAYER_COUNT,SECONDARY_HITS,EVIDENCE_LEVEL,FOLLOW_UP_DECISION,AVG_ABS_DELTA,REPRESENTATIVE_PLAYERS
-milestone carry,12,3,9,10,repeat_exact_league,active_target,38.675000000000004,"Josh Hart, Giannis Antetokounmpo, Ivica Zubac"
-unclassified (category-weight distortion),9,3,6,6,repeat_exact_league,not_prioritized,38.93333333333333,"Jaden McDaniels, Jaren Jackson Jr., Toumani Camara"
-big-man stat carry,3,3,1,0,repeat_exact_league,monitor_narrow,23.0,Rudy Gobert
-concentrated scorer carry,6,2,5,5,repeat_exact_league,active_target,57.625,"Devin Booker, Stephen Curry, Austin Reaves"
-guard creation carry,0,0,0,1,secondary_only,support_only,99.0,Tyrese Haliburton
+unclassified (category-weight distortion),12,3,9,10,repeat_exact_league,not_prioritized,37.888888888888886,"Jaren Jackson Jr., Jaden McDaniels, Toumani Camara"
+big-man stat carry,9,3,4,4,repeat_exact_league,active_target,32.2,"Ivica Zubac, Rudy Gobert, Walker Kessler"
+concentrated scorer carry,4,3,4,4,repeat_exact_league,active_target,45.3,"Devin Booker, DeMar DeRozan, De'Aaron Fox"
+milestone carry,2,1,2,1,single_exact_league,watch_supporting,24.75,"Alperen Şengün, Cade Cunningham"
+guard creation carry,0,0,0,1,secondary_only,support_only,100.0,Tyrese Haliburton

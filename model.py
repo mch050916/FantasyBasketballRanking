@@ -430,7 +430,12 @@ def project_stats(season_dfs: list[pd.DataFrame],
         )
 
         first = available_seasons[0]
-        projection_age = player_season_stats[first].get("AGE", np.nan)
+        # AGE on the BBR page is the player's age during `first` (the most
+        # recent completed season). The projection targets the season after
+        # that, so age needs one year added -- see CLAUDE.md 2026-08-15 and
+        # GitHub issue #10 (was silently off-by-one every prior rollover).
+        raw_age = player_season_stats[first].get("AGE", np.nan)
+        projection_age = raw_age + 1 if pd.notna(raw_age) else raw_age
         decline_factor = compute_decline_factor(
             age=projection_age,
             composite_score=float(trend_profile["composite_score"]),
