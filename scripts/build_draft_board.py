@@ -82,7 +82,7 @@ TEMPLATE = r"""<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>2026-27 Draft Board</title>
+<title>DURANT Draft Board</title>
 <style>
 :root{
   --bg:#12151a; --surface:#1a1f26; --surface-alt:#20262f; --surface-hover:#262d38;
@@ -141,15 +141,16 @@ thead th{
 }
 th.num,td.num{text-align:right;}
 tbody tr{border-bottom:1px solid var(--border);cursor:pointer;}
+tbody tr[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
 tbody tr:nth-child(even){background:var(--surface);}
 tbody tr:hover{background:var(--surface-hover);}
 tbody tr.hidden{display:none;}
 td{padding:6px 8px;vertical-align:middle;font-size:13px;}
-.rank{font-family:var(--mono);color:var(--text-faint);font-size:12px;width:1%;}
+.rank{font-family:var(--mono);color:var(--text-faint);font-size:12px;width:1%;font-variant-numeric:tabular-nums;}
 .name-cell{min-width:170px;}
 .name{font-weight:600;font-size:14px;color:var(--text);}
 .meta{font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-left:6px;}
-.val{font-family:var(--mono);font-weight:700;font-size:13px;}
+.val{font-family:var(--mono);font-weight:700;font-size:13px;font-variant-numeric:tabular-nums;}
 
 /* drafted state -- the signature: an inked strike, not a fade */
 tr.drafted{background:var(--bg) !important;}
@@ -176,13 +177,17 @@ tr.drafted .note-badge{opacity:.35;}
 
 /* z-score profile: 12 tiny diverging bars per row */
 .zbars{display:flex;gap:2px;align-items:center;}
-.zbar{width:18px;height:16px;background:var(--surface-alt);border-radius:1px;position:relative;overflow:hidden;flex:none;}
+.zbar{width:26px;height:24px;background:var(--surface-alt);border-radius:2px;position:relative;overflow:hidden;flex:none;}
 .zbar i{position:absolute;left:0;right:0;display:block;}
 .zbar i.pos{background:var(--pos-z);bottom:50%;}
 .zbar i.neg{background:var(--neg-z);top:50%;}
 .zbar .mid{position:absolute;left:0;right:0;top:50%;height:1px;background:var(--border-strong);}
-.zhead{display:flex;gap:2px;}
-.zhead span{width:18px;font-family:var(--mono);font-size:8px;letter-spacing:-.03em;color:var(--text-faint);text-align:center;overflow:hidden;}
+.zhead{display:flex;gap:3px;align-items:center;}
+.zhead span{width:26px;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:-.02em;color:var(--text-dim);text-align:center;overflow:hidden;}
+.zlegend{display:flex;align-items:center;gap:14px;margin-left:16px;font-family:var(--mono);font-size:11px;color:var(--text-dim);white-space:nowrap;}
+.zlegend .sw{display:inline-block;width:9px;height:9px;border-radius:1px;margin-right:5px;vertical-align:-1px;}
+.zlegend .sw.pos{background:var(--pos-z);}
+.zlegend .sw.neg{background:var(--neg-z);}
 
 /* ---------- rookies ---------- */
 .disclaimer{
@@ -232,7 +237,10 @@ tr.drafted .note-badge{opacity:.35;}
           <th class="name-cell">Player</th>
           <th class="num">Val</th>
           <th>
-            <div class="zhead" id="zHeadRow"></div>
+            <div style="display:flex;align-items:center;">
+              <div class="zhead" id="zHeadRow"></div>
+              <div class="zlegend"><span class="sw pos"></span>above avg &nbsp;&nbsp;<span class="sw neg"></span>below avg</div>
+            </div>
           </th>
         </tr>
       </thead>
@@ -264,6 +272,17 @@ tr.drafted .note-badge{opacity:.35;}
     document.documentElement.style.setProperty("--topbar-h", h + "px");
   }
   window.addEventListener("resize", syncStickyOffset);
+
+  function makeRowActivatable(tr){
+    tr.tabIndex = 0;
+    tr.setAttribute("role", "button");
+    tr.addEventListener("keydown", function(e){
+      if (e.key === "Enter" || e.key === " "){
+        e.preventDefault();
+        tr.click();
+      }
+    });
+  }
 
   function loadDrafted(){
     try { return new Set(JSON.parse(localStorage.getItem(STORE_KEY) || "[]")); }
@@ -326,6 +345,7 @@ tr.drafted .note-badge{opacity:.35;}
       noteRow.appendChild(td);
     }
 
+    makeRowActivatable(tr);
     tr.addEventListener("click", function(e){
       if (e.target.classList.contains("note-badge")){
         if (noteRow) noteRow.classList.toggle("open");
@@ -416,6 +436,7 @@ tr.drafted .note-badge{opacity:.35;}
         '<td class="num val">' + m.val.toFixed(2) + '</td>' +
         '<td class="num" style="font-family:var(--mono);font-size:12px;color:var(--text-dim)">' +
           m.pts + ' pts · ' + m.reb + ' reb · ' + m.ast + ' ast · ' + m.min + ' min</td>';
+      makeRowActivatable(tr);
       tr.addEventListener("click", function(){
         if (drafted.has(key)) { drafted.delete(key); tr.classList.remove("drafted"); }
         else { drafted.add(key); tr.classList.add("drafted"); }
