@@ -554,6 +554,20 @@ def project_stats(season_dfs: list[pd.DataFrame],
 
 # ── Tau (weekly variance) ─────────────────────────────────────────────────────
 
+def add_week_key(logs: pd.DataFrame) -> pd.DataFrame:
+    """
+    Return a copy of a player's game log with an ISO year_week key attached.
+
+    Shared by compute_tau (weekly variance) and trade.py (weekly sample bank)
+    so both agree on exactly what "a week" means.
+    """
+    logs = logs.copy()
+    logs["GAME_DATE"] = pd.to_datetime(logs["GAME_DATE"])
+    iso = logs["GAME_DATE"].dt.isocalendar()
+    logs["WEEK_KEY"] = iso["year"].astype(str) + "_" + iso["week"].astype(str)
+    return logs
+
+
 def compute_tau(game_logs: dict[str, dict[str, pd.DataFrame]],
                 categories: list[str],
                 season_weights: list[float]) -> tuple[dict, dict]:
@@ -591,10 +605,7 @@ def compute_tau(game_logs: dict[str, dict[str, pd.DataFrame]],
             if logs.empty:
                 continue
 
-            logs = logs.copy()
-            logs["GAME_DATE"] = pd.to_datetime(logs["GAME_DATE"])
-            iso = logs["GAME_DATE"].dt.isocalendar()
-            logs["WEEK_KEY"] = iso["year"].astype(str) + "_" + iso["week"].astype(str)
+            logs = add_week_key(logs)
 
             if player_name not in all_weekly:
                 all_weekly[player_name] = {cat: [] for cat in categories}

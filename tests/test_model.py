@@ -6,6 +6,7 @@ import pandas as pd
 from config import LEAGUE_CONFIG
 from model import (
     RECENT_WEIGHT_MAX,
+    add_week_key,
     calibrate_category_values,
     calibrate_milestone_value,
     compute_decline_factor,
@@ -468,6 +469,20 @@ class ProjectStatsTests(unittest.TestCase):
             player_tau["Sample Player"]["TECH"],
             places=9,
         )
+
+
+class AddWeekKeyTests(unittest.TestCase):
+    def test_groups_dates_into_iso_weeks_without_mutating_input(self) -> None:
+        logs = pd.DataFrame({"GAME_DATE": ["2026-01-05", "2026-01-07", "2026-01-12"],
+                             "PTS": [10, 20, 30]})
+        result = add_week_key(logs)
+        self.assertEqual(list(result["WEEK_KEY"]), ["2026_2", "2026_2", "2026_3"])
+        self.assertNotIn("WEEK_KEY", logs.columns)
+
+    def test_iso_year_differs_from_calendar_year_at_new_year(self) -> None:
+        logs = pd.DataFrame({"GAME_DATE": ["2025-12-30"], "PTS": [5]})
+        result = add_week_key(logs)
+        self.assertEqual(result.loc[0, "WEEK_KEY"], "2026_1")
 
 
 if __name__ == "__main__":
