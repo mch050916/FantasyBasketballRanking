@@ -110,3 +110,27 @@ LEAGUE_CONFIG = {
     "tech_cache":         "tech_cache.pkl",
     "draft_history_cache": "draft_history_cache.pkl",
 }
+
+# ── Trade analyzer settings ───────────────────────────────────────────────
+# Used only by trade.py / scripts/analyze_trade.py. Nothing here affects
+# player scoring or durant_rankings_*.csv.
+TRADE_CONFIG = {
+    # Fixed so a trade verdict is reproducible run to run. Do not randomize:
+    # GitHub issue #9 documents this repo's sensitivity to run-to-run drift.
+    "seed": 20262027,
+
+    # Simulated weeks per opponent. 10k gives ~+/-0.005 standard error on a
+    # single win probability; common random numbers make the before/after
+    # delta far tighter than that.
+    "weeks_per_opponent": 10_000,
+
+    # Below this many observed weeks a player's bank cannot carry a
+    # distribution's shape, so they route to the synthetic normal fallback.
+    "min_weeks_for_bootstrap": 8,
+
+    # Rows in a synthetic bank for fallback players.
+    "synthetic_bank_rows": 500,
+
+    # Clip on projected/historical rate ratio.
+    "scale_bounds": (0.25, 4.0),
+}

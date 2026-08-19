@@ -91,3 +91,51 @@ def build_week_bank(game_logs: dict[str, dict[str, pd.DataFrame]]) -> dict[str, 
             frames.setdefault(player_name, []).append(weekly)
 
     return {name: np.vstack(chunks) for name, chunks in frames.items()}
+
+
+def scale_bank_to_projection(bank: np.ndarray,
+                             projected: dict | pd.Series,
+                             scale_bounds: tuple[float, float] = (0.25, 4.0)) -> np.ndarray:
+    """
+    Rescale a bank of observed weekly totals to this season's projected rates.
+
+    scale = projected_per_game / historical_per_game, applied per category.
+
+    Two guards:
+      - historical rate ~= 0 (TD for most of the pool) leaves scale at 1.0,
+        so a player who never recorded one keeps simulating zeros.
+      - scale is clipped so a tiny denominator cannot explode a category.
+
+    GP_FACTOR and DECLINE_FACTOR are already baked into the projected rates,
+    so availability is inherited here -- including GP_FACTOR's known
+    over-discount asymmetry (GitHub issue #7). Inherited deliberately, not
+    corrected.
+    """
+    scaled = bank.copy()
+    games_idx = BANK_COLUMNS.index("GAMES")
+    total_games = bank[:, games_idx].sum()
+    if total_games <= 0:
+        return scaled
+
+    for i, col in enumerate(BANK_COLUMNS):
+        if col == "GAMES":
+            continue
+
+        historical_per_game = bank[:, i].sum() / total_games
+        if historical_per_game < 1e-6:
+            continue
+
+        raw = projected.get(col, 0.0)
+        projected_per_game = 0.0 if raw is None or pd.isna(raw) else float(raw)
+
+        if projected_per_game <= 0.0:
+            # A genuinely zero projection means zero. The clip below guards a
+            # tiny DENOMINATOR from exploding a category -- it is not a floor
+            # under a legitimate zero numerator.
+            scale = 0.0
+        else:
+            scale = float(np.clip(projected_per_game / historical_per_game, *scale_bounds))
+
+        scaled[:, i] = bank[:, i] * scale
+
+    return scaled

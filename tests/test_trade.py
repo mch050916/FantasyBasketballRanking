@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from trade import BANK_COLUMNS, build_week_bank
+from trade import BANK_COLUMNS, build_week_bank, scale_bank_to_projection
 
 
 def make_log(dates: list[str], **stats) -> pd.DataFrame:
@@ -58,3 +58,49 @@ class BuildWeekBankTests(unittest.TestCase):
         bank = build_week_bank({"2025-26": {"P": log}})["P"]
         self.assertEqual(bank[0, BANK_COLUMNS.index("PTS")], 10.0)
         self.assertEqual(bank[0, BANK_COLUMNS.index("DD")], 0.0)
+
+
+class ScaleBankTests(unittest.TestCase):
+    def _bank(self, pts: list[float], games: list[float]) -> np.ndarray:
+        bank = np.zeros((len(pts), len(BANK_COLUMNS)))
+        bank[:, BANK_COLUMNS.index("PTS")] = pts
+        bank[:, BANK_COLUMNS.index("GAMES")] = games
+        return bank
+
+    def test_scales_totals_to_hit_the_projected_per_game_rate(self) -> None:
+        # 60 points over 6 games = 10.0 per game historically.
+        bank = self._bank([30.0, 30.0], [3.0, 3.0])
+        scaled = scale_bank_to_projection(bank, {"PTS": 20.0})
+        pts = scaled[:, BANK_COLUMNS.index("PTS")]
+        games = scaled[:, BANK_COLUMNS.index("GAMES")]
+        self.assertAlmostEqual(pts.sum() / games.sum(), 20.0)
+
+    def test_games_column_is_never_scaled(self) -> None:
+        bank = self._bank([30.0], [3.0])
+        scaled = scale_bank_to_projection(bank, {"PTS": 90.0})
+        self.assertEqual(scaled[0, BANK_COLUMNS.index("GAMES")], 3.0)
+
+    def test_zero_historical_rate_falls_back_to_scale_one(self) -> None:
+        # A player who never recorded a triple-double keeps simulating zeros.
+        bank = self._bank([30.0], [3.0])
+        scaled = scale_bank_to_projection(bank, {"PTS": 10.0, "TD": 0.5})
+        self.assertEqual(scaled[0, BANK_COLUMNS.index("TD")], 0.0)
+
+    def test_scale_is_clipped_at_both_bounds(self) -> None:
+        bank = self._bank([30.0], [3.0])  # 10.0 per game
+        high = scale_bank_to_projection(bank, {"PTS": 1000.0})
+        low = scale_bank_to_projection(bank, {"PTS": 0.5})
+        self.assertAlmostEqual(high[0, BANK_COLUMNS.index("PTS")], 30.0 * 4.0)
+        self.assertAlmostEqual(low[0, BANK_COLUMNS.index("PTS")], 30.0 * 0.25)
+
+    def test_missing_projection_key_zeroes_the_category(self) -> None:
+        # A zero projection means zero, not the 0.25 clip floor -- the clip
+        # guards a tiny denominator, not a legitimate zero numerator.
+        bank = self._bank([30.0], [3.0])
+        scaled = scale_bank_to_projection(bank, {})
+        self.assertEqual(scaled[0, BANK_COLUMNS.index("PTS")], 0.0)
+
+    def test_does_not_mutate_the_input_bank(self) -> None:
+        bank = self._bank([30.0], [3.0])
+        scale_bank_to_projection(bank, {"PTS": 20.0})
+        self.assertEqual(bank[0, BANK_COLUMNS.index("PTS")], 30.0)
