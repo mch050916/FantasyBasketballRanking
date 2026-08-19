@@ -104,3 +104,9 @@ class ScaleBankTests(unittest.TestCase):
         bank = self._bank([30.0], [3.0])
         scale_bank_to_projection(bank, {"PTS": 20.0})
         self.assertEqual(bank[0, BANK_COLUMNS.index("PTS")], 30.0)
+
+    def test_nan_games_returns_unscaled_bank(self) -> None:
+        # A bank with NaN in the GAMES column should return unscaled, not all-NaN.
+        bank = self._bank([30.0], [np.nan])
+        scaled = scale_bank_to_projection(bank, {"PTS": 20.0})
+        self.assertEqual(scaled[0, BANK_COLUMNS.index("PTS")], 30.0)

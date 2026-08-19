@@ -114,7 +114,7 @@ def scale_bank_to_projection(bank: np.ndarray,
     scaled = bank.copy()
     games_idx = BANK_COLUMNS.index("GAMES")
     total_games = bank[:, games_idx].sum()
-    if total_games <= 0:
+    if not np.isfinite(total_games) or total_games <= 0:
         return scaled
 
     for i, col in enumerate(BANK_COLUMNS):
