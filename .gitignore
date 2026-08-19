@@ -30,4 +30,5 @@ __pycache__/
 
 # Git worktrees (agent-created isolated workspaces)
 .worktrees/
- .venv
+.venv
+
