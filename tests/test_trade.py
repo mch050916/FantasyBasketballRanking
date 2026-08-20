@@ -386,8 +386,8 @@ class PadToRosterSizeTests(unittest.TestCase):
 class FullLeagueIntegrationTests(unittest.TestCase):
     """A synthetic 10-team, 13-player league exercised end to end."""
 
-    def _league(self) -> tuple[dict, dict]:
-        rng = np.random.default_rng(99)
+    def _league(self, seed: int = 99) -> tuple[dict, dict]:
+        rng = np.random.default_rng(seed)
         rosters, banks = {}, {}
         for t in range(10):
             team = f"Team{t}"
@@ -400,6 +400,32 @@ class FullLeagueIntegrationTests(unittest.TestCase):
                     bank[:, BANK_COLUMNS.index(col)] = rng.uniform(0, 60, size=30)
                 rosters[team].append(name)
                 banks[name] = bank
+
+        # Deterministic best/worst players, injected on top of the random
+        # roster. TO and PF are low-is-better categories, so a randomly
+        # generated player with the highest PTS can simultaneously carry
+        # the worst TO/PF and be a net-negative trade asset -- "highest
+        # PTS" alone does not reliably identify "best player" (29/100 seeds
+        # flipped the trade-direction assertion when selection was done
+        # that way; see task-10 fix report). "Star"/"Scrub" dominate or
+        # trail every category, including the low-is-better ones, so the
+        # trade's direction is true by construction, not by luck of the
+        # seed.
+        star_bank = np.zeros((30, len(BANK_COLUMNS)))
+        star_bank[:, BANK_COLUMNS.index("GAMES")] = rng.integers(2, 5, size=30)
+        for col, val in (("FGM", 60), ("FGA", 100), ("PTS", 200), ("REB", 60),
+                         ("AST", 60), ("ST", 20), ("BLK", 20), ("TO", 2), ("PF", 2)):
+            star_bank[:, BANK_COLUMNS.index(col)] = val
+        scrub_bank = np.zeros((30, len(BANK_COLUMNS)))
+        scrub_bank[:, BANK_COLUMNS.index("GAMES")] = rng.integers(2, 5, size=30)
+        for col, val in (("FGM", 10), ("FGA", 100), ("PTS", 20), ("REB", 5),
+                         ("AST", 5), ("ST", 1), ("BLK", 1), ("TO", 40), ("PF", 40)):
+            scrub_bank[:, BANK_COLUMNS.index(col)] = val
+
+        rosters["Team0"][0] = "Star"
+        banks["Star"] = star_bank
+        rosters["Team1"][0] = "Scrub"
+        banks["Scrub"] = scrub_bank
         return rosters, banks
 
     def _run(self, rosters, banks, give, get):
@@ -421,10 +447,12 @@ class FullLeagueIntegrationTests(unittest.TestCase):
         self.assertTrue(all(v["expected"] == 0.0 for v in result["delta"].values()))
 
     def test_trading_your_best_player_for_their_worst_hurts_you(self) -> None:
+        # Trade the deliberately dominant/terrible pair by name -- domination
+        # is by construction (see _league), not inferred from a single
+        # random column, so the direction of the delta is guaranteed rather
+        # than seed-dependent.
         rosters, banks = self._league()
-        best = max(rosters["Team0"], key=lambda p: banks[p][:, BANK_COLUMNS.index("PTS")].sum())
-        worst = min(rosters["Team1"], key=lambda p: banks[p][:, BANK_COLUMNS.index("PTS")].sum())
-        result = self._run(rosters, banks, [best], [worst])
+        result = self._run(rosters, banks, ["Star"], ["Scrub"])
         self.assertLess(result["delta"]["Team0"]["expected"], 0.0)
         self.assertGreater(result["delta"]["Team1"]["expected"], 0.0)
 

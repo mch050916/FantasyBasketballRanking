@@ -66,7 +66,7 @@ python scripts/analyze_trade.py --team "Chester" --partner "Bob" \
 Copy `rosters_example.csv` to `rosters.csv` and fill in all 10 rosters first.
 Run `main.py` at least once beforehand so the game-log cache exists — the
 analyzer reads that cache rather than fetching, and on a cold cache it would
-only pull the rostered players, giving a thinner week-length sample than the
+only pull the rostered players, giving a thinner league-wide sample than the
 full pipeline builds.
 
 A simulated week resamples each player's real observed weeks from the cached
