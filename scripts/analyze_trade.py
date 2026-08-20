@@ -17,9 +17,9 @@ from data import fetch_game_logs                        # noqa: E402
 from model import compute_tau                            # noqa: E402
 from rosters import (load_projections, load_rosters,     # noqa: E402
                      resolve_roster_players)
-from trade import (BANK_COLUMNS, build_week_bank,        # noqa: E402
-                   evaluate_trade, games_per_week_pool,
-                   scale_bank_to_projection, synthesize_bank)
+from trade import (build_week_bank, evaluate_trade,       # noqa: E402
+                   games_per_week_pool, scale_bank_to_projection,
+                   synthesize_bank)
 
 
 def parse_names(raw: str | None) -> list[str]:
