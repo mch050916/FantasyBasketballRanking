@@ -205,3 +205,72 @@ def synthesize_bank(player_name: str,
         out[:, i] = np.maximum(per_game, 0.0) * games
 
     return out
+
+
+def simulate_team_totals(roster_banks: dict[str, np.ndarray],
+                         n_weeks: int,
+                         seed: int) -> np.ndarray:
+    """
+    Draw n_weeks simulated weeks and sum every rostered player's line.
+
+    Each player's draws come from their own name-keyed stream, so roster order
+    does not affect the result and an untraded player contributes identical
+    numbers across a before/after pair.
+    """
+    totals = np.zeros((n_weeks, len(BANK_COLUMNS)))
+    # sorted(), not dict order: float addition is not associative, so summing
+    # the same roster in a different order can give bitwise-different totals.
+    # That would break the exact-zero null-trade guarantee the whole
+    # common-random-numbers design rests on (see also GitHub issue #9).
+    for player_name in sorted(roster_banks):
+        bank = roster_banks[player_name]
+        if bank.shape[0] == 0:
+            continue
+        rng = player_rng(player_name, seed)
+        idx = rng.integers(0, bank.shape[0], size=n_weeks)
+        totals += bank[idx]
+    return totals
+
+
+def _fg_pct(totals: np.ndarray) -> np.ndarray:
+    """Team FG% as sum(FGM)/sum(FGA) -- never a mean of per-player ratios."""
+    fgm = totals[:, BANK_COLUMNS.index("FGM")]
+    fga = totals[:, BANK_COLUMNS.index("FGA")]
+    return np.divide(fgm, fga, out=np.zeros_like(fgm), where=fga > 0)
+
+
+def category_win_rates(a_totals: np.ndarray,
+                       b_totals: np.ndarray,
+                       categories: dict) -> dict[str, dict[str, float]]:
+    """Per-category win / tie / loss rates for team A against team B."""
+    rates: dict[str, dict[str, float]] = {}
+
+    for cat, meta in categories.items():
+        if cat == "FG%":
+            a, b = _fg_pct(a_totals), _fg_pct(b_totals)
+        elif cat in BANK_COLUMNS:
+            i = BANK_COLUMNS.index(cat)
+            a, b = a_totals[:, i], b_totals[:, i]
+        else:
+            continue
+
+        if meta["direction"] == "high":
+            wins, losses = a > b, a < b
+        else:
+            wins, losses = a < b, a > b
+
+        rates[cat] = {"win": float(wins.mean()),
+                      "loss": float(losses.mean()),
+                      "tie": float((~(wins | losses)).mean())}
+
+    return rates
+
+
+def expected_categories_won(rates: dict[str, dict[str, float]]) -> float:
+    """
+    E[categories won] = sum P(win) + 0.5 * sum P(tie).
+
+    Exact under linearity of expectation even though categories correlate --
+    correlation moves the variance of a week's outcome, not this mean.
+    """
+    return sum(r["win"] + 0.5 * r["tie"] for r in rates.values())

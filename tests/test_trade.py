@@ -3,7 +3,8 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from trade import BANK_COLUMNS, build_week_bank, games_per_week_pool, player_rng, scale_bank_to_projection, synthesize_bank
+from config import LEAGUE_CONFIG
+from trade import BANK_COLUMNS, build_week_bank, category_win_rates, expected_categories_won, games_per_week_pool, player_rng, scale_bank_to_projection, simulate_team_totals, synthesize_bank
 
 
 def make_log(dates: list[str], **stats) -> pd.DataFrame:
@@ -164,3 +165,75 @@ class GamesPerWeekPoolTests(unittest.TestCase):
 
     def test_falls_back_to_a_nominal_week_when_no_banks_exist(self) -> None:
         self.assertTrue(len(games_per_week_pool({})) > 0)
+
+
+def constant_bank(**stats) -> np.ndarray:
+    """A one-row bank, so simulation results are exactly predictable."""
+    bank = np.zeros((1, len(BANK_COLUMNS)))
+    bank[0, BANK_COLUMNS.index("GAMES")] = 3.0
+    for col, value in stats.items():
+        bank[0, BANK_COLUMNS.index(col)] = value
+    return bank
+
+
+class SimulateTeamTotalsTests(unittest.TestCase):
+    def test_sums_every_player_on_the_roster(self) -> None:
+        roster = {"A": constant_bank(PTS=100.0), "B": constant_bank(PTS=50.0)}
+        totals = simulate_team_totals(roster, n_weeks=10, seed=1)
+        self.assertEqual(totals.shape, (10, len(BANK_COLUMNS)))
+        self.assertTrue((totals[:, BANK_COLUMNS.index("PTS")] == 150.0).all())
+
+    def test_a_player_draws_the_same_weeks_regardless_of_roster_order(self) -> None:
+        bank = np.zeros((50, len(BANK_COLUMNS)))
+        bank[:, BANK_COLUMNS.index("PTS")] = np.arange(50)
+        first = simulate_team_totals({"A": bank, "Z": constant_bank()}, 200, seed=3)
+        second = simulate_team_totals({"Z": constant_bank(), "A": bank}, 200, seed=3)
+        np.testing.assert_array_equal(first, second)
+
+
+class CategoryWinRatesTests(unittest.TestCase):
+    def _totals(self, n: int, **stats) -> np.ndarray:
+        out = np.zeros((n, len(BANK_COLUMNS)))
+        for col, value in stats.items():
+            out[:, BANK_COLUMNS.index(col)] = value
+        return out
+
+    def test_higher_is_better_for_a_high_category(self) -> None:
+        rates = category_win_rates(self._totals(10, PTS=100.0),
+                                   self._totals(10, PTS=50.0),
+                                   LEAGUE_CONFIG["categories"])
+        self.assertEqual(rates["PTS"]["win"], 1.0)
+
+    def test_lower_is_better_for_turnovers(self) -> None:
+        rates = category_win_rates(self._totals(10, TO=5.0),
+                                   self._totals(10, TO=20.0),
+                                   LEAGUE_CONFIG["categories"])
+        self.assertEqual(rates["TO"]["win"], 1.0)
+
+    def test_equal_totals_are_ties_not_wins(self) -> None:
+        rates = category_win_rates(self._totals(10, TD=0.0),
+                                   self._totals(10, TD=0.0),
+                                   LEAGUE_CONFIG["categories"])
+        self.assertEqual(rates["TD"]["tie"], 1.0)
+        self.assertEqual(rates["TD"]["win"], 0.0)
+
+    def test_field_goal_pct_aggregates_makes_over_attempts(self) -> None:
+        # A: 6/10 = .600. B: 5/6 = .833. Summing ratios naively would favour A.
+        a = self._totals(5, FGM=6.0, FGA=10.0)
+        b = self._totals(5, FGM=5.0, FGA=6.0)
+        rates = category_win_rates(a, b, LEAGUE_CONFIG["categories"])
+        self.assertEqual(rates["FG%"]["win"], 0.0)
+
+    def test_zero_attempts_does_not_divide_by_zero(self) -> None:
+        rates = category_win_rates(self._totals(5, FGM=0.0, FGA=0.0),
+                                   self._totals(5, FGM=1.0, FGA=2.0),
+                                   LEAGUE_CONFIG["categories"])
+        self.assertEqual(rates["FG%"]["loss"], 1.0)
+
+
+class ExpectedCategoriesWonTests(unittest.TestCase):
+    def test_counts_a_tie_as_half_a_win(self) -> None:
+        rates = {"PTS": {"win": 1.0, "tie": 0.0, "loss": 0.0},
+                 "REB": {"win": 0.0, "tie": 1.0, "loss": 0.0},
+                 "AST": {"win": 0.0, "tie": 0.0, "loss": 1.0}}
+        self.assertAlmostEqual(expected_categories_won(rates), 1.5)
