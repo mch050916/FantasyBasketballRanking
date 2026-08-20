@@ -28,9 +28,21 @@ def load_rosters(path: str | Path) -> dict[str, list[str]]:
     df["TEAM"] = df["TEAM"].astype(str).str.strip()
     df["PLAYER_NAME"] = df["PLAYER_NAME"].astype(str).str.strip()
 
-    duplicated = df["PLAYER_NAME"][df["PLAYER_NAME"].duplicated()].tolist()
-    if duplicated:
-        raise ValueError(f"Player(s) rostered by more than one team: {duplicated}")
+    # Check for duplicate players (same player on multiple teams, accounting for accents).
+    canonical_to_entries = {}
+    for team, player in zip(df["TEAM"], df["PLAYER_NAME"]):
+        key = canonical_player_key(player)
+        if key not in canonical_to_entries:
+            canonical_to_entries[key] = []
+        canonical_to_entries[key].append((team, player))
+
+    duplicates = {key: entries for key, entries in canonical_to_entries.items() if len(entries) > 1}
+    if duplicates:
+        collision_strs = []
+        for key, entries in duplicates.items():
+            team_spellings = [f"Team {team}: '{player}'" for team, player in entries]
+            collision_strs.append(f"{', '.join(team_spellings)}")
+        raise ValueError(f"Player(s) rostered by more than one team: {'; '.join(collision_strs)}")
 
     rosters: dict[str, list[str]] = {}
     for team, player in zip(df["TEAM"], df["PLAYER_NAME"]):
@@ -63,8 +75,9 @@ def resolve_roster_players(rosters: dict[str, list[str]],
     difflib near-misses attached -- a silently dropped player would quietly
     shrink a simulated roster and bias every category.
     """
-    by_key = {canonical_player_key(name): name
-              for name in projections["PLAYER_NAME"]}
+    by_key = {}
+    for name in projections["PLAYER_NAME"]:
+        by_key.setdefault(canonical_player_key(name), name)
 
     resolved: dict[str, list[str]] = {}
     problems: list[str] = []
