@@ -29,6 +29,9 @@ API_COL_MAP = {"ST": "STL", "TO": "TOV", "3PTM": "FG3M", "DD": "DD2", "TD": "TD3
 
 TECH_PER_PF = 0.012
 
+# Used when no game-log banks exist at all (tests, cold cache). Roughly the
+# real distribution of games in an NBA fantasy week.
+NOMINAL_GAMES_POOL = np.array([2.0, 3.0, 3.0, 4.0])
 
 _WARNED_COLUMNS: set[str] = set()
 
@@ -139,3 +142,66 @@ def scale_bank_to_projection(bank: np.ndarray,
         scaled[:, i] = bank[:, i] * scale
 
     return scaled
+
+
+def player_rng(player_name: str, seed: int, purpose: str = "draw") -> np.random.Generator:
+    """
+    Deterministic per-player generator.
+
+    Keying the stream to the player's NAME rather than their position in a
+    roster list is what makes common random numbers work: a player draws the
+    same weeks whichever roster they sit on and whichever run this is, so a
+    before/after trade delta isolates the traded players instead of drowning
+    in Monte Carlo noise.
+
+    crc32, not the builtin hash() -- hash() is salted per process by
+    PYTHONHASHSEED and would silently break reproducibility.
+    """
+    key = zlib.crc32(f"{purpose}:{player_name}".encode("utf-8"))
+    return np.random.default_rng(key ^ seed)
+
+
+def games_per_week_pool(banks: dict[str, np.ndarray]) -> np.ndarray:
+    """Every observed week length in the league, as a sampling pool."""
+    games_idx = BANK_COLUMNS.index("GAMES")
+    observed = [bank[:, games_idx] for bank in banks.values() if bank.shape[0] > 0]
+    if not observed:
+        return NOMINAL_GAMES_POOL
+    return np.concatenate(observed)
+
+
+def synthesize_bank(player_name: str,
+                    projected: dict | pd.Series,
+                    league_tau: dict[str, float],
+                    games_pool: np.ndarray,
+                    seed: int,
+                    n_rows: int = 500) -> np.ndarray:
+    """
+    Build a bank for a player with too few (or no) observed weeks.
+
+    Draws a per-game rate from N(projected_rate, league_tau) and multiplies by
+    a games count drawn from the league's empirical week lengths, so the rows
+    land in the same weekly-total units as a bootstrapped bank and can be
+    summed alongside one.
+
+    league_tau has no entry for FGA, so FGA comes out proportional to its
+    projected rate with no week-to-week noise. That makes a fallback player's
+    FG% vary only through FGM. Acceptable: this path exists for rookies and
+    cache misses, not for the players a trade usually turns on.
+    """
+    rng = player_rng(player_name, seed, purpose="synth")
+    games = rng.choice(games_pool, size=n_rows)
+
+    out = np.zeros((n_rows, len(BANK_COLUMNS)))
+    out[:, BANK_COLUMNS.index("GAMES")] = games
+
+    for i, col in enumerate(BANK_COLUMNS):
+        if col == "GAMES":
+            continue
+        raw = projected.get(col, 0.0)
+        mean = 0.0 if raw is None or pd.isna(raw) else float(raw)
+        tau = float(league_tau.get(col, 0.0) or 0.0)
+        per_game = rng.normal(mean, tau, size=n_rows) if tau > 0 else np.full(n_rows, mean)
+        out[:, i] = np.maximum(per_game, 0.0) * games
+
+    return out
