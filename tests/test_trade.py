@@ -381,3 +381,60 @@ class PadToRosterSizeTests(unittest.TestCase):
         rosters = {"A": ["a1"]}
         pad_to_roster_size(rosters, {"a1": constant_bank()}, 3, constant_bank())
         self.assertEqual(rosters["A"], ["a1"])
+
+
+class FullLeagueIntegrationTests(unittest.TestCase):
+    """A synthetic 10-team, 13-player league exercised end to end."""
+
+    def _league(self) -> tuple[dict, dict]:
+        rng = np.random.default_rng(99)
+        rosters, banks = {}, {}
+        for t in range(10):
+            team = f"Team{t}"
+            rosters[team] = []
+            for p in range(13):
+                name = f"P{t}_{p}"
+                bank = np.zeros((30, len(BANK_COLUMNS)))
+                bank[:, BANK_COLUMNS.index("GAMES")] = rng.integers(2, 5, size=30)
+                for col in ("FGM", "FGA", "PTS", "REB", "AST", "ST", "BLK", "TO", "PF"):
+                    bank[:, BANK_COLUMNS.index(col)] = rng.uniform(0, 60, size=30)
+                rosters[team].append(name)
+                banks[name] = bank
+        return rosters, banks
+
+    def _run(self, rosters, banks, give, get):
+        return evaluate_trade(rosters, banks, "Team0", "Team1", give, get,
+                              LEAGUE_CONFIG["categories"], LEAGUE_CONFIG,
+                              {**TRADE_CONFIG, "weeks_per_opponent": 1_000},
+                              replacement_bank=np.zeros((1, len(BANK_COLUMNS))))
+
+    def test_the_field_averages_to_half_the_categories(self) -> None:
+        rosters, banks = self._league()
+        result = self._run(rosters, banks, [], [])
+        scores = [v["expected"] for v in result["before"].values()]
+        n_cats = len(LEAGUE_CONFIG["categories"])
+        self.assertAlmostEqual(sum(scores) / len(scores), n_cats / 2, delta=0.05)
+
+    def test_a_null_trade_across_a_full_league_is_exactly_zero(self) -> None:
+        rosters, banks = self._league()
+        result = self._run(rosters, banks, [], [])
+        self.assertTrue(all(v["expected"] == 0.0 for v in result["delta"].values()))
+
+    def test_trading_your_best_player_for_their_worst_hurts_you(self) -> None:
+        rosters, banks = self._league()
+        best = max(rosters["Team0"], key=lambda p: banks[p][:, BANK_COLUMNS.index("PTS")].sum())
+        worst = min(rosters["Team1"], key=lambda p: banks[p][:, BANK_COLUMNS.index("PTS")].sum())
+        result = self._run(rosters, banks, [best], [worst])
+        self.assertLess(result["delta"]["Team0"]["expected"], 0.0)
+        self.assertGreater(result["delta"]["Team1"]["expected"], 0.0)
+
+    def test_untraded_teams_barely_move(self) -> None:
+        # Not exactly zero: a one-for-one trade genuinely changes the field
+        # every other team is measured against. But it should be small.
+        rosters, banks = self._league()
+        best = max(rosters["Team0"], key=lambda p: banks[p][:, BANK_COLUMNS.index("PTS")].sum())
+        worst = min(rosters["Team1"], key=lambda p: banks[p][:, BANK_COLUMNS.index("PTS")].sum())
+        result = self._run(rosters, banks, [best], [worst])
+        for team in rosters:
+            if team not in ("Team0", "Team1"):
+                self.assertLess(abs(result["delta"][team]["expected"]), 0.35)

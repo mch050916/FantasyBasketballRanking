@@ -16,7 +16,11 @@ draft_board_2026_27.html
 
 # Ad-hoc before/after snapshots for compare_baselines.py, scratch only
 diagnostics/baselines/
- 
+
+# Real league rosters for the trade analyzer — league-specific, churns
+# weekly. rosters_example.csv stays tracked.
+rosters.csv
+
 # Python bytecode
 __pycache__/
 *.pyc

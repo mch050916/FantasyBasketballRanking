@@ -53,6 +53,30 @@ FF (flagrant fouls) was considered but removed — the NBA API has no reliable p
 └── requirements.txt
 ```
 
+## Trade analyzer
+
+Given all 10 league rosters, evaluates a two-team trade by how it changes each
+side's expected categories won per week against the league field.
+
+```bash
+python scripts/analyze_trade.py --team "Chester" --partner "Bob" \
+    --give "Jalen Johnson,Kyrie Irving" --get "Alperen Sengun"
+```
+
+Copy `rosters_example.csv` to `rosters.csv` and fill in all 10 rosters first.
+Run `main.py` at least once beforehand so the game-log cache exists — the
+analyzer reads that cache rather than fetching, and on a cold cache it would
+only pull the rostered players, giving a thinner week-length sample than the
+full pipeline builds.
+
+A simulated week resamples each player's real observed weeks from the cached
+game logs, rescaled to this season's projection — rather than assuming a
+normal distribution, which reports a confident coin flip on sparse categories
+like TD and TECH where both teams realistically finish level. Ties count as
+half a win and are reported per category.
+
+This changes no player's score: `durant_rankings_2026_27.csv` is unaffected.
+
 ## Setup
 
 ```bash
