@@ -274,3 +274,38 @@ def expected_categories_won(rates: dict[str, dict[str, float]]) -> float:
     correlation moves the variance of a week's outcome, not this mean.
     """
     return sum(r["win"] + 0.5 * r["tie"] for r in rates.values())
+
+
+def evaluate_roster_vs_field(team: str,
+                             rosters: dict[str, list[str]],
+                             banks: dict[str, np.ndarray],
+                             categories: dict,
+                             n_weeks: int,
+                             seed: int) -> tuple[float, dict[str, dict[str, float]]]:
+    """
+    Average this roster's per-category rates over every other team.
+
+    Returns (expected categories won per week, per-category rates).
+    """
+    if team not in rosters:
+        raise KeyError(f"'{team}' is not one of the league rosters: {sorted(rosters)}")
+
+    own = simulate_team_totals({p: banks[p] for p in rosters[team]}, n_weeks, seed)
+
+    opponents = [t for t in rosters if t != team]
+    if not opponents:
+        raise KeyError("Need at least two rosters to evaluate against a field")
+
+    summed: dict[str, dict[str, float]] = {}
+    for opponent in opponents:
+        their = simulate_team_totals({p: banks[p] for p in rosters[opponent]},
+                                     n_weeks, seed)
+        for cat, rate in category_win_rates(own, their, categories).items():
+            bucket = summed.setdefault(cat, {"win": 0.0, "tie": 0.0, "loss": 0.0})
+            for outcome in bucket:
+                bucket[outcome] += rate[outcome]
+
+    averaged = {cat: {k: v / len(opponents) for k, v in bucket.items()}
+                for cat, bucket in summed.items()}
+
+    return expected_categories_won(averaged), averaged

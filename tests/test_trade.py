@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from config import LEAGUE_CONFIG
-from trade import BANK_COLUMNS, build_week_bank, category_win_rates, expected_categories_won, games_per_week_pool, player_rng, scale_bank_to_projection, simulate_team_totals, synthesize_bank
+from trade import BANK_COLUMNS, build_week_bank, category_win_rates, evaluate_roster_vs_field, expected_categories_won, games_per_week_pool, player_rng, scale_bank_to_projection, simulate_team_totals, synthesize_bank
 
 
 def make_log(dates: list[str], **stats) -> pd.DataFrame:
@@ -237,3 +237,43 @@ class ExpectedCategoriesWonTests(unittest.TestCase):
                  "REB": {"win": 0.0, "tie": 1.0, "loss": 0.0},
                  "AST": {"win": 0.0, "tie": 0.0, "loss": 1.0}}
         self.assertAlmostEqual(expected_categories_won(rates), 1.5)
+
+
+class EvaluateRosterVsFieldTests(unittest.TestCase):
+    def _league(self) -> tuple[dict, dict]:
+        rosters = {"Strong": ["S1"], "Middle": ["M1"], "Weak": ["W1"]}
+        banks = {"S1": constant_bank(PTS=300.0, FGM=100.0, FGA=150.0),
+                 "M1": constant_bank(PTS=200.0, FGM=70.0, FGA=150.0),
+                 "W1": constant_bank(PTS=100.0, FGM=40.0, FGA=150.0)}
+        return rosters, banks
+
+    def test_the_best_roster_wins_a_category_against_the_whole_field(self) -> None:
+        rosters, banks = self._league()
+        _, rates = evaluate_roster_vs_field("Strong", rosters, banks,
+                                            LEAGUE_CONFIG["categories"],
+                                            n_weeks=50, seed=1)
+        self.assertEqual(rates["PTS"]["win"], 1.0)
+
+    def test_the_middle_roster_splits_the_field(self) -> None:
+        rosters, banks = self._league()
+        _, rates = evaluate_roster_vs_field("Middle", rosters, banks,
+                                            LEAGUE_CONFIG["categories"],
+                                            n_weeks=50, seed=1)
+        self.assertAlmostEqual(rates["PTS"]["win"], 0.5)
+
+    def test_expected_categories_won_averages_to_half_the_field(self) -> None:
+        # Across every team, average expected categories won must be half of
+        # the category count -- one team's win is another's loss.
+        rosters, banks = self._league()
+        n_cats = len(LEAGUE_CONFIG["categories"])
+        scores = [evaluate_roster_vs_field(t, rosters, banks,
+                                           LEAGUE_CONFIG["categories"],
+                                           n_weeks=50, seed=1)[0]
+                  for t in rosters]
+        self.assertAlmostEqual(sum(scores) / len(scores), n_cats / 2, delta=0.01)
+
+    def test_raises_when_the_team_is_not_in_the_league(self) -> None:
+        rosters, banks = self._league()
+        with self.assertRaises(KeyError):
+            evaluate_roster_vs_field("Ghost", rosters, banks,
+                                     LEAGUE_CONFIG["categories"], 10, 1)
