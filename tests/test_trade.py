@@ -3,8 +3,8 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from config import LEAGUE_CONFIG
-from trade import BANK_COLUMNS, build_week_bank, category_win_rates, evaluate_roster_vs_field, expected_categories_won, games_per_week_pool, player_rng, scale_bank_to_projection, simulate_team_totals, synthesize_bank
+from config import LEAGUE_CONFIG, TRADE_CONFIG
+from trade import BANK_COLUMNS, apply_trade, build_week_bank, category_win_rates, evaluate_roster_vs_field, evaluate_trade, expected_categories_won, games_per_week_pool, pad_to_roster_size, player_rng, scale_bank_to_projection, simulate_team_totals, synthesize_bank
 
 
 def make_log(dates: list[str], **stats) -> pd.DataFrame:
@@ -277,3 +277,107 @@ class EvaluateRosterVsFieldTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             evaluate_roster_vs_field("Ghost", rosters, banks,
                                      LEAGUE_CONFIG["categories"], 10, 1)
+
+
+class ApplyTradeTests(unittest.TestCase):
+    def test_swaps_the_named_players_between_the_two_rosters(self) -> None:
+        rosters = {"A": ["a1", "a2"], "B": ["b1", "b2"]}
+        result = apply_trade(rosters, "A", "B", ["a1"], ["b1"])
+        self.assertEqual(sorted(result["A"]), ["a2", "b1"])
+        self.assertEqual(sorted(result["B"]), ["a1", "b2"])
+
+    def test_leaves_uninvolved_rosters_alone(self) -> None:
+        rosters = {"A": ["a1"], "B": ["b1"], "C": ["c1"]}
+        self.assertEqual(apply_trade(rosters, "A", "B", ["a1"], ["b1"])["C"], ["c1"])
+
+    def test_rejects_giving_a_player_you_do_not_have(self) -> None:
+        rosters = {"A": ["a1"], "B": ["b1"]}
+        with self.assertRaises(ValueError) as ctx:
+            apply_trade(rosters, "A", "B", ["b1"], ["b1"])
+        self.assertIn("b1", str(ctx.exception))
+
+    def test_rejects_receiving_a_player_the_partner_does_not_have(self) -> None:
+        rosters = {"A": ["a1"], "B": ["b1"]}
+        with self.assertRaises(ValueError):
+            apply_trade(rosters, "A", "B", ["a1"], ["a1"])
+
+    def test_does_not_mutate_the_input(self) -> None:
+        rosters = {"A": ["a1"], "B": ["b1"]}
+        apply_trade(rosters, "A", "B", ["a1"], ["b1"])
+        self.assertEqual(rosters["A"], ["a1"])
+
+
+class EvaluateTradeTests(unittest.TestCase):
+    def _league(self) -> tuple[dict, dict]:
+        rosters = {"A": ["a1", "a2"], "B": ["b1", "b2"], "C": ["c1", "c2"]}
+        banks = {"a1": constant_bank(PTS=200.0, REB=10.0),
+                 "a2": constant_bank(PTS=100.0, REB=90.0),
+                 "b1": constant_bank(PTS=190.0, REB=20.0),
+                 "b2": constant_bank(PTS=110.0, REB=80.0),
+                 "c1": constant_bank(PTS=150.0, REB=50.0),
+                 "c2": constant_bank(PTS=150.0, REB=50.0)}
+        return rosters, banks
+
+    def _run(self, rosters, banks, give, get):
+        return evaluate_trade(rosters, banks, "A", "B", give, get,
+                              LEAGUE_CONFIG["categories"], LEAGUE_CONFIG,
+                              {**TRADE_CONFIG, "weeks_per_opponent": 500},
+                              replacement_bank=constant_bank(PTS=1.0, REB=1.0))
+
+    def test_a_null_trade_moves_nothing_at_all(self) -> None:
+        # The strongest test in the suite. Catches seed leakage, broken common
+        # random numbers, and padding that fires when it should not.
+        rosters, banks = self._league()
+        result = self._run(rosters, banks, [], [])
+        for team in rosters:
+            self.assertEqual(result["delta"][team]["expected"], 0.0)
+
+    def test_a_trade_is_zero_sum_between_the_two_sides_on_a_symmetric_swap(self) -> None:
+        rosters, banks = self._league()
+        result = self._run(rosters, banks, ["a1"], ["b1"])
+        self.assertAlmostEqual(result["delta"]["A"]["expected"],
+                               -result["delta"]["B"]["expected"], delta=0.35)
+
+    def test_reports_before_after_and_delta_for_every_team(self) -> None:
+        rosters, banks = self._league()
+        result = self._run(rosters, banks, ["a1"], ["b1"])
+        for section in ("before", "after", "delta"):
+            self.assertEqual(sorted(result[section]), ["A", "B", "C"])
+
+    def test_an_uneven_trade_leaves_the_roster_short_before_padding(self) -> None:
+        # roster_sizes_after reports the traded rosters, before padding.
+        rosters, banks = self._league()
+        result = self._run(rosters, banks, ["a1", "a2"], ["b1"])
+        self.assertEqual(result["roster_sizes_after"]["A"], 1)
+
+    def test_is_deterministic_across_repeated_runs(self) -> None:
+        rosters, banks = self._league()
+        first = self._run(rosters, banks, ["a1"], ["b1"])
+        second = self._run(rosters, banks, ["a1"], ["b1"])
+        self.assertEqual(first["delta"]["A"]["expected"],
+                         second["delta"]["A"]["expected"])
+
+
+class PadToRosterSizeTests(unittest.TestCase):
+    def test_fills_a_short_roster_up_to_the_league_size(self) -> None:
+        rosters, banks = pad_to_roster_size(
+            {"A": ["a1"]}, {"a1": constant_bank(PTS=10.0)}, 3,
+            replacement_bank=constant_bank(PTS=1.0))
+        self.assertEqual(len(rosters["A"]), 3)
+        self.assertEqual(len(banks), 3)
+
+    def test_leaves_a_full_roster_untouched(self) -> None:
+        rosters, _ = pad_to_roster_size(
+            {"A": ["a1", "a2"]},
+            {"a1": constant_bank(), "a2": constant_bank()}, 2,
+            replacement_bank=constant_bank())
+        self.assertEqual(rosters["A"], ["a1", "a2"])
+
+    def test_replacement_slot_names_are_stable_across_calls(self) -> None:
+        args = ({"A": ["a1"]}, {"a1": constant_bank()}, 3, constant_bank())
+        self.assertEqual(pad_to_roster_size(*args)[0], pad_to_roster_size(*args)[0])
+
+    def test_does_not_mutate_the_input_roster(self) -> None:
+        rosters = {"A": ["a1"]}
+        pad_to_roster_size(rosters, {"a1": constant_bank()}, 3, constant_bank())
+        self.assertEqual(rosters["A"], ["a1"])

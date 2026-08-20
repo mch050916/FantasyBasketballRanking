@@ -309,3 +309,107 @@ def evaluate_roster_vs_field(team: str,
                 for cat, bucket in summed.items()}
 
     return expected_categories_won(averaged), averaged
+
+
+REPLACEMENT_PREFIX = "__replacement__"
+
+
+def apply_trade(rosters: dict[str, list[str]],
+                team: str,
+                partner: str,
+                give: list[str],
+                get: list[str]) -> dict[str, list[str]]:
+    """Return a new roster mapping with the trade applied. Input untouched."""
+    for name in (team, partner):
+        if name not in rosters:
+            raise KeyError(f"'{name}' is not one of the league rosters: {sorted(rosters)}")
+
+    missing_give = [p for p in give if p not in rosters[team]]
+    if missing_give:
+        raise ValueError(f"{team} cannot give players they do not roster: {missing_give}")
+
+    missing_get = [p for p in get if p not in rosters[partner]]
+    if missing_get:
+        raise ValueError(f"{partner} cannot give players they do not roster: {missing_get}")
+
+    updated = {name: list(players) for name, players in rosters.items()}
+    updated[team] = [p for p in updated[team] if p not in give] + list(get)
+    updated[partner] = [p for p in updated[partner] if p not in get] + list(give)
+    return updated
+
+
+def pad_to_roster_size(rosters: dict[str, list[str]],
+                       banks: dict[str, np.ndarray],
+                       roster_size: int,
+                       replacement_bank: np.ndarray) -> tuple[dict, dict]:
+    """
+    Fill short rosters with replacement-level players.
+
+    Without this a 2-for-1 looks artificially bad: a 12-man roster would be
+    simulated against 13-man ones, and the missing slot would read as a
+    deficit in every category.
+
+    Replacement slots are named per team and index so their random streams
+    stay stable across runs.
+    """
+    padded_rosters = {name: list(players) for name, players in rosters.items()}
+    padded_banks = dict(banks)
+
+    for team, players in padded_rosters.items():
+        for i in range(len(players), roster_size):
+            slot = f"{REPLACEMENT_PREFIX}{team}_{i}"
+            padded_banks[slot] = replacement_bank
+            players.append(slot)
+
+    return padded_rosters, padded_banks
+
+
+def evaluate_trade(rosters: dict[str, list[str]],
+                   banks: dict[str, np.ndarray],
+                   team: str,
+                   partner: str,
+                   give: list[str],
+                   get: list[str],
+                   categories: dict,
+                   config: dict,
+                   trade_config: dict,
+                   replacement_bank: np.ndarray) -> dict:
+    """
+    Evaluate a two-team trade against the league field, before and after.
+
+    Both runs share one seed, and every player's draws are keyed to their own
+    name, so untraded players contribute identical weeks on both sides and the
+    delta isolates the traded players rather than Monte Carlo noise.
+    """
+    seed = trade_config["seed"]
+    n_weeks = trade_config["weeks_per_opponent"]
+    roster_size = max([config["roster_size"]] + [len(p) for p in rosters.values()])
+
+    after_rosters = apply_trade(rosters, team, partner, give, get)
+
+    def evaluate_all(source: dict[str, list[str]]) -> dict:
+        padded_rosters, padded_banks = pad_to_roster_size(
+            source, banks, roster_size, replacement_bank)
+        out = {}
+        for name in padded_rosters:
+            expected, rates = evaluate_roster_vs_field(
+                name, padded_rosters, padded_banks, categories, n_weeks, seed)
+            out[name] = {"expected": expected, "rates": rates}
+        return out
+
+    before = evaluate_all(rosters)
+    after = evaluate_all(after_rosters)
+
+    delta = {
+        name: {
+            "expected": after[name]["expected"] - before[name]["expected"],
+            "rates": {
+                cat: after[name]["rates"][cat]["win"] - before[name]["rates"][cat]["win"]
+                for cat in before[name]["rates"]
+            },
+        }
+        for name in before
+    }
+
+    return {"before": before, "after": after, "delta": delta,
+            "roster_sizes_after": {n: len(p) for n, p in after_rosters.items()}}
