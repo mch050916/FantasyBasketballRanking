@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from config import LEAGUE_CONFIG, TRADE_CONFIG
-from trade import BANK_COLUMNS, apply_trade, build_week_bank, category_win_rates, evaluate_roster_vs_field, evaluate_trade, expected_categories_won, games_per_week_pool, pad_to_roster_size, player_rng, scale_bank_to_projection, simulate_team_totals, synthesize_bank
+from trade import BANK_COLUMNS, add_missed_weeks, apply_trade, build_week_bank, category_win_rates, evaluate_roster_vs_field, evaluate_trade, expected_categories_won, games_per_week_pool, pad_to_roster_size, player_rng, scale_bank_to_projection, simulate_team_totals, synthesize_bank
 
 
 def make_log(dates: list[str], **stats) -> pd.DataFrame:
@@ -111,6 +111,203 @@ class ScaleBankTests(unittest.TestCase):
         bank = self._bank([30.0], [np.nan])
         scaled = scale_bank_to_projection(bank, {"PTS": 20.0})
         self.assertEqual(scaled[0, BANK_COLUMNS.index("PTS")], 30.0)
+
+    def test_gp_factor_targets_the_true_rate_not_the_baked_in_projection(self) -> None:
+        # model.py bakes GP_FACTOR into every projected rate. A gp_factor of
+        # 0.5 means the passed-in projection is HALF the player's true
+        # per-game rate, so the bank must scale to DOUBLE the projected number.
+        bank = self._bank([30.0], [3.0])  # 10.0 per game historically
+        scaled = scale_bank_to_projection(bank, {"PTS": 20.0}, gp_factor=0.5)
+        pts = scaled[:, BANK_COLUMNS.index("PTS")]
+        games = scaled[:, BANK_COLUMNS.index("GAMES")]
+        self.assertAlmostEqual(pts.sum() / games.sum(), 40.0)
+
+    def test_gp_factor_of_one_reproduces_prior_behaviour_exactly(self) -> None:
+        bank = self._bank([30.0, 30.0], [3.0, 3.0])
+        default = scale_bank_to_projection(bank, {"PTS": 20.0})
+        explicit = scale_bank_to_projection(bank, {"PTS": 20.0}, gp_factor=1.0)
+        np.testing.assert_array_equal(default, explicit)
+        pts = explicit[:, BANK_COLUMNS.index("PTS")]
+        games = explicit[:, BANK_COLUMNS.index("GAMES")]
+        self.assertAlmostEqual(pts.sum() / games.sum(), 20.0)
+
+    def test_missing_or_invalid_gp_factor_falls_back_to_one(self) -> None:
+        bank = self._bank([30.0], [3.0])
+        baseline = scale_bank_to_projection(bank, {"PTS": 20.0}, gp_factor=1.0)
+        for bad in (None, 0.0, -1.0, float("nan"), float("inf")):
+            scaled = scale_bank_to_projection(bank, {"PTS": 20.0}, gp_factor=bad)
+            np.testing.assert_array_equal(scaled, baseline)
+
+
+class AddMissedWeeksTests(unittest.TestCase):
+    def _bank(self, n_rows: int, to_per_game: float = 4.0, games: float = 4.0) -> np.ndarray:
+        bank = np.zeros((n_rows, len(BANK_COLUMNS)))
+        bank[:, BANK_COLUMNS.index("GAMES")] = games
+        bank[:, BANK_COLUMNS.index("TO")] = to_per_game * games
+        bank[:, BANK_COLUMNS.index("PTS")] = 25.0
+        return bank
+
+    def test_availability_of_one_returns_the_bank_unchanged(self) -> None:
+        bank = self._bank(10)
+        result = add_missed_weeks(bank, 1.0)
+        np.testing.assert_array_equal(result, bank)
+
+    def test_missing_or_non_finite_availability_returns_the_bank_unchanged(self) -> None:
+        bank = self._bank(10)
+        for value in (None, float("nan"), float("inf")):
+            np.testing.assert_array_equal(add_missed_weeks(bank, value), bank)
+
+    def test_appends_the_right_proportion_of_zero_rows(self) -> None:
+        # availability = 0.5 -> Z = N * (1 - 0.5) / 0.5 = N: doubles the bank.
+        bank = self._bank(10)
+        result = add_missed_weeks(bank, 0.5)
+        self.assertEqual(result.shape[0], 20)
+
+        # availability = 0.8 -> Z = 10 * 0.2 / 0.8 = 2.5 -> round to 2 (banker's
+        # rounding on .5 ties, but this lands cleanly regardless).
+        result_80 = add_missed_weeks(bank, 0.8)
+        expected_zero_rows = round(10 * (1 - 0.8) / 0.8)
+        self.assertEqual(result_80.shape[0], 10 + expected_zero_rows)
+
+    def test_a_uniform_draw_hits_a_zero_row_with_probability_one_minus_availability(self) -> None:
+        bank = self._bank(10)
+        result = add_missed_weeks(bank, 0.5)
+        games_idx = BANK_COLUMNS.index("GAMES")
+        zero_rows = (result[:, games_idx] == 0.0).sum()
+        self.assertAlmostEqual(zero_rows / result.shape[0], 0.5)
+
+    def test_a_zero_row_is_zero_in_every_column_including_games(self) -> None:
+        bank = self._bank(4, to_per_game=8.0)
+        result = add_missed_weeks(bank, 0.5)
+        zero_rows = result[result[:, BANK_COLUMNS.index("GAMES")] == 0.0]
+        self.assertTrue((zero_rows == 0.0).all())
+        # And there actually are zero rows to check, not a vacuous pass.
+        self.assertGreater(zero_rows.shape[0], 0)
+
+    def test_availability_is_clamped_so_z_cannot_explode(self) -> None:
+        bank = self._bank(5)
+        result = add_missed_weeks(bank, 1e-9)
+        # Clamped to MIN_AVAILABILITY_FOR_MISSED_WEEKS (0.05): Z = 5*0.95/0.05 = 95.
+        self.assertEqual(result.shape[0], 100)
+
+    def test_an_empty_bank_is_returned_unchanged(self) -> None:
+        bank = np.zeros((0, len(BANK_COLUMNS)))
+        result = add_missed_weeks(bank, 0.5)
+        self.assertEqual(result.shape[0], 0)
+
+    def test_does_not_mutate_the_input_bank(self) -> None:
+        bank = self._bank(5)
+        original = bank.copy()
+        add_missed_weeks(bank, 0.5)
+        np.testing.assert_array_equal(bank, original)
+
+
+class GpFactorDoubleDiscountTests(unittest.TestCase):
+    """
+    Regression coverage for the critical whole-branch-review finding: model.py
+    bakes GP_FACTOR into every projected rate, and the bank's GAMES column is
+    already empirical availability, so rescaling straight to the projected
+    rate double-discounted fragile players -- catastrophically for low-is-
+    better categories like TO, where it made them look artificially clean
+    (e.g. Embiid's simulated TO ratio vs real per-game rate was 0.485).
+    """
+
+    def _true_rate_bank(self, per_game_to: float, n_weeks: int = 20,
+                        games_per_week: float = 4.0) -> np.ndarray:
+        bank = np.zeros((n_weeks, len(BANK_COLUMNS)))
+        bank[:, BANK_COLUMNS.index("GAMES")] = games_per_week
+        bank[:, BANK_COLUMNS.index("TO")] = per_game_to * games_per_week
+        return bank
+
+    def _per_game_played_to(self, bank: np.ndarray, n_weeks: int = 20_000,
+                            seed: int = 5) -> float:
+        totals = simulate_team_totals({"P": bank}, n_weeks=n_weeks, seed=seed)
+        to_total = totals[:, BANK_COLUMNS.index("TO")].sum()
+        games_total = totals[:, BANK_COLUMNS.index("GAMES")].sum()
+        return to_total / games_total
+
+    def test_fragile_high_turnover_player_still_reads_worse_than_a_durable_low_turnover_one(self) -> None:
+        # Fragile: genuinely turnover-prone (6.0/game true rate), discounted
+        # by a harsh GP_FACTOR (0.5) in the projection file -- the exact
+        # shape (Embiid/Anthony Davis) that motivated this fix.
+        fragile_true_rate, fragile_gp_factor = 6.0, 0.5
+        fragile_bank = self._true_rate_bank(fragile_true_rate)
+        fragile_projected = {"TO": fragile_true_rate * fragile_gp_factor}  # baked, like model.py
+
+        # Durable: genuinely cleaner (4.0/game true rate), full availability.
+        durable_true_rate, durable_gp_factor = 4.0, 1.0
+        durable_bank = self._true_rate_bank(durable_true_rate)
+        durable_projected = {"TO": durable_true_rate * durable_gp_factor}
+
+        fragile_final = add_missed_weeks(
+            scale_bank_to_projection(fragile_bank, fragile_projected, gp_factor=fragile_gp_factor),
+            fragile_gp_factor)
+        durable_final = add_missed_weeks(
+            scale_bank_to_projection(durable_bank, durable_projected, gp_factor=durable_gp_factor),
+            durable_gp_factor)
+
+        fragile_rate = self._per_game_played_to(fragile_final)
+        durable_rate = self._per_game_played_to(durable_final)
+
+        self.assertGreater(fragile_rate, durable_rate)
+        self.assertAlmostEqual(fragile_rate, fragile_true_rate, delta=0.05)
+        self.assertAlmostEqual(durable_rate, durable_true_rate, delta=0.05)
+
+    def test_the_old_double_counted_scaling_would_have_reversed_the_ordering(self) -> None:
+        # Confirms this scenario really does exercise the bug: scaling straight
+        # to the already-GP_FACTOR-baked projected rate (gp_factor omitted,
+        # the pre-fix call shape) makes the fragile player's simulated TO/game
+        # LOWER than the durable player's, even though fragile's true rate is
+        # higher -- exactly the defect this fix corrects.
+        fragile_true_rate, fragile_gp_factor = 6.0, 0.5
+        fragile_bank = self._true_rate_bank(fragile_true_rate)
+        fragile_projected = {"TO": fragile_true_rate * fragile_gp_factor}
+
+        durable_true_rate, durable_gp_factor = 4.0, 1.0
+        durable_bank = self._true_rate_bank(durable_true_rate)
+        durable_projected = {"TO": durable_true_rate * durable_gp_factor}
+
+        old_fragile = scale_bank_to_projection(fragile_bank, fragile_projected)
+        old_durable = scale_bank_to_projection(durable_bank, durable_projected)
+
+        games_idx, to_idx = BANK_COLUMNS.index("GAMES"), BANK_COLUMNS.index("TO")
+        fragile_rate = old_fragile[:, to_idx].sum() / old_fragile[:, games_idx].sum()
+        durable_rate = old_durable[:, to_idx].sum() / old_durable[:, games_idx].sum()
+
+        self.assertLess(fragile_rate, durable_rate)
+
+    def test_the_exact_zero_null_trade_survives_gp_factor_scaling_and_missed_weeks(self) -> None:
+        # End-to-end re-confirmation of the invariant the whole
+        # common-random-numbers design rests on, now that banks are built
+        # through scale_bank_to_projection(gp_factor=...) + add_missed_weeks
+        # rather than raw constant banks.
+        rng = np.random.default_rng(11)
+        raw_banks = {}
+        gp_factors = {}
+        for name in ("a1", "a2", "b1", "b2", "c1", "c2"):
+            n = 15
+            bank = np.zeros((n, len(BANK_COLUMNS)))
+            bank[:, BANK_COLUMNS.index("GAMES")] = rng.integers(2, 5, size=n)
+            for col in ("PTS", "REB", "TO"):
+                bank[:, BANK_COLUMNS.index(col)] = rng.uniform(5, 40, size=n)
+            raw_banks[name] = bank
+            gp_factors[name] = float(rng.uniform(0.5, 1.0))
+
+        banks = {}
+        for name, bank in raw_banks.items():
+            gp_factor = gp_factors[name]
+            historical_pts = bank[:, BANK_COLUMNS.index("PTS")].sum() / bank[:, BANK_COLUMNS.index("GAMES")].sum()
+            projected = {"PTS": historical_pts * gp_factor}
+            scaled = scale_bank_to_projection(bank, projected, gp_factor=gp_factor)
+            banks[name] = add_missed_weeks(scaled, gp_factor)
+
+        rosters = {"A": ["a1", "a2"], "B": ["b1", "b2"], "C": ["c1", "c2"]}
+        result = evaluate_trade(rosters, banks, "A", "B", [], [],
+                                LEAGUE_CONFIG["categories"], LEAGUE_CONFIG,
+                                {**TRADE_CONFIG, "weeks_per_opponent": 500},
+                                replacement_bank=np.zeros((1, len(BANK_COLUMNS))))
+        for team in rosters:
+            self.assertEqual(result["delta"][team]["expected"], 0.0)
 
 
 class PlayerRngTests(unittest.TestCase):

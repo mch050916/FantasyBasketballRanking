@@ -10,6 +10,8 @@ import argparse
 import sys
 from pathlib import Path
 
+import pandas as pd
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from config import LEAGUE_CONFIG, TRADE_CONFIG          # noqa: E402
@@ -17,7 +19,8 @@ from data import fetch_game_logs                        # noqa: E402
 from model import compute_tau                            # noqa: E402
 from rosters import (load_projections, load_rosters,     # noqa: E402
                      resolve_roster_players)
-from trade import (build_week_bank, evaluate_trade,       # noqa: E402
+from trade import (BANK_COLUMNS, add_missed_weeks,        # noqa: E402
+                   build_week_bank, evaluate_trade,
                    games_per_week_pool, scale_bank_to_projection,
                    synthesize_bank)
 
@@ -26,9 +29,38 @@ def parse_names(raw: str | None) -> list[str]:
     return [part.strip() for part in (raw or "").split(",") if part.strip()]
 
 
+def _gp_factor_for(projected: pd.Series) -> float:
+    """A player's GP_FACTOR, defaulting to 1.0 when absent/NaN (rookies)."""
+    raw = projected.get("GP_FACTOR", 1.0)
+    if raw is None or pd.isna(raw) or raw <= 0:
+        return 1.0
+    return float(raw)
+
+
+def _true_rate_projection(projected: pd.Series, gp_factor: float) -> dict:
+    """
+    Undo model.py's GP_FACTOR bake-in across every BANK_COLUMNS category, so
+    synthesize_bank's fallback path starts from the same TRUE per-game rate
+    scale_bank_to_projection recovers for the bootstrapped path -- add_missed_weeks
+    is what reintroduces availability afterwards, for both paths alike.
+    """
+    true_rates = dict(projected)
+    for col in BANK_COLUMNS:
+        if col == "GAMES":
+            continue
+        raw = projected.get(col, 0.0)
+        if raw is None or pd.isna(raw):
+            continue
+        true_rates[col] = float(raw) / gp_factor
+    return true_rates
+
+
 def build_all_banks(rosters, projections, game_logs, league_tau, trade_config):
     """One bank per rostered player: bootstrapped where possible, else synthetic."""
     raw_banks = build_week_bank(game_logs)
+    # Must be built from the raw, real-observed-week banks -- before any
+    # add_missed_weeks zero rows exist anywhere -- or the synthetic fallback
+    # would start drawing zero-game "weeks" from the pool.
     games_pool = games_per_week_pool(raw_banks)
     by_name = projections.set_index("PLAYER_NAME")
 
@@ -36,15 +68,19 @@ def build_all_banks(rosters, projections, game_logs, league_tau, trade_config):
     for team_players in rosters.values():
         for player in team_players:
             projected = by_name.loc[player]
+            gp_factor = _gp_factor_for(projected)
             raw = raw_banks.get(player)
             if raw is not None and raw.shape[0] >= trade_config["min_weeks_for_bootstrap"]:
-                banks[player] = scale_bank_to_projection(
-                    raw, projected, trade_config["scale_bounds"])
+                scaled = scale_bank_to_projection(
+                    raw, projected, trade_config["scale_bounds"], gp_factor)
+                banks[player] = add_missed_weeks(scaled, gp_factor)
             else:
                 synthetic.append(player)
-                banks[player] = synthesize_bank(
-                    player, projected, league_tau, games_pool,
+                true_rate_projected = _true_rate_projection(projected, gp_factor)
+                bank = synthesize_bank(
+                    player, true_rate_projected, league_tau, games_pool,
                     trade_config["seed"], trade_config["synthetic_bank_rows"])
+                banks[player] = add_missed_weeks(bank, gp_factor)
     return banks, games_pool, synthetic
 
 

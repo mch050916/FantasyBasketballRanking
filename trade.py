@@ -98,27 +98,46 @@ def build_week_bank(game_logs: dict[str, dict[str, pd.DataFrame]]) -> dict[str, 
 
 def scale_bank_to_projection(bank: np.ndarray,
                              projected: dict | pd.Series,
-                             scale_bounds: tuple[float, float] = (0.25, 4.0)) -> np.ndarray:
+                             scale_bounds: tuple[float, float] = (0.25, 4.0),
+                             gp_factor: float = 1.0) -> np.ndarray:
     """
-    Rescale a bank of observed weekly totals to this season's projected rates.
+    Rescale a bank of observed weekly totals to this season's TRUE per-game rate.
 
-    scale = projected_per_game / historical_per_game, applied per category.
+    scale = target_per_game / historical_per_game, applied per category,
+    where target_per_game = projected_per_game / gp_factor.
 
-    Two guards:
+    model.py bakes GP_FACTOR (and DECLINE_FACTOR) into every projected rate
+    (model.py:530, 540-544) -- but this bank's GAMES column is empirical and
+    already reflects the player's real availability on its own. Rescaling
+    straight to the projected rate would apply availability twice, and for
+    the low-is-better categories (TO, PF, TECH) it makes a fragile player
+    look artificially clean (GP_FACTOR < 1 shrinks a bad number further).
+    Dividing by gp_factor here undoes model.py's bake-in and recovers the
+    TRUE per-game rate a healthy week actually produces; add_missed_weeks
+    (below) is what reintroduces availability afterwards, as whole missed
+    weeks rather than a smear across every stat.
+
+    DECLINE_FACTOR is NOT undone here -- it is a genuine change in per-game
+    rate (aging/decline), not an availability effect, so it stays baked into
+    the target.
+
+    Two guards, preserved exactly as before:
       - historical rate ~= 0 (TD for most of the pool) leaves scale at 1.0,
         so a player who never recorded one keeps simulating zeros.
       - scale is clipped so a tiny denominator cannot explode a category.
 
-    GP_FACTOR and DECLINE_FACTOR are already baked into the projected rates,
-    so availability is inherited here -- including GP_FACTOR's known
-    over-discount asymmetry (GitHub issue #7). Inherited deliberately, not
-    corrected.
+    A missing, zero, non-finite, or otherwise unusable gp_factor falls back
+    to 1.0 (no correction), so callers that do not pass one reproduce the
+    prior behaviour exactly.
     """
     scaled = bank.copy()
     games_idx = BANK_COLUMNS.index("GAMES")
     total_games = bank[:, games_idx].sum()
     if not np.isfinite(total_games) or total_games <= 0:
         return scaled
+
+    if gp_factor is None or not np.isfinite(gp_factor) or gp_factor <= 0:
+        gp_factor = 1.0
 
     for i, col in enumerate(BANK_COLUMNS):
         if col == "GAMES":
@@ -137,11 +156,66 @@ def scale_bank_to_projection(bank: np.ndarray,
             # under a legitimate zero numerator.
             scale = 0.0
         else:
-            scale = float(np.clip(projected_per_game / historical_per_game, *scale_bounds))
+            target_per_game = projected_per_game / gp_factor
+            scale = float(np.clip(target_per_game / historical_per_game, *scale_bounds))
 
         scaled[:, i] = bank[:, i] * scale
 
     return scaled
+
+
+# Below this, a stray near-zero availability could blow up the number of
+# synthetic missed-week rows appended in add_missed_weeks. Real inputs never
+# approach this floor -- GP_FACTOR itself is clipped to [0.50, 1.0]
+# (compute_gp_factor, model.py) -- this only guards against a pathological
+# caller.
+MIN_AVAILABILITY_FOR_MISSED_WEEKS = 0.05
+
+
+def add_missed_weeks(bank: np.ndarray, availability: float) -> np.ndarray:
+    """
+    Append all-zero weeks to a bank in proportion to a player's unavailability.
+
+    A fragile player does not produce slightly less every week -- they
+    produce nothing at all in the weeks they miss, including the
+    low-is-better categories (TO, PF, TECH). That is the point: a missed
+    week contributes zero turnovers *and* zero points, which is what
+    scale_bank_to_projection's TRUE-rate rescale (above) depends on to avoid
+    double-discounting availability.
+
+    `availability` is expected to be a player's GP_FACTOR -- already
+    clip(weighted_GP / 82, 0.50, 1.0) in compute_gp_factor (model.py), i.e.
+    directly a fraction of the season played. Its 0.50 floor means even the
+    most fragile players in the pool are modelled here as missing at most
+    half their weeks.
+
+    Given a bank of N real rows, Z = round(N * (1 - availability) /
+    availability) all-zero rows are appended, so a uniform draw over the
+    resulting bank hits a zero row with probability (1 - availability).
+
+    availability >= 1.0, missing/non-finite, or a bank with no real rows to
+    base a proportion on returns the bank unchanged. Otherwise availability
+    is clamped to MIN_AVAILABILITY_FOR_MISSED_WEEKS so Z cannot explode.
+
+    Deliberately does not draw a per-week random "was this week missed"
+    boolean -- that would add a second random stream on top of
+    player_rng's name-keyed draw index and risk breaking the exact-zero
+    null-trade guarantee common random numbers relies on. The bank itself
+    grows; the existing draw-index stream does the rest.
+    """
+    if bank.shape[0] == 0:
+        return bank
+    if availability is None or not np.isfinite(availability) or availability >= 1.0:
+        return bank
+
+    availability = max(float(availability), MIN_AVAILABILITY_FOR_MISSED_WEEKS)
+    n_rows = bank.shape[0]
+    n_zero = round(n_rows * (1.0 - availability) / availability)
+    if n_zero <= 0:
+        return bank
+
+    zero_rows = np.zeros((n_zero, bank.shape[1]))
+    return np.vstack([bank, zero_rows])
 
 
 def player_rng(player_name: str, seed: int, purpose: str = "draw") -> np.random.Generator:
