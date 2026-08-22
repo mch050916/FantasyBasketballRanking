@@ -438,6 +438,46 @@ def pad_to_roster_size(rosters: dict[str, list[str]],
     return padded_rosters, padded_banks
 
 
+def trim_to_roster_size(rosters: dict[str, list[str]],
+                        banks: dict[str, np.ndarray],
+                        roster_size: int,
+                        player_values: dict[str, float]) -> tuple[dict, dict]:
+    """
+    Drop the lowest-valued players off any roster longer than roster_size.
+
+    An uneven trade (e.g. 2-for-1) can leave the receiving side with more
+    players than a legal roster -- real fantasy forces a drop in that
+    situation, and the simulation must too, or that side plays every
+    opponent a player up. This is an approximation of a manager's drop
+    decision, not a claim about true relative value: a real manager weighs
+    positional need and category fit that a single scalar cannot capture.
+
+    player_values maps player name -> a comparable float, higher is better.
+    It is expected to be a within-source percentile rank of TOTAL_VALUE (see
+    rosters.player_value_percentiles) rather than raw TOTAL_VALUE -- raw
+    veteran and rookie TOTAL_VALUE are not on the same scale (see
+    rosters.load_projections' SOURCE column), so raw values here would bias
+    every trim toward dropping rookies regardless of who is actually worse.
+    Players absent from player_values sort last (dropped first) -- a name
+    with no known value is not one to keep over a ranked player.
+
+    Rosters at or under roster_size are left untouched, in their original
+    order. Does not mutate its inputs.
+    """
+    trimmed_rosters = {name: list(players) for name, players in rosters.items()}
+    trimmed_banks = dict(banks)
+
+    for team, players in trimmed_rosters.items():
+        if len(players) <= roster_size:
+            continue
+        ranked = sorted(players,
+                        key=lambda p: player_values.get(p, float("-inf")),
+                        reverse=True)
+        trimmed_rosters[team] = ranked[:roster_size]
+
+    return trimmed_rosters, trimmed_banks
+
+
 def evaluate_trade(rosters: dict[str, list[str]],
                    banks: dict[str, np.ndarray],
                    team: str,
@@ -447,13 +487,22 @@ def evaluate_trade(rosters: dict[str, list[str]],
                    categories: dict,
                    config: dict,
                    trade_config: dict,
-                   replacement_bank: np.ndarray) -> dict:
+                   replacement_bank: np.ndarray,
+                   player_values: dict[str, float] | None = None) -> dict:
     """
     Evaluate a two-team trade against the league field, before and after.
 
     Both runs share one seed, and every player's draws are keyed to their own
     name, so untraded players contribute identical weeks on both sides and the
     delta isolates the traded players rather than Monte Carlo noise.
+
+    An uneven trade (e.g. 2-for-1) leaves one side short and the other over
+    the legal roster size. When player_values is supplied, any post-trade
+    roster longer than roster_size is trimmed down (trim_to_roster_size)
+    before short rosters are padded up (pad_to_roster_size), so both sides of
+    an uneven trade simulate a legal roster. When player_values is None,
+    trimming is skipped entirely -- existing callers that only ever pad keep
+    their prior behaviour exactly.
     """
     seed = trade_config["seed"]
     n_weeks = trade_config["weeks_per_opponent"]
@@ -462,8 +511,13 @@ def evaluate_trade(rosters: dict[str, list[str]],
     after_rosters = apply_trade(rosters, team, partner, give, get)
 
     def evaluate_all(source: dict[str, list[str]]) -> dict:
+        if player_values is not None:
+            source, source_banks = trim_to_roster_size(
+                source, banks, roster_size, player_values)
+        else:
+            source_banks = banks
         padded_rosters, padded_banks = pad_to_roster_size(
-            source, banks, roster_size, replacement_bank)
+            source, source_banks, roster_size, replacement_bank)
         out = {}
         for name in padded_rosters:
             expected, rates = evaluate_roster_vs_field(

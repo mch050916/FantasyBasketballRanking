@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from config import LEAGUE_CONFIG, TRADE_CONFIG
-from trade import BANK_COLUMNS, add_missed_weeks, apply_trade, build_week_bank, category_win_rates, evaluate_roster_vs_field, evaluate_trade, expected_categories_won, games_per_week_pool, pad_to_roster_size, player_rng, scale_bank_to_projection, simulate_team_totals, synthesize_bank
+from trade import BANK_COLUMNS, add_missed_weeks, apply_trade, build_week_bank, category_win_rates, evaluate_roster_vs_field, evaluate_trade, expected_categories_won, games_per_week_pool, pad_to_roster_size, player_rng, scale_bank_to_projection, simulate_team_totals, synthesize_bank, trim_to_roster_size
 
 
 def make_log(dates: list[str], **stats) -> pd.DataFrame:
@@ -578,6 +578,152 @@ class PadToRosterSizeTests(unittest.TestCase):
         rosters = {"A": ["a1"]}
         pad_to_roster_size(rosters, {"a1": constant_bank()}, 3, constant_bank())
         self.assertEqual(rosters["A"], ["a1"])
+
+
+class TrimToRosterSizeTests(unittest.TestCase):
+    def test_drops_the_correct_number_of_lowest_valued_players(self) -> None:
+        rosters = {"A": ["a1", "a2", "a3", "a4"]}
+        banks = {p: constant_bank() for p in rosters["A"]}
+        values = {"a1": 0.9, "a2": 0.1, "a3": 0.5, "a4": 0.7}
+        trimmed_rosters, _ = trim_to_roster_size(rosters, banks, 2, values)
+        self.assertEqual(len(trimmed_rosters["A"]), 2)
+        self.assertEqual(sorted(trimmed_rosters["A"]), ["a1", "a4"])
+
+    def test_leaves_an_at_or_under_size_roster_untouched(self) -> None:
+        rosters = {"A": ["a1", "a2"]}
+        banks = {p: constant_bank() for p in rosters["A"]}
+        values = {"a1": 0.9, "a2": 0.1}
+        trimmed_rosters, _ = trim_to_roster_size(rosters, banks, 3, values)
+        self.assertEqual(trimmed_rosters["A"], ["a1", "a2"])
+
+    def test_does_not_mutate_inputs(self) -> None:
+        rosters = {"A": ["a1", "a2", "a3"]}
+        banks = {p: constant_bank() for p in rosters["A"]}
+        original_roster = list(rosters["A"])
+        original_banks = dict(banks)
+        trim_to_roster_size(rosters, banks, 1, {"a1": 0.9, "a2": 0.1, "a3": 0.5})
+        self.assertEqual(rosters["A"], original_roster)
+        self.assertEqual(banks, original_banks)
+
+    def test_players_missing_from_player_values_are_dropped_before_ranked_players(self) -> None:
+        # "b" has no entry in player_values at all -- it should be dropped
+        # before "a2", even though a2 is the lowest RANKED player.
+        rosters = {"A": ["a1", "a2", "b"]}
+        banks = {p: constant_bank() for p in rosters["A"]}
+        values = {"a1": 0.9, "a2": 0.1}
+        trimmed_rosters, _ = trim_to_roster_size(rosters, banks, 2, values)
+        self.assertEqual(sorted(trimmed_rosters["A"]), ["a1", "a2"])
+
+
+class EvenTradeZeroSumLeakTests(unittest.TestCase):
+    """
+    Proves Fix 3 with hand-verified, deterministic arithmetic (single-row
+    constant banks: no Monte Carlo noise, so every number below is exact,
+    not estimated).
+
+    League: A, B, C, D, roster_size=2. Every player's PTS is the only
+    informative category -- every other category is 0 for every player,
+    which makes every other category a permanent, roster-size-independent
+    0-0 tie (0 * N players = 0), isolating the roster-size effect to PTS
+    alone so the arithmetic below is checkable by hand.
+
+      A = [a1(100), a2(100)]   B = [b1(100), b2(20)]
+      C = [c1(100), c2(100)]   D = [d1(100), d2(100)]  (untouched field)
+
+    Trade: A gives [a1, a2] (both 100) to B, gets [b1] (100) back --
+    a 2-for-1. Replacement level is also PTS=100, so A's post-trade pad
+    ([b1(100)] + one replacement(100)) always totals 200, whichever run.
+    A is never trimmed (it is short, not over), but A's OWN delta still
+    depends on the run: A's opponents include B, so B's post-trim size
+    changes what A faces in the field, not just what B itself faces.
+
+    Untrimmed, B keeps all 3 players ([b2(20), a1(100), a2(100)] = 220,
+    an illegal roster) and beats every legal 200-PTS opponent (A/C/D)
+    outright. Trimmed, B drops its lowest-value player (b2, PTS=20) back
+    to a legal 2-player, 200-PTS roster and only ties them. Hand-computed
+    (and confirmed against the real evaluate_trade output):
+
+      PTS contribution to expected categories won (win + 0.5*tie, averaged
+      over the 3 opponents each side faces):
+        B before:                       0/3 win           -> 0.0
+        B after, untrimmed (vs 200s):   3/3 win            -> 1.0   (delta +1.0)
+        B after, trimmed (vs 200s):     3/3 tie            -> 0.5   (delta +0.5)
+        A before (vs B=120,C=200,D=200): 1/3 win, 2/3 tie  -> 0.667
+        A after, untrimmed (vs B=220):   0/3 win, 2/3 tie  -> 0.333 (delta -0.333)
+        A after, trimmed (vs B=200):     0/3 win, 3/3 tie  -> 0.5   (delta -0.167)
+
+      leak = delta_A + delta_B:
+        untrimmed: -0.333 + 1.0 = +0.667
+        trimmed:   -0.167 + 0.5 = +0.333
+
+    All other categories are ties before AND after in both runs, so they
+    contribute exactly 0 to every delta -- the PTS-only arithmetic above
+    *is* the whole-category leak, not an approximation of it.
+    """
+
+    def _bank(self, pts: float) -> np.ndarray:
+        bank = np.zeros((1, len(BANK_COLUMNS)))
+        bank[0, BANK_COLUMNS.index("PTS")] = pts
+        bank[0, BANK_COLUMNS.index("GAMES")] = 3.0
+        return bank
+
+    def _league(self):
+        rosters = {"A": ["a1", "a2"], "B": ["b1", "b2"],
+                  "C": ["c1", "c2"], "D": ["d1", "d2"]}
+        banks = {"a1": self._bank(100), "a2": self._bank(100),
+                 "b1": self._bank(100), "b2": self._bank(20),
+                 "c1": self._bank(100), "c2": self._bank(100),
+                 "d1": self._bank(100), "d2": self._bank(100)}
+        return rosters, banks
+
+    def test_an_uneven_trade_leaves_both_sides_at_the_legal_roster_size(self) -> None:
+        rosters, banks = self._league()
+        replacement = self._bank(100)
+        player_values = {"a1": 0.9, "a2": 0.9, "b1": 0.9, "b2": 0.1}
+        config = {**LEAGUE_CONFIG, "roster_size": 2}
+        trade_config = {**TRADE_CONFIG, "weeks_per_opponent": 5}
+
+        result = evaluate_trade(rosters, banks, "A", "B", ["a1", "a2"], ["b1"],
+                                LEAGUE_CONFIG["categories"], config, trade_config,
+                                replacement, player_values=player_values)
+
+        # roster_sizes_after reports the raw post-trade sizes, before either
+        # padding or trimming -- confirms the trade really is uneven here
+        # (A short by one, B over by one), independent of trimming.
+        self.assertEqual(result["roster_sizes_after"], {"A": 1, "B": 3, "C": 2, "D": 2})
+
+    def test_zero_sum_leak_shrinks_sharply_once_trimmed(self) -> None:
+        # Constructed so it would fail against the old, pad-only behaviour:
+        # hand-verified above, the leak must roughly HALVE, not just nudge,
+        # once B's illegal third player is trimmed away.
+        rosters, banks = self._league()
+        replacement = self._bank(100)
+        player_values = {"a1": 0.9, "a2": 0.9, "b1": 0.9, "b2": 0.1}
+        config = {**LEAGUE_CONFIG, "roster_size": 2}
+        trade_config = {**TRADE_CONFIG, "weeks_per_opponent": 5}
+
+        untrimmed = evaluate_trade(rosters, banks, "A", "B", ["a1", "a2"], ["b1"],
+                                   LEAGUE_CONFIG["categories"], config, trade_config,
+                                   replacement)
+        trimmed = evaluate_trade(rosters, banks, "A", "B", ["a1", "a2"], ["b1"],
+                                 LEAGUE_CONFIG["categories"], config, trade_config,
+                                 replacement, player_values=player_values)
+
+        # Hand-computed above: -1/3 and +1.0.
+        self.assertAlmostEqual(untrimmed["delta"]["A"]["expected"], -1 / 3, places=6)
+        self.assertAlmostEqual(untrimmed["delta"]["B"]["expected"], 1.0, places=6)
+        # Hand-computed above: -1/6 and +0.5.
+        self.assertAlmostEqual(trimmed["delta"]["A"]["expected"], -1 / 6, places=6)
+        self.assertAlmostEqual(trimmed["delta"]["B"]["expected"], 0.5, places=6)
+
+        untrimmed_leak = abs(untrimmed["delta"]["A"]["expected"]
+                             + untrimmed["delta"]["B"]["expected"])
+        trimmed_leak = abs(trimmed["delta"]["A"]["expected"]
+                           + trimmed["delta"]["B"]["expected"])
+
+        self.assertAlmostEqual(untrimmed_leak, 2 / 3, places=6)
+        self.assertAlmostEqual(trimmed_leak, 1 / 3, places=6)
+        self.assertLess(trimmed_leak, untrimmed_leak * 0.6)
 
 
 class FullLeagueIntegrationTests(unittest.TestCase):

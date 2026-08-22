@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from rosters import load_projections, load_rosters, resolve_roster_players
+from rosters import (load_projections, load_rosters, player_value_percentiles,
+                    resolve_roster_players)
 
 
 class RostersTestBase(unittest.TestCase):
@@ -77,3 +78,52 @@ class LoadProjectionsTests(RostersTestBase):
     def test_works_without_a_rookie_file(self) -> None:
         main = self.write_csv("PLAYER_NAME,PTS\nVeteran,20\n")
         self.assertEqual(len(load_projections(main)), 1)
+
+    def test_tags_rows_with_their_source(self) -> None:
+        main = self.write_csv("PLAYER_NAME,PTS\nVeteran,20\n")
+        rookies = self.write_csv("PLAYER_NAME,PTS\nRookie,10\n")
+        combined = load_projections(main, rookies)
+        by_name = combined.set_index("PLAYER_NAME")["SOURCE"]
+        self.assertEqual(by_name["Veteran"], "veteran")
+        self.assertEqual(by_name["Rookie"], "rookie")
+
+    def test_source_is_veteran_only_without_a_rookie_file(self) -> None:
+        main = self.write_csv("PLAYER_NAME,PTS\nVeteran,20\n")
+        combined = load_projections(main)
+        self.assertEqual(combined["SOURCE"].tolist(), ["veteran"])
+
+
+class PlayerValuePercentilesTests(RostersTestBase):
+    def test_within_source_percentile_puts_a_top_rookie_near_a_top_veteran(self) -> None:
+        # The bug this replaces: sorting raw TOTAL_VALUE puts every rookie
+        # below the worst veteran, because the two populations are scored
+        # against different pools and are not on the same scale. Ranking
+        # each SOURCE group separately fixes that -- the best rookie and the
+        # best veteran should both land near 1.0, not the rookie near 0.0.
+        projections = pd.DataFrame([
+            {"PLAYER_NAME": "TopVet", "SOURCE": "veteran", "TOTAL_VALUE": 5.0},
+            {"PLAYER_NAME": "MidVet", "SOURCE": "veteran", "TOTAL_VALUE": 0.0},
+            {"PLAYER_NAME": "WorstVet", "SOURCE": "veteran", "TOTAL_VALUE": -7.0},
+            {"PLAYER_NAME": "TopRookie", "SOURCE": "rookie", "TOTAL_VALUE": -1.9},
+            {"PLAYER_NAME": "WorstRookie", "SOURCE": "rookie", "TOTAL_VALUE": -5.0},
+        ])
+        percentiles = player_value_percentiles(projections)
+
+        # Both "best in their population" -- close together, not the rookie
+        # buried under the worst veteran.
+        self.assertAlmostEqual(percentiles["TopVet"], percentiles["TopRookie"], delta=0.01)
+        self.assertEqual(percentiles["TopVet"], 1.0)
+        self.assertEqual(percentiles["TopRookie"], 1.0)
+
+        # Ordering is preserved within each source.
+        self.assertGreater(percentiles["TopVet"], percentiles["MidVet"])
+        self.assertGreater(percentiles["MidVet"], percentiles["WorstVet"])
+        self.assertGreater(percentiles["TopRookie"], percentiles["WorstRookie"])
+
+        # And critically: the worst veteran does NOT read as catastrophically
+        # far below the worst rookie the way raw TOTAL_VALUE would (-7.0 vs
+        # -5.0 masks that WorstVet is merely "last of 3" while WorstRookie is
+        # "last of 2" -- both are legitimately near the bottom of their own
+        # population, not one artificially crushed by the other's scale).
+        self.assertGreater(percentiles["WorstVet"], 0.0)
+        self.assertGreater(percentiles["WorstRookie"], 0.0)

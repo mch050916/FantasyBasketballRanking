@@ -17,8 +17,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from config import LEAGUE_CONFIG, TRADE_CONFIG          # noqa: E402
 from data import fetch_game_logs                        # noqa: E402
 from model import compute_tau                            # noqa: E402
-from rosters import (load_projections, load_rosters,     # noqa: E402
-                     resolve_roster_players)
+from rosters import (load_projections, load_rosters,      # noqa: E402
+                     player_value_percentiles, resolve_roster_players)
 from trade import (BANK_COLUMNS, add_missed_weeks,        # noqa: E402
                    build_week_bank, evaluate_trade,
                    games_per_week_pool, scale_bank_to_projection,
@@ -85,13 +85,27 @@ def build_all_banks(rosters, projections, game_logs, league_tau, trade_config):
 
 
 def build_replacement_bank(projections, rosters, league_tau, games_pool, trade_config):
-    """Replacement level = the lowest-ranked player in the projection pool."""
+    """
+    Replacement level = the lowest-ranked VETERAN in the projection pool.
+
+    Veteran and rookie TOTAL_VALUE are not comparable (rookies are scored
+    against the rookie population, veterans against the veteran pool -- see
+    rosters.load_projections). Sorting the concatenated frame would land on
+    a rookie, materially understating true replacement level. The pool is a
+    veteran-ranked population, so replacement level is the pool_size-th
+    ranked veteran, full stop.
+    """
     pool_size = LEAGUE_CONFIG["num_teams"] * LEAGUE_CONFIG["roster_size"]
-    ranked = projections.sort_values("TOTAL_VALUE", ascending=False)
+    veterans = projections[projections["SOURCE"] == "veteran"]
+    ranked = veterans.sort_values("TOTAL_VALUE", ascending=False)
     replacement = ranked.iloc[min(pool_size, len(ranked)) - 1]
-    return synthesize_bank("__replacement_level__", replacement, league_tau,
+
+    gp_factor = _gp_factor_for(replacement)
+    true_rate_replacement = _true_rate_projection(replacement, gp_factor)
+    bank = synthesize_bank("__replacement_level__", true_rate_replacement, league_tau,
                            games_pool, trade_config["seed"],
                            trade_config["synthetic_bank_rows"])
+    return add_missed_weeks(bank, gp_factor)
 
 
 def format_report(result, team, partner, give, get) -> str:
@@ -166,9 +180,10 @@ def main() -> None:
         print(f"[note] {len(synthetic)} player(s) simulated from projection + league "
               f"tau rather than observed weeks: {', '.join(sorted(synthetic))}")
 
+    player_values = player_value_percentiles(projections)
     result = evaluate_trade(rosters, banks, args.team, args.partner, give, get,
                             LEAGUE_CONFIG["categories"], LEAGUE_CONFIG,
-                            TRADE_CONFIG, replacement)
+                            TRADE_CONFIG, replacement, player_values)
     print(format_report(result, args.team, args.partner, give, get))
 
 

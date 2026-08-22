@@ -58,11 +58,39 @@ def load_projections(rankings_path: str | Path,
     Rookies live in a separate file because they are ranked against their own
     population rather than the veteran pool (see the 2026-08-14 rookie
     incorporation spec). For trade purposes they are just more players.
+
+    Adds a SOURCE column ("veteran" or "rookie") so downstream code (replacement-
+    level selection, within-source percentile ranking for roster trimming) can
+    tell the two incomparable TOTAL_VALUE scales apart.
     """
-    frames = [pd.read_csv(rankings_path)]
+    veterans = pd.read_csv(rankings_path)
+    veterans["SOURCE"] = "veteran"
+    frames = [veterans]
     if rookie_path is not None and Path(rookie_path).exists():
-        frames.append(pd.read_csv(rookie_path))
+        rookies = pd.read_csv(rookie_path)
+        rookies["SOURCE"] = "rookie"
+        frames.append(rookies)
     return pd.concat(frames, ignore_index=True)
+
+
+def player_value_percentiles(projections: pd.DataFrame) -> dict[str, float]:
+    """
+    Within-source percentile rank of TOTAL_VALUE, keyed by PLAYER_NAME.
+
+    Veteran and rookie TOTAL_VALUE are not on the same scale -- rookies are
+    scored against the rookie population, veterans against the veteran pool
+    (see load_projections' SOURCE column) -- so ranking the concatenated
+    frame directly would put every rookie below the worst veteran. Ranking
+    within each SOURCE group first, then converting to a 0-1 percentile,
+    makes a top rookie and a top veteran read as comparably "good relative
+    to their own population," which is what a manager's drop decision
+    approximates (see trade.trim_to_roster_size, the consumer of this).
+    """
+    out: dict[str, float] = {}
+    for _, group in projections.groupby("SOURCE"):
+        percentiles = group["TOTAL_VALUE"].rank(pct=True)
+        out.update(zip(group["PLAYER_NAME"], percentiles))
+    return out
 
 
 def resolve_roster_players(rosters: dict[str, list[str]],
