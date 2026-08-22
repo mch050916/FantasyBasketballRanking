@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from config import LEAGUE_CONFIG, TRADE_CONFIG
-from trade import BANK_COLUMNS, add_missed_weeks, apply_trade, build_week_bank, category_win_rates, evaluate_roster_vs_field, evaluate_trade, expected_categories_won, games_per_week_pool, pad_to_roster_size, player_rng, scale_bank_to_projection, simulate_team_totals, synthesize_bank, trim_to_roster_size
+from trade import BANK_COLUMNS, add_missed_weeks, apply_trade, build_week_bank, pooled_donor_bank, quantize_bank_counts, category_win_rates, evaluate_roster_vs_field, evaluate_trade, expected_categories_won, games_per_week_pool, pad_to_roster_size, player_rng, scale_bank_to_projection, simulate_team_totals, synthesize_bank, trim_to_roster_size
 
 
 def make_log(dates: list[str], **stats) -> pd.DataFrame:
@@ -809,3 +809,137 @@ class FullLeagueIntegrationTests(unittest.TestCase):
         for team in rosters:
             if team not in ("Team0", "Team1"):
                 self.assertLess(abs(result["delta"][team]["expected"]), 0.35)
+
+
+class QuantizeBankCountsTests(unittest.TestCase):
+    """
+    Rescaling turns integer weekly counts into floats, and two continuous team
+    totals are essentially never equal -- which silently removed ties from
+    every category. Ties are not wins, and the sparse categories are exactly
+    where both teams realistically finish level.
+    """
+
+    def _bank(self, **stats) -> np.ndarray:
+        n = 400
+        bank = np.zeros((n, len(BANK_COLUMNS)))
+        bank[:, BANK_COLUMNS.index("GAMES")] = 3.0
+        for col, val in stats.items():
+            bank[:, BANK_COLUMNS.index(col)] = val
+        return bank
+
+    def test_every_count_column_becomes_a_whole_number(self) -> None:
+        out = quantize_bank_counts(self._bank(PTS=17.4, DD=0.6, TECH=0.04), "P", 1)
+        for col in BANK_COLUMNS:
+            if col == "GAMES":
+                continue
+            values = out[:, BANK_COLUMNS.index(col)]
+            self.assertTrue(np.all(values == np.round(values)), f"{col} not integral")
+
+    def test_games_column_is_left_alone(self) -> None:
+        out = quantize_bank_counts(self._bank(PTS=10.5), "P", 1)
+        self.assertTrue(np.all(out[:, BANK_COLUMNS.index("GAMES")] == 3.0))
+
+    def test_rounding_is_stochastic_so_the_mean_survives(self) -> None:
+        # Plain rounding would drive a 0.6-per-week rate to 1.0 (or to 0.0),
+        # biasing every sparse category. Stochastic rounding keeps the mean.
+        out = quantize_bank_counts(self._bank(DD=0.6), "P", 1)
+        self.assertAlmostEqual(out[:, BANK_COLUMNS.index("DD")].mean(), 0.6, delta=0.06)
+
+    def test_a_low_rate_produces_a_mix_of_zeros_and_ones(self) -> None:
+        out = quantize_bank_counts(self._bank(TECH=0.3), "P", 1)
+        seen = set(out[:, BANK_COLUMNS.index("TECH")].tolist())
+        self.assertEqual(seen, {0.0, 1.0})
+
+    def test_an_exact_integer_is_unchanged(self) -> None:
+        out = quantize_bank_counts(self._bank(PTS=12.0), "P", 1)
+        self.assertTrue(np.all(out[:, BANK_COLUMNS.index("PTS")] == 12.0))
+
+    def test_a_zero_column_stays_zero(self) -> None:
+        out = quantize_bank_counts(self._bank(PTS=10.0), "P", 1)
+        self.assertTrue(np.all(out[:, BANK_COLUMNS.index("TD")] == 0.0))
+
+    def test_is_deterministic_for_a_player_and_seed(self) -> None:
+        bank = self._bank(PTS=17.4, DD=0.6)
+        np.testing.assert_array_equal(quantize_bank_counts(bank, "P", 1),
+                                      quantize_bank_counts(bank, "P", 1))
+
+    def test_different_players_round_differently(self) -> None:
+        bank = self._bank(DD=0.5)
+        self.assertFalse(np.array_equal(quantize_bank_counts(bank, "A", 1),
+                                        quantize_bank_counts(bank, "B", 1)))
+
+    def test_does_not_mutate_the_input(self) -> None:
+        bank = self._bank(PTS=17.4)
+        quantize_bank_counts(bank, "P", 1)
+        self.assertEqual(bank[0, BANK_COLUMNS.index("PTS")], 17.4)
+
+
+class PooledDonorBankTests(unittest.TestCase):
+    """A player with no game log borrows the shape of real weeks."""
+
+    def _pool(self) -> dict[str, np.ndarray]:
+        banks = {}
+        for i, name in enumerate(("A", "B")):
+            bank = np.zeros((20, len(BANK_COLUMNS)))
+            bank[:, BANK_COLUMNS.index("GAMES")] = 3.0
+            # PTS and FGM move together, as they do in real weeks.
+            pts = np.linspace(10, 40, 20) + i
+            bank[:, BANK_COLUMNS.index("PTS")] = pts
+            bank[:, BANK_COLUMNS.index("FGM")] = pts / 2.0
+            banks[name] = bank
+        return banks
+
+    def test_returns_the_requested_number_of_rows(self) -> None:
+        out = pooled_donor_bank(self._pool(), "Rookie", seed=1, n_rows=50)
+        self.assertEqual(out.shape, (50, len(BANK_COLUMNS)))
+
+    def test_rows_are_real_observed_weeks_not_synthesised(self) -> None:
+        pool = self._pool()
+        real_rows = {tuple(r) for b in pool.values() for r in b}
+        out = pooled_donor_bank(pool, "Rookie", seed=1, n_rows=50)
+        self.assertTrue(all(tuple(r) in real_rows for r in out))
+
+    def test_preserves_cross_category_correlation(self) -> None:
+        # The whole reason for borrowing real weeks: independent draws would
+        # give ~0 here, losing the structure the bootstrap exists to keep.
+        out = pooled_donor_bank(self._pool(), "Rookie", seed=1, n_rows=200)
+        corr = np.corrcoef(out[:, BANK_COLUMNS.index("PTS")],
+                           out[:, BANK_COLUMNS.index("FGM")])[0, 1]
+        self.assertGreater(corr, 0.9)
+
+    def test_returns_none_when_there_is_nothing_to_borrow(self) -> None:
+        self.assertIsNone(pooled_donor_bank({}, "Rookie", seed=1))
+
+    def test_is_deterministic(self) -> None:
+        pool = self._pool()
+        np.testing.assert_array_equal(pooled_donor_bank(pool, "R", 1, 30),
+                                      pooled_donor_bank(pool, "R", 1, 30))
+
+
+class TechIsNotAFoulProxyTests(unittest.TestCase):
+    """
+    TECH proxied as PF * 0.012 makes it a fixed multiple of fouls, so at team
+    level the two categories correlate at ~0.9999 and win or lose together --
+    letting fouls quietly decide 2 of the league's 14 categories.
+    """
+
+    def test_a_supplied_rate_is_used_instead_of_the_foul_proxy(self) -> None:
+        logs = {"2025-26": {"P": make_log(["2026-01-05", "2026-01-07"],
+                                          PF=[5, 5], PTS=[10, 10])}}
+        bank = build_week_bank(logs, tech_rates={"P": 0.25})["P"]
+        # 2 games that week at 0.25/game = 0.5, not 10 fouls * 0.012 = 0.12
+        self.assertAlmostEqual(bank[0, BANK_COLUMNS.index("TECH")], 0.5)
+
+    def test_falls_back_to_the_foul_proxy_when_no_rate_is_known(self) -> None:
+        logs = {"2025-26": {"P": make_log(["2026-01-05"], PF=[5])}}
+        bank = build_week_bank(logs)["P"]
+        self.assertAlmostEqual(bank[0, BANK_COLUMNS.index("TECH")], 5 * 0.012)
+
+    def test_tech_no_longer_tracks_fouls_when_real_rates_differ(self) -> None:
+        # Two players with identical fouls but different technical rates must
+        # produce different TECH -- impossible under the proxy.
+        logs = {"2025-26": {"A": make_log(["2026-01-05"], PF=[4]),
+                            "B": make_log(["2026-01-05"], PF=[4])}}
+        banks = build_week_bank(logs, tech_rates={"A": 0.5, "B": 0.01})
+        self.assertNotAlmostEqual(banks["A"][0, BANK_COLUMNS.index("TECH")],
+                                  banks["B"][0, BANK_COLUMNS.index("TECH")])

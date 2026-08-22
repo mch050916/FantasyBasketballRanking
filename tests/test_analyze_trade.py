@@ -79,3 +79,96 @@ class BuildReplacementBankTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _rates(**cats) -> dict:
+    return {c: {"win": w, "tie": t, "loss": 1.0 - w - t} for c, (w, t) in cats.items()}
+
+
+class FormatReportTests(unittest.TestCase):
+    """
+    The per-category table must use the same convention as the headline it
+    explains. Reporting raw win rates while the headline counted a tie as half
+    a win left the two disagreeing with no way to see where the gap went.
+    """
+
+    def _result(self) -> dict:
+        before = _rates(PTS=(0.60, 0.00), DD=(0.40, 0.20))
+        after = _rates(PTS=(0.50, 0.00), DD=(0.55, 0.20))
+        exp = lambda r: sum(v["win"] + 0.5 * v["tie"] for v in r.values())
+        return {
+            "before": {"Me": {"expected": exp(before), "rates": before},
+                       "You": {"expected": 0.0, "rates": before}},
+            "after": {"Me": {"expected": exp(after), "rates": after},
+                      "You": {"expected": 0.0, "rates": after}},
+            "delta": {}, "roster_sizes_after": {},
+        }
+
+    def test_the_category_column_sums_to_the_headline(self) -> None:
+        text = analyze_trade.format_report(self._result(), "Me", "You", ["X"], ["Y"])
+        line = [l for l in text.splitlines() if "(column sum)" in l][0]
+        column_sum = float(line.split()[2])
+        headline = float(line.split("headline")[1])
+        self.assertAlmostEqual(column_sum, headline, places=3)
+
+    def test_a_tie_heavy_category_counts_half_a_win(self) -> None:
+        # DD: win .40 tie .20 -> .50 before, win .55 tie .20 -> .65 after.
+        text = analyze_trade.format_report(self._result(), "Me", "You", [], [])
+        dd = [l for l in text.splitlines() if l.strip().startswith("DD")][0].split()
+        self.assertAlmostEqual(float(dd[1]), 0.50, places=3)
+        self.assertAlmostEqual(float(dd[2]), 0.65, places=3)
+
+    def test_the_tie_percentage_is_still_shown(self) -> None:
+        text = analyze_trade.format_report(self._result(), "Me", "You", [], [])
+        dd = [l for l in text.splitlines() if l.strip().startswith("DD")][0]
+        self.assertIn("20.0", dd)
+
+
+class LeagueShapeWarningTests(unittest.TestCase):
+    """A roster file whose shape disagrees with the league must say so."""
+
+    def _full_league(self) -> dict:
+        size = analyze_trade.LEAGUE_CONFIG["roster_size"]
+        return {f"T{t}": [f"P{t}_{p}" for p in range(size)]
+                for t in range(analyze_trade.LEAGUE_CONFIG["num_teams"])}
+
+    def test_a_correctly_shaped_league_warns_about_nothing(self) -> None:
+        self.assertEqual(analyze_trade.warn_league_shape(self._full_league()), [])
+
+    def test_too_few_teams_is_flagged(self) -> None:
+        league = self._full_league()
+        trimmed = {k: league[k] for k in list(league)[:2]}
+        warnings = analyze_trade.warn_league_shape(trimmed)
+        self.assertTrue(any("2 teams" in w for w in warnings))
+
+    def test_an_odd_roster_size_is_flagged_with_the_team_name(self) -> None:
+        league = self._full_league()
+        league["T3"] = league["T3"][:-2]
+        warnings = analyze_trade.warn_league_shape(league)
+        self.assertTrue(any("T3" in w for w in warnings))
+
+
+class DataQualityWarningTests(unittest.TestCase):
+    """DATA_AVAILABILITY_NOTE already exists upstream; it must reach the user."""
+
+    def test_a_rostered_player_with_a_note_is_surfaced(self) -> None:
+        proj = _projections([
+            {"PLAYER_NAME": "Flagged", "DATA_AVAILABILITY_NOTE": "projected from 2024-25"},
+            {"PLAYER_NAME": "Clean", "DATA_AVAILABILITY_NOTE": ""},
+        ])
+        out = analyze_trade.warn_data_quality(proj, {"A": ["Flagged", "Clean"]})
+        self.assertEqual(len(out), 1)
+        self.assertIn("Flagged", out[0])
+        self.assertIn("projected from 2024-25", out[0])
+
+    def test_an_unrostered_flagged_player_is_not_surfaced(self) -> None:
+        proj = _projections([
+            {"PLAYER_NAME": "Flagged", "DATA_AVAILABILITY_NOTE": "stale"},
+            {"PLAYER_NAME": "Clean", "DATA_AVAILABILITY_NOTE": ""},
+        ])
+        self.assertEqual(analyze_trade.warn_data_quality(proj, {"A": ["Clean"]}), [])
+
+    def test_a_frame_without_the_column_is_handled(self) -> None:
+        proj = _projections([{"PLAYER_NAME": "Clean"}]).drop(columns=["DATA_AVAILABILITY_NOTE"],
+                                                             errors="ignore")
+        self.assertEqual(analyze_trade.warn_data_quality(proj, {"A": ["Clean"]}), [])
