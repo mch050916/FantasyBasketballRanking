@@ -109,6 +109,7 @@ LEAGUE_CONFIG = {
     "game_log_cache":     "game_log_cache.pkl",
     "tech_cache":         "tech_cache.pkl",
     "draft_history_cache": "draft_history_cache.pkl",
+    "current_teams_cache": "current_teams_cache.pkl",
 }
 
 # ── Trade analyzer settings ───────────────────────────────────────────────

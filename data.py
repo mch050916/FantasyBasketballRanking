@@ -13,6 +13,7 @@ or Basketball Reference changes their CSV format, fixes go here.
 
 import pandas as pd
 import numpy as np
+import re
 import time
 import pickle
 from pathlib import Path
@@ -30,6 +31,7 @@ from identity import (
 
 BBR_COL_MAP = {
     "Player": "PLAYER_NAME",
+    "Team":   "BBR_TEAM",
     "Age":    "AGE",
     "G":      "GP",
     "MP":     "MIN_TOTAL",
@@ -72,6 +74,14 @@ def load_bbr_csv(path: str) -> pd.DataFrame:
     - Repeated header rows mid-file (BBR quirk)
     - Traded players: keeps the TOT (full-season aggregate) row only
     - Missing FG%: recomputes from FGM/FGA if needed
+
+    BBR_TEAM carries the raw team abbreviation through (used by
+    fetch_current_teams/detect_team_changes for offseason-move flagging).
+    For a player traded mid-season, this is literally "TOT" (the aggregate
+    row kept above) rather than either real team -- a known, accepted
+    imprecision for that specific case; the offseason moves this is built
+    to catch (a player's team differs entirely from last season) are
+    unaffected.
     """
     df = pd.read_csv(path, skipinitialspace=True)
     df = df.dropna(subset=["Player"])
@@ -88,7 +98,7 @@ def load_bbr_csv(path: str) -> pd.DataFrame:
     df = df[list(available.keys())].rename(columns=available)
 
     for col in df.columns:
-        if col != "PLAYER_NAME":
+        if col not in ("PLAYER_NAME", "BBR_TEAM"):
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
     df = df.dropna(subset=["GP"])
@@ -256,6 +266,26 @@ def _load_cached_draft_history(cache_path: Path,
         return None, _invalid_cache_status("draft-history cache metadata mismatch")
     if not isinstance(payload, dict):
         return None, _invalid_cache_status("draft-history cache payload is not a player map")
+
+    return payload, cache_status
+
+
+def _current_teams_cache_metadata(season: str) -> dict[str, str]:
+    return {"season": season}
+
+
+def _load_cached_current_teams(cache_path: Path,
+                               season: str) -> tuple[dict[str, str] | None, dict[str, str | bool | dict | None]]:
+    payload, cache_status = _read_cache_envelope(cache_path, "current_teams")
+    if not cache_status["valid"]:
+        return None, cache_status
+
+    expected_metadata = _current_teams_cache_metadata(season)
+    metadata = cache_status["metadata"]
+    if metadata != expected_metadata:
+        return None, _invalid_cache_status("current-teams cache metadata mismatch")
+    if not isinstance(payload, dict):
+        return None, _invalid_cache_status("current-teams cache payload is not a player map")
 
     return payload, cache_status
 
@@ -754,6 +784,116 @@ def fetch_draft_history(draft_years: list[str], cache_file: str) -> dict[str, di
     print(f"   Draft history cached for {len(result)} players")
 
     return result
+
+
+def fetch_current_teams(season: str, cache_file: str) -> dict[str, str]:
+    """
+    Fetch every current-roster player's team abbreviation for `season`.
+
+    Returns: { player_name -> team_abbreviation }
+
+    One bulk API call (nba_api's CommonAllPlayers), not one per player --
+    the `season` parameter must be passed explicitly, since the endpoint's
+    own default silently returns an earlier season's rosters rather than
+    erroring. Caches results to disk -- delete the cache file to force a
+    fresh fetch.
+    """
+    cache_path = Path(cache_file)
+    if cache_path.exists():
+        cached, cache_status = _load_cached_current_teams(cache_path, season)
+        if cache_status["valid"]:
+            print("   Loading current teams from cache...")
+            return cached
+        print(f"   Rebuilding current-teams cache: {cache_status['reason']}")
+
+    from nba_api.stats.endpoints import CommonAllPlayers
+
+    result: dict[str, str] = {}
+
+    try:
+        print(f"   Fetching current team assignments for {season}...")
+        cap = CommonAllPlayers(is_only_current_season=1, season=season)
+        df = cap.get_data_frames()[0]
+        for _, row in df.iterrows():
+            result[row["DISPLAY_FIRST_LAST"]] = row["TEAM_ABBREVIATION"]
+        print(f"   Current teams fetched for {len(df)} players")
+    except Exception as e:
+        print(f"   [warn] Current-teams fetch failed for {season}: {e}")
+
+    _write_cache_envelope(
+        cache_path,
+        "current_teams",
+        result,
+        _current_teams_cache_metadata(season),
+    )
+    print(f"   Current teams cached for {len(result)} players")
+
+    return result
+
+
+MULTI_TEAM_MARKER_RE = re.compile(r"^\d?TM$")   # BBR's own aggregate-row markers: TOT, 2TM, 3TM, ...
+MULTI_TEAM_LABEL = "Multiple Teams"
+
+# BBR's abbreviation differs from nba_api's for exactly these 3 teams --
+# verified directly against nba_api.stats.static.teams.get_teams() (all 30
+# codes diffed against every distinct BBR "Team" value in a real BBR totals
+# CSV; every other team's code already matches). Without this, a player who
+# never left one of these three teams reads as a false "team change" purely
+# from the two sources spelling the same team differently (caught live:
+# Devin Booker "PHO -> PHX", Kon Knueppel "CHO -> CHA", both false positives
+# for players who stayed put).
+BBR_TEAM_ABBREVIATION_ALIASES = {
+    "BRK": "BKN",   # Brooklyn Nets
+    "CHO": "CHA",   # Charlotte Hornets
+    "PHO": "PHX",   # Phoenix Suns
+}
+
+
+def _normalize_bbr_team(team: str) -> str:
+    """
+    Map a raw BBR team value onto a comparable form: multi-team-aggregate
+    markers (TOT, 2TM, 3TM, ...) become one readable label, and BBR's three
+    abbreviation spellings that differ from nba_api's become nba_api's
+    spelling. Safe to apply to an nba_api-sourced value too -- none of its
+    codes match either substitution, so it passes through unchanged.
+    """
+    if MULTI_TEAM_MARKER_RE.match(team):
+        return MULTI_TEAM_LABEL
+    return BBR_TEAM_ABBREVIATION_ALIASES.get(team, team)
+
+
+def detect_team_changes(previous_team_by_player: dict[str, str],
+                        current_team_by_player: dict[str, str]) -> dict[str, str]:
+    """
+    Compare each player's most-recent-loaded-season team against their
+    current team, keyed by canonical identity (accent/punctuation-
+    insensitive, same matching every other cross-source join in this
+    pipeline uses).
+
+    Returns: { player_name (as it appears in current_team_by_player) ->
+               "PREV -> NEW" } for every player whose team differs.
+    Players missing from either side, or whose two team strings are
+    identical, are omitted -- this function only reports a real,
+    informative difference. A player whose loaded season was a multi-team
+    stint (BBR aggregates these under "TOT", "2TM", "3TM", ... -- the
+    combined-season row load_bbr_csv keeps, not a single real team) reads
+    as "Multiple Teams" rather than the raw code, since neither of those
+    markers names a real team on their own.
+    """
+    previous_by_key = {
+        canonical_player_key(name): _normalize_bbr_team(team)
+        for name, team in previous_team_by_player.items()
+    }
+
+    changes: dict[str, str] = {}
+    for name, current_team in current_team_by_player.items():
+        current_team = _normalize_bbr_team(current_team)
+        previous_team = previous_by_key.get(canonical_player_key(name))
+        if previous_team is None or previous_team == current_team:
+            continue
+        changes[name] = f"{previous_team} -> {current_team}"
+
+    return changes
 
 
 # ── Derive DD and TD from game logs ──────────────────────────────────────────

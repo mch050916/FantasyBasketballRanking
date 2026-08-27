@@ -8,12 +8,14 @@ from data import (
     _classify_missing_game_log_pairs,
     _empty_game_log_result,
     _build_game_log_fetch_health,
+    _load_cached_current_teams,
     _load_cached_draft_history,
     _load_cached_game_logs,
     _load_cached_tech_per_game,
     _missing_game_log_pairs,
     _partition_missing_pairs,
     build_non_actionable_suppression_report,
+    detect_team_changes,
     load_non_actionable_suppression_registry,
     summarize_non_actionable_suppression_registry,
 )
@@ -140,6 +142,102 @@ class DataTests(unittest.TestCase):
         self.assertIsNone(result)
         self.assertFalse(cache_status["valid"])
         self.assertEqual(cache_status["reason"], "draft-history cache metadata mismatch")
+
+    def test_load_cached_current_teams_rejects_season_mismatch(self) -> None:
+        envelope = _build_cache_envelope(
+            "current_teams",
+            {"LeBron James": "PHI"},
+            {"season": "2026-27"},
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache_path = Path(tmpdir) / "current_teams_cache.pkl"
+            with open(cache_path, "wb") as f:
+                pickle.dump(envelope, f)
+
+            result, cache_status = _load_cached_current_teams(cache_path, "2027-28")
+
+        self.assertIsNone(result)
+        self.assertFalse(cache_status["valid"])
+        self.assertEqual(cache_status["reason"], "current-teams cache metadata mismatch")
+
+    def test_detect_team_changes_flags_a_real_move(self) -> None:
+        changes = detect_team_changes(
+            previous_team_by_player={"LeBron James": "LAL", "Julius Randle": "MIN"},
+            current_team_by_player={"LeBron James": "PHI", "Julius Randle": "BKN"},
+        )
+        self.assertEqual(changes, {
+            "LeBron James": "LAL -> PHI",
+            "Julius Randle": "MIN -> BKN",
+        })
+
+    def test_detect_team_changes_omits_players_who_stayed_put(self) -> None:
+        changes = detect_team_changes(
+            previous_team_by_player={"Nikola Jokic": "DEN"},
+            current_team_by_player={"Nikola Jokic": "DEN"},
+        )
+        self.assertEqual(changes, {})
+
+    def test_detect_team_changes_omits_players_missing_from_either_side(self) -> None:
+        # Not in previous_team_by_player at all (e.g. a rookie -- handled by
+        # rookie_baseline.py separately, not this function's concern) and not
+        # in current_team_by_player (e.g. retired, or missing from the current
+        # roster fetch) should both be silently skipped, not KeyError.
+        changes = detect_team_changes(
+            previous_team_by_player={"Only In Previous": "BOS"},
+            current_team_by_player={"Only In Current": "MIA"},
+        )
+        self.assertEqual(changes, {})
+
+    def test_detect_team_changes_matches_by_canonical_identity(self) -> None:
+        # Accent/normalization differences between sources shouldn't produce
+        # a false "team changed" -- same identity scheme every other cross-
+        # source match in this pipeline already uses.
+        changes = detect_team_changes(
+            previous_team_by_player={"Alperen Sengun": "HOU"},
+            current_team_by_player={"Alperen Şengün": "HOU"},
+        )
+        self.assertEqual(changes, {})
+
+    def test_detect_team_changes_treats_bbr_nba_api_abbreviation_pairs_as_the_same_team(self) -> None:
+        # Verified live against a real pipeline run: BBR spells 3 teams
+        # differently than nba_api (BRK/BKN, CHO/CHA, PHO/PHX) -- a player
+        # who never left one of these must not read as a false "change".
+        changes = detect_team_changes(
+            previous_team_by_player={
+                "Devin Booker": "PHO",
+                "Kon Knueppel": "CHO",
+                "Michael Porter Jr.": "BRK",
+            },
+            current_team_by_player={
+                "Devin Booker": "PHX",
+                "Kon Knueppel": "CHA",
+                "Michael Porter Jr.": "BKN",
+            },
+        )
+        self.assertEqual(changes, {})
+
+    def test_detect_team_changes_normalizes_multi_team_markers(self) -> None:
+        # BBR's real 2025-26 export uses "2TM" (not just "TOT") as the
+        # aggregate-row marker for players who played on exactly two teams
+        # that season -- caught this live via James Harden/Nikola Vucevic
+        # in the actual pipeline run. Neither raw code names a real team,
+        # so both should read as a single, readable "Multiple Teams" label.
+        changes = detect_team_changes(
+            previous_team_by_player={"James Harden": "2TM"},
+            current_team_by_player={"James Harden": "CLE"},
+        )
+        self.assertEqual(changes, {"James Harden": "Multiple Teams -> CLE"})
+
+    def test_detect_team_changes_ignores_identical_tot_rows(self) -> None:
+        # The mid-season-trade case load_bbr_csv documents: both sides
+        # happen to read "TOT" (a genuinely uninformative non-change), not a
+        # real signal -- must not be reported as a move.
+        changes = detect_team_changes(
+            previous_team_by_player={"Traded Midseason": "TOT"},
+            current_team_by_player={"Traded Midseason": "TOT"},
+        )
+        self.assertEqual(changes, {})
 
     def test_load_cached_game_logs_rejects_unreadable_payload(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

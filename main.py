@@ -22,7 +22,8 @@ from benchmark_ingest import assess_benchmark_readiness, benchmark_snapshot_file
 from config   import LEAGUE_CONFIG
 from data     import load_bbr_csv, filter_qualified, fetch_game_logs, \
                      fetch_tech_per_game, derive_stats_from_logs, \
-                     build_non_actionable_suppression_report, fetch_draft_history
+                     build_non_actionable_suppression_report, fetch_draft_history, \
+                     fetch_current_teams, detect_team_changes
 from model    import project_stats, compute_tau, compute_g_scores
 from output   import format_rankings, save_rankings, format_rookie_tiers, save_rookie_tiers
 from rookie_baseline import build_rookie_rows
@@ -406,10 +407,12 @@ def main() -> None:
     season_dfs = []
     season_player_sets: list[set[str]] = []
     season_raw_gp: list[dict[str, int]] = []
+    season_raw_team: list[dict[str, str]] = []
     for path in BBR_FILES:
         raw_df = load_bbr_csv(path)
         season_player_sets.append(set(raw_df["PLAYER_NAME"]))
         season_raw_gp.append(dict(zip(raw_df["PLAYER_NAME"], raw_df["GP"])))
+        season_raw_team.append(dict(zip(raw_df["PLAYER_NAME"], raw_df["BBR_TEAM"])))
         df = filter_qualified(raw_df, config)
         season_dfs.append(df)
         print(f"   {path}: {len(df)} qualified players")
@@ -499,6 +502,21 @@ def main() -> None:
 
     rankings = compute_g_scores(projected, player_tau, league_tau, config)
 
+    # ── Team changes — diagnostic flag only, no projection adjustment ──────
+    # Whether a trade/signing helps or hurts a player's output is a much
+    # harder, higher-risk question than detecting that it happened (see
+    # GitHub issue #13) -- this only flags who moved, so the pool has no
+    # awareness of team context otherwise.
+    current_teams = fetch_current_teams(
+        season=PROJECTION_SEASON_LABEL,
+        cache_file=config["current_teams_cache"],
+    )
+    team_changes = detect_team_changes(
+        previous_team_by_player=season_raw_team[0],
+        current_team_by_player=current_teams,
+    )
+    rankings["TEAM_CHANGED"] = rankings["PLAYER_NAME"].map(team_changes).fillna("")
+
     # ── Output ───────────────────────────────────────────────────────────
     pool_size = config["num_teams"] * config["roster_size"]
     print(f"\n\nTOP 30 PLAYERS — {PROJECTION_SEASON_LABEL} PROJECTIONS")
@@ -522,6 +540,16 @@ def main() -> None:
         for _, note_row in availability_notes.sort_values("RANK").iterrows():
             print(f"  #{int(note_row['RANK']):<3d} {note_row['PLAYER_NAME']:<24s} "
                   f"{note_row['DATA_AVAILABILITY_NOTE']}")
+
+    # ── Team change notes ───────────────────────────────────────────────────
+    # Flag only -- projected stats above are unchanged by a team move either
+    # way. See GitHub issue #13.
+    team_change_notes = rankings[rankings["TEAM_CHANGED"] != ""]
+    if not team_change_notes.empty:
+        print(f"\n\nTEAM CHANGES — {len(team_change_notes)} player(s)")
+        for _, change_row in team_change_notes.sort_values("RANK").iterrows():
+            print(f"  #{int(change_row['RANK']):<3d} {change_row['PLAYER_NAME']:<24s} "
+                  f"{change_row['TEAM_CHANGED']}")
 
     # ── Rookies — ranked separately, not mixed into the veteran pool ───────
     # Rookies with no prior NBA history can't meaningfully compete for the
