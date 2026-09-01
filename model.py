@@ -409,7 +409,7 @@ def project_stats(season_dfs: list[pd.DataFrame],
         all_players.update(df["PLAYER_NAME"].values)
 
     rows = []
-    for player in all_players:
+    for player in sorted(all_players):
 
         # Collect stats for seasons this player appeared in
         player_season_stats: dict[str, pd.Series] = {
