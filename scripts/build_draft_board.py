@@ -41,6 +41,15 @@ def build_data() -> dict:
     rankings = pd.read_csv(REPO_ROOT / "durant_rankings_2026_27.csv")
     rookies = pd.read_csv(REPO_ROOT / "durant_rankings_rookies_2026_27.csv")
 
+    # Display-only rescale: TOTAL_VALUE is centered on the pool mean by
+    # construction (model.py), so roughly half the rostered pool is
+    # negative -- meaningful for the model and for validate.py's sign-aware
+    # diagnostics, confusing on a draft-day board. Shift both pools by the
+    # same constant (the worst raw value across either pool) so the board
+    # never prints a negative, without touching the underlying model output,
+    # the CSVs, or anything validate.py/diagnostics reads.
+    VAL_DISPLAY_SHIFT = -min(rankings["TOTAL_VALUE"].min(), rookies["TOTAL_VALUE"].min())
+
     pos_lookup: dict[str, tuple[str, str]] = {}
     # Actual 2025-26 per-game lines, joined only from that season's BBR totals
     # file (not the 2024-25/2023-24 fallback files pos_lookup also reads --
@@ -153,7 +162,7 @@ def build_data() -> dict:
             "name": r["PLAYER_NAME"],
             "pos": pos,
             "team": team,
-            "val": round(float(r["TOTAL_VALUE"]), 3),
+            "val": round(float(r["TOTAL_VALUE"]) + VAL_DISPLAY_SHIFT, 3),
             "note": note,
             "noteShort": note_short(note),
             "z": z,
@@ -170,7 +179,7 @@ def build_data() -> dict:
             "tier": r["TIER"],
             "name": r["PLAYER_NAME"],
             "pick": int(r["OVERALL_PICK"]),
-            "val": round(float(r["TOTAL_VALUE"]), 3),
+            "val": round(float(r["TOTAL_VALUE"]) + VAL_DISPLAY_SHIFT, 3),
             "pts": round(float(r["PTS"]), 1),
             "reb": round(float(r["REB"]), 1),
             "ast": round(float(r["AST"]), 1),
@@ -196,54 +205,59 @@ TEMPLATE = r"""<!doctype html>
 <title>DURANT Draft Board</title>
 <style>
 :root{
-  --bg:#12151a; --surface:#1a1f26; --surface-alt:#20262f; --surface-hover:#262d38;
-  --text:#e9e6de; --text-dim:#8890a0; --text-faint:#5b6270;
-  --accent:#d98e3b; --flag:#e8b34d; --drafted:#b5432e;
-  --pos-z:#4fa3c7; --neg-z:#c77b4f;
-  --strength:#639922; --weakness:#E24B4A;
-  --border:#2a313b; --border-strong:#38414d;
-  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --bg:#0a0c0f; --surface:#10141a; --surface-alt:#141a22; --surface-hover:#1a222c;
+  --text:#e8e6df; --text-dim:#9aa3b2; --text-faint:#808a96;
+  --accent:#d98e3b; --flag:#e0a83f; --drafted:#d97362;
+  --pos-z:#4a8f6b; --neg-z:#d97362;
+  --strength:#5aa37a; --weakness:#d9605a;
+  --border:#1c222b; --border-strong:#2b333f;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --sans: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 }
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:var(--sans);}
 body{-webkit-font-smoothing:antialiased;}
-::selection{background:var(--accent);color:#12151a;}
+::selection{background:var(--accent);color:#0a0c0f;}
+html{scrollbar-color:var(--border-strong) var(--bg);}
+::-webkit-scrollbar{width:12px;height:12px;}
+::-webkit-scrollbar-track{background:var(--bg);}
+::-webkit-scrollbar-thumb{background:var(--border-strong);border:3px solid var(--bg);border-radius:0;}
+::-webkit-scrollbar-thumb:hover{background:var(--text-faint);}
 
 /* ---------- header / controls ---------- */
-.topbar{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--border-strong);padding:10px 14px 0;}
-.tabs{display:flex;gap:2px;margin-bottom:8px;}
+.topbar{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--border-strong);padding:0 14px;}
+.tabs{display:flex;gap:22px;margin-bottom:0;border-bottom:1px solid var(--border);}
 .tab{
-  font-family:var(--sans);font-weight:800;font-size:12px;letter-spacing:.08em;text-transform:uppercase;
-  color:var(--text-dim);background:var(--surface);border:1px solid var(--border);border-bottom:none;
-  padding:8px 16px;cursor:pointer;border-radius:4px 4px 0 0;
+  font-family:var(--sans);font-weight:700;font-size:12px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--text-dim);background:none;border:none;border-bottom:2px solid transparent;
+  padding:12px 2px 10px;cursor:pointer;margin-top:8px;
 }
-.tab.active{color:var(--accent);background:var(--surface-alt);border-color:var(--border-strong);}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent);}
 .tab .count{font-family:var(--mono);font-weight:400;color:var(--text-faint);margin-left:6px;}
 .tab.active .count{color:var(--text-dim);}
 
-.searchRow{display:flex;align-items:center;gap:10px;padding-top:10px;}
+.searchRow{display:flex;align-items:center;gap:10px;padding:10px 0 0;}
 .controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--border);}
 .search{
   font-family:var(--sans);font-size:14px;color:var(--text);background:var(--surface);
-  border:1px solid var(--border-strong);border-radius:4px;padding:7px 10px;width:220px;
+  border:1px solid var(--border-strong);border-radius:0;padding:7px 10px;width:220px;
 }
 .search::placeholder{color:var(--text-faint);}
-.search:focus{outline:2px solid var(--accent);outline-offset:1px;}
+.search:focus{outline:1px solid var(--accent);outline-offset:0;border-color:var(--accent);}
 
-.chips{display:flex;gap:4px;}
+.chips{display:flex;gap:1px;}
 .chip{
-  font-family:var(--mono);font-size:12px;font-weight:600;color:var(--text-dim);
-  background:var(--surface);border:1px solid var(--border-strong);border-radius:3px;
-  padding:5px 9px;cursor:pointer;user-select:none;
+  font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--text-dim);
+  background:var(--surface);border:1px solid var(--border-strong);border-radius:0;
+  padding:6px 10px;cursor:pointer;user-select:none;
 }
 .chip.on{color:var(--bg);background:var(--accent);border-color:var(--accent);}
-.chip:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+.chip:focus-visible{outline:1px solid var(--accent);outline-offset:0;}
 
 .sortSelect{
-  font-family:var(--mono);font-size:12px;font-weight:600;color:var(--text-dim);
-  background:var(--surface);border:1px solid var(--border-strong);border-radius:3px;
-  padding:5px 9px;cursor:pointer;
+  font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.02em;color:var(--text-dim);
+  background:var(--surface);border:1px solid var(--border-strong);border-radius:0;
+  padding:6px 9px;cursor:pointer;
 }
 
 .stats{margin-left:auto;font-family:var(--mono);font-size:13px;color:var(--text-dim);white-space:nowrap;}
@@ -257,9 +271,8 @@ body{-webkit-font-smoothing:antialiased;}
 .toast{
   position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(8px);
   background:var(--surface-alt);border:1px solid var(--border-strong);color:var(--text);
-  font-family:var(--mono);font-size:13px;padding:9px 16px;border-radius:6px;cursor:pointer;
+  font-family:var(--mono);font-size:13px;padding:9px 16px;border-radius:0;cursor:pointer;
   opacity:0;pointer-events:none;transition:opacity .15s,transform .15s;z-index:50;
-  box-shadow:0 4px 16px rgba(0,0,0,.4);
 }
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0);pointer-events:auto;}
 .toast .hint{color:var(--text-faint);margin-left:8px;}
@@ -269,31 +282,37 @@ body{-webkit-font-smoothing:antialiased;}
 table{width:100%;border-collapse:collapse;font-family:var(--sans);}
 thead th{
   position:sticky;top:var(--topbar-h,87px);z-index:10;background:var(--bg);
-  text-align:left;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.06em;
-  text-transform:uppercase;color:var(--text-faint);padding:8px 8px 6px;border-bottom:1px solid var(--border-strong);
+  text-align:left;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--text-faint);padding:9px 8px 7px;border-bottom:1px solid var(--border-strong);
 }
 th.num,td.num{text-align:right;}
 tbody tr{border-bottom:1px solid var(--border);cursor:pointer;}
-tbody tr[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
+tbody tr[tabindex]:focus-visible{outline:1px solid var(--accent);outline-offset:-1px;}
 tbody tr:nth-child(even){background:var(--surface);}
 tbody tr:hover{background:var(--surface-hover);}
 tbody tr.hidden{display:none;}
-td{padding:6px 8px;vertical-align:middle;font-size:13px;}
-.rank{font-family:var(--mono);color:var(--text-faint);font-size:12px;width:1%;font-variant-numeric:tabular-nums;cursor:pointer;padding:6px 8px;border-radius:3px;text-align:center;}
-.rank:hover,.rank:focus-visible{background:var(--surface-hover);color:var(--text);}
-.rank:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
-.rankHint{font-family:var(--mono);font-size:8px;font-weight:400;letter-spacing:0;text-transform:none;color:var(--text-faint);margin-top:1px;white-space:nowrap;}
+td{padding:7px 8px;vertical-align:middle;font-size:13px;font-variant-numeric:tabular-nums;}
+.rank{font-family:var(--mono);color:var(--text-dim);font-size:12px;font-weight:700;width:1%;font-variant-numeric:tabular-nums;cursor:pointer;padding:6px 8px;border-radius:0;text-align:center;}
+.rank:hover,.rank:focus-visible{background:var(--surface-hover);color:var(--accent);}
+.rank:focus-visible{outline:1px solid var(--accent);outline-offset:-1px;}
+.rankHint{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--text-faint);margin-top:2px;white-space:nowrap;}
 .name-cell{min-width:170px;}
-.name{font-weight:600;font-size:14px;color:var(--text);}
+.name{font-weight:700;font-size:13.5px;color:var(--text);}
 .meta{font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-left:6px;}
-.val{font-family:var(--mono);font-weight:700;font-size:13px;font-variant-numeric:tabular-nums;}
+.val{font-family:var(--mono);font-weight:700;font-size:13px;color:var(--accent);font-variant-numeric:tabular-nums;}
 
-/* drafted state -- the signature: an inked strike, not a fade */
+/* drafted state -- the signature: an executed order, not a fade.
+   ">> FILLED" reads like a terminal confirming a trade went through. */
 tr.drafted{background:var(--bg) !important;}
 tr.drafted:hover{background:var(--surface) !important;}
 tr.drafted .name{
   color:var(--text-faint);
-  text-decoration:line-through;text-decoration-color:var(--drafted);text-decoration-thickness:2px;
+  text-decoration:line-through;text-decoration-color:var(--drafted);text-decoration-thickness:1px;
+}
+tr.drafted .name::before{
+  content:">> FILLED";
+  color:var(--drafted);font-weight:700;font-size:10px;letter-spacing:.04em;
+  margin-right:8px;text-decoration:none;display:inline-block;
 }
 tr.drafted .meta,tr.drafted .val{color:var(--text-faint);}
 tr.drafted .tags{opacity:.25;}
@@ -326,21 +345,21 @@ tr.drafted .posRank{opacity:.35;}
 tr.cliff{border-top:2px dashed var(--accent);}
 .balanceStrip{display:flex;gap:1px;width:250px;margin-left:auto;flex:none;}
 .balanceCell{flex:1;display:flex;flex-direction:column;align-items:center;}
-.balanceCell .sw{width:100%;height:15px;border-radius:1px;}
-.balanceCell .l{font-family:var(--mono);font-size:7px;color:var(--text-faint);margin-top:2px;letter-spacing:-.03em;overflow:hidden;white-space:nowrap;}
+.balanceCell .sw{width:100%;height:15px;border-radius:0;}
+.balanceCell .l{font-family:var(--mono);font-size:8px;color:var(--text-faint);margin-top:2px;letter-spacing:-.03em;overflow:hidden;white-space:nowrap;}
 
 /* strength/weakness tags: up to 2 green + 2 red pills per row, category
    name only -- click the row to see all 12 categories in the expanded
    chart below it. TD/TECH/TO are excluded from tag generation (see
    TAG_EXCLUDE in build_draft_board.py) but still appear in that chart. */
-.tags{display:flex;align-items:center;gap:5px;flex-wrap:wrap;min-height:20px;}
+.tags{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:26px;}
 .tag{
-  font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.02em;
-  border-radius:3px;padding:2px 6px;
+  font-family:var(--mono);font-size:14px;font-weight:700;letter-spacing:.02em;
+  border-radius:0;padding:4px 9px;border:1px solid currentColor;
 }
 .tag.pos{color:var(--strength);background:color-mix(in srgb, var(--strength) 18%, transparent);}
 .tag.neg{color:var(--weakness);background:color-mix(in srgb, var(--weakness) 18%, transparent);}
-.tagLegend{display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:11px;color:var(--text-dim);white-space:nowrap;}
+.tagLegend{display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:11px;font-weight:400;color:var(--text-dim);white-space:nowrap;text-transform:none;letter-spacing:0;}
 .tagLegend .sw{display:inline-block;width:9px;height:9px;border-radius:1px;margin-right:5px;vertical-align:-1px;}
 .tagLegend .sw.pos{background:var(--strength);}
 .tagLegend .sw.neg{background:var(--weakness);}
@@ -357,7 +376,7 @@ tr.chart-row:not(.open){display:none;}
 .statRow{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;}
 .statCard{
   display:flex;flex-direction:column;align-items:center;justify-content:center;
-  min-width:44px;background:var(--surface-alt);border-radius:4px;padding:6px 4px;
+  min-width:44px;background:var(--surface-alt);border-radius:0;border:1px solid var(--border);padding:6px 4px;
 }
 .statCard .v{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;}
 .statCard .l{font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-top:2px;letter-spacing:.03em;}
@@ -371,7 +390,7 @@ tr.chart-row:not(.open){display:none;}
 .chart .baseline{position:absolute;left:0;right:0;top:32px;height:1px;background:var(--border-strong);}
 .chart .col{position:relative;width:48px;flex:none;display:flex;flex-direction:column;align-items:center;}
 .chart .barTrack{position:relative;width:100%;height:64px;}
-.chart .bar{position:absolute;left:8px;right:8px;border-radius:2px 2px 0 0;}
+.chart .bar{position:absolute;left:10px;right:10px;border-radius:0;}
 .chart .bar.pos{background:var(--pos-z);bottom:50%;border-radius:2px 2px 0 0;}
 .chart .bar.neg{background:var(--neg-z);top:50%;border-radius:0 0 2px 2px;}
 .chart .label{font-family:var(--mono);font-size:10px;font-weight:700;color:var(--text-dim);margin-top:4px;}
@@ -379,12 +398,13 @@ tr.chart-row:not(.open){display:none;}
 
 /* ---------- rookies ---------- */
 .disclaimer{
-  background:#2a2114;border:1px solid var(--flag);border-left:4px solid var(--flag);
-  color:var(--flag);font-family:var(--mono);font-size:12.5px;padding:10px 14px;margin:12px 0;border-radius:0 4px 4px 0;
+  background:var(--surface-alt);border:1px solid var(--border-strong);
+  color:var(--flag);font-family:var(--mono);font-size:12.5px;padding:10px 14px;margin:12px 0;border-radius:0;
 }
+.disclaimer::before{content:"[!] ";font-weight:700;}
 .tier-block{margin:18px 0 8px;}
 .tier-title{
-  font-family:var(--sans);font-weight:800;font-size:13px;letter-spacing:.06em;text-transform:uppercase;
+  font-family:var(--sans);font-weight:800;font-size:13px;letter-spacing:.08em;text-transform:uppercase;
   color:var(--accent);border-bottom:1px solid var(--border-strong);padding-bottom:5px;margin-bottom:2px;
 }
 .tier-title .n{color:var(--text-faint);font-weight:400;font-family:var(--mono);margin-left:8px;}
@@ -395,6 +415,14 @@ tr.chart-row:not(.open){display:none;}
   .search{width:150px;}
   .chart{overflow-x:auto;}
   .stats{width:100%;order:10;margin-left:0;}
+  /* the balance strip and positional/GP badge are supplementary reads --
+     full 12-category detail is one tap away via the expanded chart row,
+     so dropping them here (rather than shrinking them illegibly) is what
+     keeps the collapsed row from forcing horizontal scroll on a phone. */
+  .rowMid,.balanceStrip{display:none;}
+  .name-cell{min-width:0;}
+  .meta{display:block;margin-left:0;}
+  .tagLegend{white-space:normal;}
 }
 </style>
 </head>
@@ -406,7 +434,7 @@ tr.chart-row:not(.open){display:none;}
     <button class="tab" data-tab="roos">Rookies <span class="count" id="rooCount"></span></button>
   </div>
   <div class="searchRow">
-    <input class="search" id="search" type="text" placeholder="Search name… ( / )" autocomplete="off">
+    <input class="search" id="search" type="text" placeholder="Search… ( / )" autocomplete="off">
     <button class="chip" id="hideDraftedChip" type="button">Hide drafted</button>
   </div>
   <div class="controls" id="vetControls">
@@ -426,7 +454,7 @@ tr.chart-row:not(.open){display:none;}
     <table>
       <thead>
         <tr>
-          <th class="rank">#<div class="rankHint">click to draft</div></th>
+          <th class="rank">#<div class="rankHint">draft</div></th>
           <th class="name-cell">Player</th>
           <th class="num">Val</th>
           <th>
@@ -513,7 +541,10 @@ tr.chart-row:not(.open){display:none;}
     rowObj.tr.classList.toggle("drafted", isDrafted);
     if (rowObj.chartRow) rowObj.chartRow.classList.toggle("dim", isDrafted);
     saveDrafted(drafted);
-    if (opts.recordUndo !== false){
+    if (opts.silent){
+      /* live-sync applies several picks per poll -- one consolidated toast
+         from the caller beats one "Drafted: X" per player. */
+    } else if (opts.recordUndo !== false){
       lastAction = {rowObj: rowObj, prevState: !isDrafted};
       showToast((isDrafted ? "Drafted: " : "Undrafted: ") + rowObj.name, true);
     } else {
@@ -564,10 +595,10 @@ tr.chart-row:not(.open){display:none;}
   var BALANCE_THRESHOLD = 0.75;
   var BALANCE_STRONG = 1.5;
   function balanceColor(z){
-    if (z >= BALANCE_STRONG) return "#639922";
-    if (z >= BALANCE_THRESHOLD) return "#C0DD97";
-    if (z <= -BALANCE_STRONG) return "#E24B4A";
-    if (z <= -BALANCE_THRESHOLD) return "#F7C1C1";
+    if (z >= BALANCE_STRONG) return "#5aa37a";
+    if (z >= BALANCE_THRESHOLD) return "#8fc4a6";
+    if (z <= -BALANCE_STRONG) return "#d9605a";
+    if (z <= -BALANCE_THRESHOLD) return "#e59a92";
     return "var(--border)";
   }
 
@@ -932,6 +963,49 @@ tr.chart-row:not(.open){display:none;}
     document.getElementById("statLineRoo").innerHTML = "<b>" + (total - draftedCount) + "</b> remaining / " + total;
     document.getElementById("rooCount").textContent = "(" + (total - draftedCount) + ")";
   }
+
+  /* ---------- live draft sync (optional) ----------
+     Polls drafted_live.json, written by scripts/live_draft_sync.py while a
+     real Yahoo draft is live, and auto-marks any name it lists as drafted.
+     Silently does nothing if the file doesn't exist yet or the page was
+     opened as a file:// URL (fetch of local files is blocked there) -- this
+     is a pure enhancement, never required for the board to work standalone. */
+  var LIVE_POLL_MS = 5000;
+  var liveSyncUnmatchedShown = new Set();
+
+  function findRowByName(name){
+    var lower = name.toLowerCase();
+    for (var i = 0; i < vetRows.length; i++){ if (vetRows[i].name.toLowerCase() === lower) return vetRows[i]; }
+    for (var j = 0; j < rooRows.length; j++){ if (rooRows[j].name.toLowerCase() === lower) return rooRows[j]; }
+    return null;
+  }
+
+  function pollLiveDraft(){
+    fetch("drafted_live.json", {cache: "no-store"}).then(function(res){
+      return res.ok ? res.json() : null;
+    }).then(function(data){
+      if (!data) return;
+      var newlyDrafted = [];
+      (data.drafted || []).forEach(function(name){
+        var row = findRowByName(name);
+        if (row && !drafted.has(row.key)){
+          setRowDrafted(row, true, {silent: true});
+          newlyDrafted.push(name);
+        }
+      });
+      if (newlyDrafted.length){
+        showToast("Synced from Yahoo: " + newlyDrafted.join(", "), false);
+      }
+      (data.unmatched || []).forEach(function(name){
+        if (!liveSyncUnmatchedShown.has(name)){
+          liveSyncUnmatchedShown.add(name);
+          showToast("Yahoo pick not found on board -- mark manually: " + name, false);
+        }
+      });
+    }).catch(function(){ /* no sync script running -- the default, expected state */ });
+  }
+  setInterval(pollLiveDraft, LIVE_POLL_MS);
+  pollLiveDraft();
 
   /* ---------- tabs ---------- */
   var tabs = document.querySelectorAll(".tab");

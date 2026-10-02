@@ -77,6 +77,43 @@ half a win and are reported per category.
 
 This changes no player's score: `durant_rankings_2026_27.csv` is unaffected.
 
+## Draft board
+
+`draft_board_2026_27.html` is a standalone, offline draft-day tool: search,
+filter by position, sort by category, and click a player's rank to mark them
+drafted. Regenerate it after any pipeline rerun:
+
+```bash
+python scripts/build_draft_board.py
+```
+
+Open it directly (double-click, or `open draft_board_2026_27.html`) for normal
+use — it's a single self-contained file, no server or network required.
+
+### Live-syncing picks from a Yahoo draft
+
+If your draft happens in Yahoo's own draft room, the board can auto-mark
+picks as they happen instead of you clicking each one:
+
+```bash
+# one-time setup (registers a personal Yahoo API app + authorizes it)
+scripts/setup_yahoo_oauth.sh
+
+# during the draft, in one terminal:
+python3 -m http.server 8000
+# then open http://localhost:8000/draft_board_2026_27.html in your browser
+# (auto-sync needs the board served over http — opening the file directly
+# blocks the polling; everything else about the board works either way)
+
+# in a second terminal, also during the draft:
+python3 scripts/live_draft_sync.py
+```
+
+The sync script polls Yahoo every few seconds and writes `drafted_live.json`;
+the board picks up new names from it automatically. Manual clicking still
+works alongside it, and if a pick can't be matched to a name on the board
+you'll get a toast naming it so you can mark it yourself.
+
 ## Setup
 
 ```bash

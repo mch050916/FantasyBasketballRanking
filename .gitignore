@@ -22,6 +22,24 @@ diagnostics/baselines/
 # weekly. rosters_example.csv stays tracked.
 rosters.csv
 
+# Yahoo OAuth credentials + tokens (scripts/setup_yahoo_oauth.sh) and the
+# live draft-sync script's output (scripts/live_draft_sync.py) — secrets and
+# a live-draft-day artifact, neither is source.
+.yahoo_oauth.env
+drafted_live.json
+
+# Impeccable design-tool scratch: hook cache and decision-round session logs
+# regenerate every run. design.json and surfaces/ (the direction contract)
+# are the durable parts and stay tracked.
+.impeccable/hook.cache.json
+.impeccable/questions/
+.impeccable/review/
+
+# Throwaway direction-comparison prototypes (scouting-card/trading-terminal/
+# split-flap) from choosing the draft board's visual direction — not the
+# shipped system, kept locally for reference only.
+prototypes/
+
 # Python bytecode
 __pycache__/
 *.pyc

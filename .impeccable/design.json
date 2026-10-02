@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-28T00:00:00Z",
+  "title": "Design System: DURANT Draft Board — Trading-Floor Terminal",
+  "extensions": {
+    "colorMeta": {
+      "bg": { "role": "neutral", "displayName": "Terminal Black", "canonical": "#0a0c0f", "tonalRamp": ["#050607", "#0a0c0f", "#10141a", "#141a22", "#1a222c", "#2b333f", "#5a6472", "#9aa3b2"] },
+      "surface": { "role": "neutral", "displayName": "Panel", "canonical": "#10141a", "tonalRamp": ["#0a0c0f", "#10141a", "#141a22", "#1a222c", "#242c37", "#3a4450", "#6b7684", "#9aa3b2"] },
+      "surface-alt": { "role": "neutral", "displayName": "Panel Alt", "canonical": "#141a22", "tonalRamp": ["#0a0c0f", "#10141a", "#141a22", "#1a222c", "#2b333f", "#4a5462", "#808a96", "#c4c9d0"] },
+      "surface-hover": { "role": "neutral", "displayName": "Panel Hover", "canonical": "#1a222c", "tonalRamp": ["#0e1116", "#141a22", "#1a222c", "#232c38", "#3a4450", "#5a6472", "#9aa3b2", "#e8e6df"] },
+      "text": { "role": "neutral", "displayName": "Bone Text", "canonical": "#e8e6df", "tonalRamp": ["#3a3a35", "#5c5c56", "#807f77", "#a3a29a", "#c5c3b9", "#e8e6df", "#f2f1ec", "#faf9f6"] },
+      "text-dim": { "role": "neutral", "displayName": "Dim Text", "canonical": "#9aa3b2", "tonalRamp": ["#2a2e35", "#454b55", "#616874", "#7c8494", "#9aa3b2", "#b7bfcb", "#d3d9e0", "#eef0f3"] },
+      "text-faint": { "role": "neutral", "displayName": "Faint Text", "canonical": "#808a96", "tonalRamp": ["#242830", "#3e434c", "#575e69", "#707885", "#808a96", "#9ba3ad", "#bac0c8", "#dadde1"] },
+      "border": { "role": "neutral", "displayName": "Hairline", "canonical": "#1c222b", "tonalRamp": ["#0f1319", "#1c222b", "#2b333f", "#3e4753", "#565f6b", "#7a828d", "#a5abb3", "#d3d6da"] },
+      "border-strong": { "role": "neutral", "displayName": "Hairline Strong", "canonical": "#2b333f", "tonalRamp": ["#171b21", "#2b333f", "#3e4753", "#525c69", "#6d7683", "#909aa5", "#b8bfc7", "#dfe2e6"] },
+      "accent": { "role": "primary", "displayName": "Terminal Amber", "canonical": "#d98e3b", "tonalRamp": ["#4a2e0f", "#6e4718", "#946122", "#b97a2c", "#d98e3b", "#e5ab6c", "#efc899", "#f8e4c6"] },
+      "flag": { "role": "primary", "displayName": "Flag Amber-Light", "canonical": "#e0a83f", "tonalRamp": ["#4d3812", "#73531c", "#996e27", "#c08a31", "#e0a83f", "#eabc6e", "#f3d29d", "#faeacb"] },
+      "drafted": { "role": "secondary", "displayName": "Executed-Order Red", "canonical": "#d97362", "tonalRamp": ["#4a2019", "#6e3025", "#944032", "#b95441", "#d97362", "#e59a8d", "#efc1b8", "#f8e2dc"] },
+      "strength": { "role": "secondary", "displayName": "Signal Green (Strength)", "canonical": "#5aa37a", "tonalRamp": ["#1c3a2a", "#2a5740", "#397557", "#48926d", "#5aa37a", "#87c1a1", "#b3dcc6", "#dff1e7"] },
+      "weakness": { "role": "secondary", "displayName": "Signal Red (Weakness)", "canonical": "#d9605a", "tonalRamp": ["#4a1f1c", "#6e2f2a", "#944038", "#b94f46", "#d9605a", "#e68e89", "#f0b8b4", "#f9e0de"] },
+      "pos-z": { "role": "secondary", "displayName": "Chart Bar Positive", "canonical": "#4a8f6b", "tonalRamp": ["#183226", "#25503b", "#336d50", "#3e8060", "#4a8f6b", "#7bb397", "#aed4c1", "#dcecdf"] },
+      "neg-z": { "role": "secondary", "displayName": "Chart Bar Negative", "canonical": "#d97362", "tonalRamp": ["#4a2019", "#6e3025", "#944032", "#b95441", "#d97362", "#e59a8d", "#efc1b8", "#f8e2dc"] }
+    },
+    "typographyMeta": {
+      "mono": { "displayName": "Terminal Mono", "purpose": "The single type voice for the entire system — body, data, labels, wordmark; no separate display face exists." },
+      "label": { "displayName": "Tracked Label", "purpose": "Uppercase column headers, tier titles, stat-card labels." },
+      "wordmark": { "displayName": "Wordmark", "purpose": "DURANT TERM header lockup only." },
+      "tab": { "displayName": "Tab Label", "purpose": "Veterans/Rookies tab text." }
+    },
+    "shadows": [],
+    "motion": [
+      { "name": "toast-fade", "value": "opacity .15s, transform .15s", "purpose": "Toast show/hide transition." },
+      { "name": "state-hover", "value": "background-color transitions rely on browser default (no explicit transition declared on tr:hover)", "purpose": "Row hover tone step." }
+    ],
+    "breakpoints": [
+      { "name": "mobile", "value": "640px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Active Tab",
+      "kind": "nav",
+      "refersTo": "tab-active",
+      "description": "Veterans/Rookies tab, active state — amber label and 2px amber underline, no background fill.",
+      "html": "<button class=\"ds-tab ds-tab-active\">Veterans <span class=\"ds-count\">130</span></button>",
+      "css": ".ds-tab{font-family:ui-monospace,\"SF Mono\",SFMono-Regular,Menlo,Consolas,\"Liberation Mono\",monospace;font-weight:700;font-size:12px;letter-spacing:.1em;text-transform:uppercase;background:none;border:none;border-bottom:2px solid transparent;padding:12px 2px 10px;cursor:pointer;color:#9aa3b2;}.ds-tab .ds-count{font-weight:400;color:#808a96;margin-left:6px;}.ds-tab-active{color:#d98e3b;border-bottom-color:#d98e3b;}.ds-tab-active .ds-count{color:#9aa3b2;}.ds-tab:focus-visible{outline:1px solid #d98e3b;outline-offset:-1px;}"
+    },
+    {
+      "name": "Chip (filter toggle)",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Position-filter / hide-drafted chip. Square, outlined at rest, solid amber when active.",
+      "html": "<button class=\"ds-chip ds-chip-on\">PG</button>",
+      "css": ".ds-chip{font-family:ui-monospace,\"SF Mono\",SFMono-Regular,Menlo,Consolas,\"Liberation Mono\",monospace;font-size:12px;font-weight:700;letter-spacing:.04em;color:#9aa3b2;background:#10141a;border:1px solid #2b333f;border-radius:0;padding:6px 10px;cursor:pointer;}.ds-chip:hover{background:#1a222c;}.ds-chip:focus-visible{outline:1px solid #d98e3b;outline-offset:0;}.ds-chip-on{color:#0a0c0f;background:#d98e3b;border-color:#d98e3b;}"
+    },
+    {
+      "name": "Search Input",
+      "kind": "input",
+      "refersTo": "search-input",
+      "description": "Terminal search field with keyboard-shortcut hint baked into placeholder copy.",
+      "html": "<input class=\"ds-search\" type=\"text\" placeholder=\"Search… ( / )\">",
+      "css": ".ds-search{font-family:ui-monospace,\"SF Mono\",SFMono-Regular,Menlo,Consolas,\"Liberation Mono\",monospace;font-size:14px;color:#e8e6df;background:#10141a;border:1px solid #2b333f;border-radius:0;padding:7px 10px;width:220px;}.ds-search::placeholder{color:#808a96;}.ds-search:focus{outline:1px solid #d98e3b;outline-offset:0;border-color:#d98e3b;}"
+    },
+    {
+      "name": "Strength/Weakness Tag",
+      "kind": "chip",
+      "refersTo": "tag-pos",
+      "description": "Category strength (green) / weakness (red) pill, driven by ±0.75σ z-score threshold.",
+      "html": "<span class=\"ds-tag ds-tag-pos\">BLK</span><span class=\"ds-tag ds-tag-neg\">TO</span>",
+      "css": ".ds-tag{font-family:ui-monospace,\"SF Mono\",SFMono-Regular,Menlo,Consolas,\"Liberation Mono\",monospace;font-size:11px;font-weight:700;letter-spacing:.02em;border-radius:0;padding:2px 6px;border:1px solid currentColor;display:inline-block;}.ds-tag-pos{color:#5aa37a;background:color-mix(in srgb,#5aa37a 18%,transparent);}.ds-tag-neg{color:#d9605a;background:color-mix(in srgb,#d9605a 18%,transparent);}"
+    },
+    {
+      "name": "Ranked Table Row (signature)",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "Dense monospace row: rank | player+pos/team | value | tags+balance strip. Even-row zebra, hover step, keyboard-activatable.",
+      "html": "<table class=\"ds-table\"><tbody><tr class=\"ds-row\" tabindex=\"0\" role=\"button\"><td class=\"ds-rank\">7</td><td class=\"ds-name-cell\"><span class=\"ds-name\">Nikola Jokic</span><span class=\"ds-meta\">C · DEN</span></td><td class=\"ds-val\">4.82</td><td><span class=\"ds-tag ds-tag-pos\">FG%</span></td></tr></tbody></table>",
+      "css": ".ds-table{width:100%;border-collapse:collapse;font-family:ui-monospace,\"SF Mono\",SFMono-Regular,Menlo,Consolas,\"Liberation Mono\",monospace;}.ds-row{border-bottom:1px solid #1c222b;cursor:pointer;}.ds-row:nth-child(even){background:#10141a;}.ds-row:hover{background:#1a222c;}.ds-row:focus-visible{outline:1px solid #d98e3b;outline-offset:-1px;}.ds-rank{font-weight:700;font-size:12px;color:#9aa3b2;text-align:center;padding:6px 8px;font-variant-numeric:tabular-nums;}.ds-name{font-weight:700;font-size:13.5px;color:#e8e6df;}.ds-meta{font-size:11px;color:#9aa3b2;margin-left:6px;}.ds-val{font-weight:700;font-size:13px;color:#d98e3b;text-align:right;font-variant-numeric:tabular-nums;padding:7px 8px;}"
+    },
+    {
+      "name": "Drafted Row — >> FILLED (signature)",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "The executed-order drafted state: prefix tag, strikethrough name, dimmed secondary elements, zebra-tone reverted to base background.",
+      "html": "<tr class=\"ds-row ds-drafted\"><td class=\"ds-rank\">7</td><td class=\"ds-name-cell\"><span class=\"ds-name\">Nikola Jokic</span></td></tr>",
+      "css": ".ds-drafted{background:#0a0c0f !important;}.ds-drafted:hover{background:#10141a !important;}.ds-drafted .ds-name{color:#808a96;text-decoration:line-through;text-decoration-color:#d97362;text-decoration-thickness:1px;}.ds-drafted .ds-name::before{content:\">> FILLED\";color:#d97362;font-weight:700;font-size:10px;letter-spacing:.04em;margin-right:8px;text-decoration:none;display:inline-block;}"
+    },
+    {
+      "name": "Toast / Undo",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "Bottom-centered confirmation toast fired on every drafted-toggle, with a single-slot undo hint.",
+      "html": "<div class=\"ds-toast ds-toast-show\">Marked drafted: Nikola Jokic<span class=\"ds-hint\">click or ⌘Z to undo</span></div>",
+      "css": ".ds-toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(8px);background:#141a22;border:1px solid #2b333f;color:#e8e6df;font-family:ui-monospace,\"SF Mono\",SFMono-Regular,Menlo,Consolas,\"Liberation Mono\",monospace;font-size:13px;padding:9px 16px;border-radius:0;cursor:pointer;opacity:0;pointer-events:none;transition:opacity .15s,transform .15s;}.ds-toast-show{opacity:1;transform:translateX(-50%) translateY(0);pointer-events:auto;}.ds-toast .ds-hint{color:#808a96;margin-left:8px;}"
+    },
+    {
+      "name": "Tier Block (rookies)",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "Rookie draft-slot tier grouping, replacing numeric rank since tier members share identical baseline projections.",
+      "html": "<div class=\"ds-tier-block\"><div class=\"ds-tier-title\">Late First<span class=\"ds-n\">6 players</span></div></div>",
+      "css": ".ds-tier-block{margin:18px 0 8px;}.ds-tier-title{font-family:ui-monospace,\"SF Mono\",SFMono-Regular,Menlo,Consolas,\"Liberation Mono\",monospace;font-weight:800;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#d98e3b;border-bottom:1px solid #2b333f;padding-bottom:5px;margin-bottom:2px;}.ds-tier-title .ds-n{color:#808a96;font-weight:400;margin-left:8px;}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Trading-Floor Terminal",
+    "overview": "This board reads like a live trading-desk monitor built for one operator making fast, decisive calls, not the friendly card-dashboard layout every fantasy tool defaults to. A near-black terminal ground, bone-white monospace type, and amber emphasis carry the whole surface; the only two departures from neutral ink are the amber rank/value/active-state accent and the signed green/red category deltas that read like a P&L feed. There is no card chrome anywhere: rows are separated by hairlines, corners are square, and density beats decoration at every choice point, because the tool exists to be scanned under a pick-clock, not admired. The system commits fully to real terminal furniture rather than a generic dark-mode reskin: a status-dot ticker strip at the header, tabular numerals wherever numbers must compare column to column, and a signature executed-order drafted-state (>> FILLED) that treats marking a player as filling a trade, not just toggling a checkbox. This is a deliberate, disclosed risk — the direction sits closest to the incumbent board's own prior dark theme and to the genre default for stats tools — mitigated by committing to that terminal-specific vocabulary rather than a plain repaint.",
+    "keyCharacteristics": [
+      "Near-black terminal ground with a single warm amber accent, reserved for rank/value emphasis and active state",
+      "One typeface family for everything — mono set as both --mono and --sans — no separate display face",
+      "Zero border-radius anywhere; hairline dividers instead of card containers",
+      "Signed green/red deltas for category strength/weakness, driven by the same ±0.75σ threshold everywhere it appears",
+      "A named signature state (>> FILLED) standing in for drafted, styled as an executed order, not a fade or checkbox"
+    ],
+    "rules": [
+      { "name": "The One Accent Rule", "body": "Amber (#d98e3b) marks value and active state only — rank, Val, active tab, focus rings. It never doubles as a status color; strength/weakness always render in the green/red pair, never in amber.", "section": "colors" },
+      { "name": "The Signed-Only Color Rule", "body": "Green and red never appear as decoration. Both hues are driven by the same underlying z-score and the same ±0.75σ threshold in every place they appear.", "section": "colors" },
+      { "name": "The Tabular-Numerals Rule", "body": "Every cell where numbers must compare vertically sets font-variant-numeric: tabular-nums.", "section": "typography" },
+      { "name": "The No-Display-Face Rule", "body": "The system uses exactly one type family, monospace, for every role. This is durable and load-bearing to the terminal identity.", "section": "typography" },
+      { "name": "The Flat-Ground Rule", "body": "Nothing lifts. Depth and state are communicated by background-tone stepping and hairline borders only.", "section": "elevation" },
+      { "name": "The Square-Corner Rule", "body": "border-radius: 0 is the default for every boxed element. The status dot is the one named exception.", "section": "shapes" }
+    ],
+    "dos": [
+      "Do keep every numeric column (Val, z-scores, stat cards) on tabular-nums so figures compare cleanly down a column.",
+      "Do drive every green/red instance (tags, balance strip, chart bars) from the same ±0.75σ z-score threshold — a color not backed by that threshold has no place in this system.",
+      "Do use border-radius: 0 on every new boxed element (inputs, chips, tags, cards) — the status dot is the sole named exception.",
+      "Do treat the >> FILLED executed-order pattern (prefix tag + strikethrough + secondary-element dimming + zebra-tone reversion) as the canonical 'item is done/committed' state for any future row-based list in this tool, not a fade or removal.",
+      "Do route future edits through scripts/build_draft_board.py's TEMPLATE string — draft_board_2026_27.html is a generated artifact, rewritten wholesale by python3 scripts/build_draft_board.py; hand-editing the generated HTML directly will be silently discarded on the next build."
+    ],
+    "donts": [
+      "Don't introduce a second type family (display, serif, or system-UI sans) anywhere in this world — the single monospace voice is load-bearing to the terminal identity, confirmed across every role from wordmark to body data.",
+      "Don't add box-shadow or any lifted/card treatment — depth is tonal-layering only; a shadow would contradict the flat-ground terminal world.",
+      "Don't canonize the native, unstyled <select> dropdown popup as a system-wide 'leave selects native' rule. It is recorded as a disclosed, scope-bounded keep-decision for this personal single-user tool's sort control, not a design-system prohibition against ever styling a dropdown.",
+      "Don't read the TAG_EXCLUDE category exclusions (TD, TECH, TO, DD) as a visual rule against ever surfacing those categories — they're fully shown, un-excluded, in the expanded chart. The exclusion is specific to badge/tag generation, where their variance behavior would dominate every player's tags; it is a data-legibility finding, not a display prohibition."
+    ]
+  }
+}
