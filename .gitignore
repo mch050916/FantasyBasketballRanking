@@ -22,6 +22,9 @@ diagnostics/baselines/
 # weekly. rosters_example.csv stays tracked.
 rosters.csv
 
+# Autonomous-session decision log — kept locally only, not in the repo.
+CLAUDE.md
+
 # Yahoo OAuth credentials + tokens (scripts/setup_yahoo_oauth.sh) and the
 # live draft-sync script's output (scripts/live_draft_sync.py) — secrets and
 # a live-draft-day artifact, neither is source.
