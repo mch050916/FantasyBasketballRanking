@@ -25,6 +25,14 @@ rosters.csv
 # Autonomous-session decision log — kept locally only, not in the repo.
 CLAUDE.md
 
+# AI coding-tool config, skills, and agent-workflow docs — kept locally only,
+# not in the repo.
+.claude/settings.json
+.codex/skills/
+AGENTS.md
+docs/agents/
+docs/superpowers/
+
 # Yahoo OAuth credentials + tokens (scripts/setup_yahoo_oauth.sh) and the
 # live draft-sync script's output (scripts/live_draft_sync.py) — secrets and
 # a live-draft-day artifact, neither is source.
