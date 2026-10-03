@@ -26,7 +26,6 @@ Key modelling decisions:
 
 import pandas as pd
 import numpy as np
-from scipy.stats import boxcox
 
 
 TREND_SIGNAL_WEIGHTS = {
@@ -661,16 +660,15 @@ def compute_g_scores(projected: pd.DataFrame,
     Apply the DURANT formula to produce per-category G-scores and total value.
 
     Steps per category:
-      1. Box-Cox transform (handles skew in counting stats)
-      2. Compute league mean and sigma on transformed values
-      3. Player tau lookup (player-specific → league median fallback)
-      4. G = (player_transformed - mean) / sqrt(sigma^2 + kappa * tau^2)
-      5. Flip sign for 'low is better' categories
-      6. FG%: multiply by (player_FGA / league_avg_FGA) — volume weighting
-      7. Clip to ±3.5 — prevents one outlier compressing everyone else
-      8. Multiply by category weight
+      1. Compute league mean and sigma on raw (milestone-calibrated) values
+         -- same scale compute_tau uses, see the no-skew-transform note below
+      2. Player tau lookup (player-specific → league median fallback)
+      3. G = (player_raw - mean) / sqrt(sigma^2 + kappa * tau^2)
+      4. Flip sign for 'low is better' categories
+      5. FG%: multiply by (player_FGA / league_avg_FGA) — volume weighting
+      6. Clip to ±3.5 — prevents one outlier compressing everyone else
+      7. Multiply by category weight
     """
-    epsilon = 0.05
     kappa   = compute_kappa(config["roster_size"])
     cats    = config["categories"]
     weights = config["category_weights"]
@@ -687,18 +685,24 @@ def compute_g_scores(projected: pd.DataFrame,
             print(f"  [warn] {cat} missing from projections, skipping")
             continue
 
-        raw     = df[cat].fillna(0.0).values.astype(float)
-        raw     = calibrate_category_values(raw, cat, config)
-        shifted = raw + epsilon
+        raw = df[cat].fillna(0.0).values.astype(float)
+        raw = calibrate_category_values(raw, cat, config)
 
-        try:
-            transformed, _ = boxcox(shifted) if np.all(shifted > 0) \
-                              else (np.log(shifted + 1e-6), None)
-        except Exception:
-            transformed = np.log(shifted + 1e-6)
-
-        league_mean  = transformed.mean()
-        league_sigma = transformed.std()
+        # No skew transform here: compute_tau (model.py) computes tau from
+        # raw, untransformed per-game weekly averages, so mean/sigma must
+        # stay on that same raw scale too, or sqrt(sigma^2 + kappa*tau^2)
+        # silently adds two incompatible units. A prior Box-Cox-transformed
+        # version of this line did exactly that -- see the 2026-10 fix for
+        # the mechanism (tau, computed on raw per-game values, swamped the
+        # much-smaller transformed-scale sigma for high-variance counting
+        # categories like PTS, while leaving naturally-small sparse
+        # categories like DD/TD comparatively untouched -- the likely real
+        # cause of issue #12's 34%-DD/TD-vs-0.6%-PTS variance split). No
+        # published G-score-family method (the formula this function
+        # implements) transforms a stat before standardizing either --
+        # skew is left to the variance term, not a separate nonlinear step.
+        league_mean  = raw.mean()
+        league_sigma = raw.std()
 
         if league_sigma < 1e-8:
             df[f"{cat}_G"] = 0.0
@@ -710,7 +714,7 @@ def compute_g_scores(projected: pd.DataFrame,
             tau    = player_tau.get(player, {}).get(cat, league_tau.get(cat, 1.0))
 
             denom = np.sqrt(league_sigma ** 2 + kappa * tau ** 2)
-            g     = (transformed[df.index.get_loc(i)] - league_mean) / denom
+            g     = (raw[df.index.get_loc(i)] - league_mean) / denom
 
             if meta["direction"] == "low":
                 g = -g

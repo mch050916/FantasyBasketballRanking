@@ -1,6 +1,6 @@
 DISTORTION_FAMILY,PRIMARY_HITS,PRIMARY_BENCHMARKS,PRIMARY_PLAYER_COUNT,SECONDARY_HITS,EVIDENCE_LEVEL,FOLLOW_UP_DECISION,AVG_ABS_DELTA,REPRESENTATIVE_PLAYERS
-unclassified (category-weight distortion),12,3,9,10,repeat_exact_league,not_prioritized,37.888888888888886,"Jaren Jackson Jr., Jaden McDaniels, Toumani Camara"
-big-man stat carry,9,3,4,4,repeat_exact_league,active_target,32.2,"Ivica Zubac, Rudy Gobert, Walker Kessler"
-concentrated scorer carry,4,3,4,4,repeat_exact_league,active_target,45.3,"Devin Booker, DeMar DeRozan, De'Aaron Fox"
-milestone carry,2,1,2,1,single_exact_league,watch_supporting,24.75,"Alperen Şengün, Cade Cunningham"
-guard creation carry,0,0,0,1,secondary_only,support_only,100.0,Tyrese Haliburton
+unclassified (category-weight distortion),11,3,7,7,repeat_exact_league,not_prioritized,36.61666666666667,"Jaden McDaniels, Jaren Jackson Jr., Toumani Camara"
+big-man stat carry,10,3,5,5,repeat_exact_league,active_target,34.11666666666666,"Ivica Zubac, Alperen Şengün, Walker Kessler"
+concentrated scorer carry,4,2,4,4,repeat_exact_league,active_target,65.375,"Devin Booker, DeMar DeRozan, Jalen Brunson"
+milestone carry,2,2,2,2,repeat_exact_league,active_target,17.666666666666668,"Domantas Sabonis, Jalen Johnson"
+guard creation carry,0,0,0,1,secondary_only,support_only,97.0,Tyrese Haliburton

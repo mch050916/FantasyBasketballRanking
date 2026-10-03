@@ -1,6 +1,6 @@
 BREAKOUT_AVAILABILITY_LABEL,PRIMARY_HITS,PRIMARY_BENCHMARKS,SECONDARY_HITS,EVIDENCE_LEVEL,AVG_ABS_DELTA,REPRESENTATIVE_PLAYERS,REPRESENTATIVE_REASONS
-unclear,12,3,11,repeat_exact_league,64.91666666666666,"Jaylen Brown, Julius Randle, Deni Avdija",mixed or weak evidence; unclassified (healthy overrate) | mixed or weak evidence; trend overprojection
-availability undertrust,12,3,8,repeat_exact_league,54.36,"Christian Braun, Tyler Herro, Ivica Zubac",availability=low; GP_FACTOR=0.76 | availability=very_low; GP_FACTOR=0.61
-availability overtrust,4,2,6,repeat_exact_league,61.854166666666664,"Joel Embiid, Kevin Porter Jr., Stephen Curry",availability=very_low; GP_FACTOR=0.50 | availability=low; GP_FACTOR=0.71
-role-growth underreaction,1,1,4,single_exact_league,53.625,Chris Paul,role_score=2.0; MIN=28.0
-breakout underreaction,1,1,1,single_exact_league,58.0,Collin Gillespie,upside miss; breakout/role growth
+availability undertrust,14,3,10,repeat_exact_league,51.786428571428566,"Christian Braun, Ivica Zubac, Tyler Herro",availability=low; GP_FACTOR=0.76 | availability=low; GP_FACTOR=0.77
+unclear,9,3,12,repeat_exact_league,65.09190476190476,"Jaylen Brown, Julius Randle, Deni Avdija",mixed or weak evidence; unclassified (healthy overrate) | mixed or weak evidence; trend overprojection
+availability overtrust,3,2,4,repeat_exact_league,60.58333333333333,"Luka Dončić, Joel Embiid, Stephen Curry",availability=low; GP_FACTOR=0.74 | availability=very_low; GP_FACTOR=0.50
+role-growth underreaction,3,2,3,repeat_exact_league,39.0,"Jaden McDaniels, Dyson Daniels",role_score=3.0; MIN=31.7 | role_score=5.0; MIN=33.2
+breakout underreaction,1,1,1,single_exact_league,47.0,Collin Gillespie,upside miss; breakout/role growth
