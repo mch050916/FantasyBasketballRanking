@@ -335,7 +335,11 @@ def compute_gp_factor(player_season_stats: dict[str, pd.Series],
     gp_vals, gp_wts = [], []
     for season, w in zip(available_seasons, weights):
         gp = player_season_stats[season].get("GP", np.nan)
-        if pd.notna(gp) and gp > 0:
+        # >= 0, not > 0 -- a confirmed-zero season (see _missing_season_gp
+        # below) is deliberately passed in here as a real GP=0 data point,
+        # and a `> 0` check would silently drop it, the same blind spot
+        # this whole mechanism exists to close.
+        if pd.notna(gp) and gp >= 0:
             gp_vals.append(gp)
             gp_wts.append(w)
 
@@ -438,6 +442,58 @@ def _gp_weighted_blend_weights(final_weights: list[float],
         return final_weights
 
     return [w / total for w in sample_weights]
+
+
+def _missing_season_gp(player: str,
+                       seasons: list[str],
+                       available_seasons: list[str],
+                       raw_player_sets: list[set[str]] | None) -> dict[str, float]:
+    """
+    Real GP (always 0.0) for any season a player genuinely missed in full,
+    instead of GP_FACTOR's weighted average silently excluding that season
+    and renormalizing around it -- GitHub issue #11's healthy-worker /
+    total-absence blind spot. A season not in `available_seasons` only
+    counts as a confirmed miss if the player appears in the newest loaded
+    season (`raw_player_sets[0]` -- still active today, not retired) AND in
+    some OLDER raw season than this one, AND has no row at all in this
+    season's own raw (pre-qualification-filter) data -- present-before-and-
+    after with a true gap in between is the one pattern "hadn't entered the
+    league yet" can't explain. Missing only the very oldest loaded season is
+    left alone: with three seasons loaded that's indistinguishable from a
+    normal career start, and guessing would be exactly the fake precision
+    DATA_AVAILABILITY_NOTE's own convention avoids elsewhere.
+
+    Deliberately out of scope: a season where the player HAS a raw row but
+    it's thin (didn't clear filter_qualified's bar -- e.g. 16 games back
+    from injury) stays excluded from the blend exactly as before this
+    function existed. Folding that case in here too (using its real,
+    partial GP instead of 0) was tried and reverted -- it moved several
+    players' most recent season's full weight onto a single short, still-
+    recovering sample (Domantas Sabonis, Jayson Tatum among them) and
+    produced a real, measured Spearman regression against two of the three
+    exact-league benchmarks when checked with compare_baselines.py. Whether
+    a thin recent season should count at full nominal season-weight in
+    GP_FACTOR specifically is a genuine, separate calibration question
+    (distinct from this function's narrower, unambiguous "confirmed fully
+    absent" case), not decided here.
+    """
+    if not raw_player_sets or player not in raw_player_sets[0]:
+        return {}
+
+    confirmed_zero: dict[str, float] = {}
+    for i, season in enumerate(seasons):
+        if season in available_seasons or i >= len(raw_player_sets):
+            continue
+        if player in raw_player_sets[i]:
+            continue  # thin but real -- out of scope, see docstring
+        older_present = any(
+            player in raw_player_sets[k]
+            for k in range(i + 1, len(raw_player_sets))
+        )
+        if older_present:
+            confirmed_zero[season] = 0.0
+
+    return confirmed_zero
 
 
 def project_stats(season_dfs: list[pd.DataFrame],
@@ -564,10 +620,34 @@ def project_stats(season_dfs: list[pd.DataFrame],
         # recency/trend weighting as everything else; shrinking a thin
         # season's influence on the *rate estimate* (next) is an unrelated
         # concern and shouldn't also quietly change what GP_FACTOR measures.
+        #
+        # A confirmed fully-missed season gets folded in here as a real
+        # GP=0 (see _missing_season_gp) instead of staying invisible. Uses
+        # the player's base (pre-trend) season weights for this, not
+        # final_weights -- trend-adjustment is about recent *performance*
+        # direction, which doesn't have an obvious meaning for "how much
+        # should a season we know they missed count toward their
+        # durability average."
+        missing_season_gp = _missing_season_gp(
+            player, seasons, available_seasons, raw_player_sets,
+        )
+        if missing_season_gp:
+            gp_seasons = available_seasons + list(missing_season_gp.keys())
+            gp_raw_weights = [weights[seasons.index(s)] for s in gp_seasons]
+            gp_total_w = sum(gp_raw_weights)
+            gp_weights = [w / gp_total_w for w in gp_raw_weights]
+            gp_season_stats = dict(player_season_stats)
+            for s, gp in missing_season_gp.items():
+                gp_season_stats[s] = pd.Series({"GP": gp})
+        else:
+            gp_seasons = available_seasons
+            gp_weights = final_weights
+            gp_season_stats = player_season_stats
+
         gp_factor = compute_gp_factor(
-            player_season_stats=player_season_stats,
-            available_seasons=available_seasons,
-            weights=final_weights,
+            player_season_stats=gp_season_stats,
+            available_seasons=gp_seasons,
+            weights=gp_weights,
         )
 
         # Step 2b: shrink each season's blend weight toward zero for how

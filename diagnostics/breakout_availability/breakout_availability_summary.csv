@@ -1,6 +1,6 @@
 BREAKOUT_AVAILABILITY_LABEL,PRIMARY_HITS,PRIMARY_BENCHMARKS,SECONDARY_HITS,EVIDENCE_LEVEL,AVG_ABS_DELTA,REPRESENTATIVE_PLAYERS,REPRESENTATIVE_REASONS
-availability undertrust,15,3,10,repeat_exact_league,50.01309523809523,"Christian Braun, Keegan Murray, Ivica Zubac",availability=low; GP_FACTOR=0.76 | availability=very_low; GP_FACTOR=0.59
-unclear,10,3,12,repeat_exact_league,63.898095238095244,"Jaylen Brown, Julius Randle, Deni Avdija",mixed or weak evidence; unclassified (healthy overrate) | mixed or weak evidence; trend overprojection
-availability overtrust,3,2,4,repeat_exact_league,59.91666666666667,"Luka Dončić, Joel Embiid, Stephen Curry",availability=low; GP_FACTOR=0.74 | availability=very_low; GP_FACTOR=0.50
-role-growth underreaction,1,1,3,single_exact_league,38.833333333333336,Jaden McDaniels,role_score=3.0; MIN=31.7
-breakout underreaction,1,1,1,single_exact_league,40.0,Collin Gillespie,upside miss; breakout/role growth
+availability undertrust,16,3,11,repeat_exact_league,52.903571428571425,"Christian Braun, Keegan Murray, Ivica Zubac",availability=low; GP_FACTOR=0.76 | availability=very_low; GP_FACTOR=0.59
+unclear,10,3,12,repeat_exact_league,64.13047619047619,"Jaylen Brown, Julius Randle, Deni Avdija",mixed or weak evidence; unclassified (healthy overrate) | mixed or weak evidence; trend overprojection
+availability overtrust,2,2,4,repeat_exact_league,60.5,"Luka Dončić, Joel Embiid",availability=low; GP_FACTOR=0.74 | availability=very_low; GP_FACTOR=0.50
+role-growth underreaction,1,1,2,single_exact_league,41.25,Jaden McDaniels,role_score=3.0; MIN=31.7
+breakout underreaction,1,1,1,single_exact_league,39.0,Collin Gillespie,upside miss; breakout/role growth

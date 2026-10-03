@@ -1,6 +1,6 @@
 DISTORTION_FAMILY,PRIMARY_HITS,PRIMARY_BENCHMARKS,PRIMARY_PLAYER_COUNT,SECONDARY_HITS,EVIDENCE_LEVEL,FOLLOW_UP_DECISION,AVG_ABS_DELTA,REPRESENTATIVE_PLAYERS
-unclassified (category-weight distortion),11,3,7,7,repeat_exact_league,not_prioritized,36.38055555555556,"Jaden McDaniels, Jaren Jackson Jr., Toumani Camara"
-big-man stat carry,9,3,5,5,repeat_exact_league,active_target,32.55,"Ivica Zubac, Alperen Şengün, Walker Kessler"
+unclassified (category-weight distortion),11,3,7,7,repeat_exact_league,not_prioritized,36.51388888888889,"Jaden McDaniels, Jaren Jackson Jr., Toumani Camara"
+big-man stat carry,9,3,5,5,repeat_exact_league,active_target,32.233333333333334,"Ivica Zubac, Alperen Şengün, Walker Kessler"
 concentrated scorer carry,4,2,4,4,repeat_exact_league,active_target,65.625,"Devin Booker, DeMar DeRozan, Jalen Brunson"
 milestone carry,1,1,1,1,single_exact_league,watch_supporting,17.5,Domantas Sabonis
 guard creation carry,0,0,0,1,secondary_only,support_only,97.0,Tyrese Haliburton
