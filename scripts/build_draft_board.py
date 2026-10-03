@@ -160,6 +160,29 @@ def build_data() -> dict:
             "td": round(float(r["TD"]), 2),
         }
 
+    # Pure skill-rate projection -- the same season-blended per-game number
+    # above, but BEFORE GP_FACTOR/DECLINE_FACTOR's multiply (model.py's
+    # `{cat}_RATE` columns). "projected" already has availability/aging
+    # priced in for valuation purposes (TOTAL_VALUE depends on it, untouched
+    # here); this exists purely so the board can show *why* a player's
+    # headline number sits below what their rate alone would suggest,
+    # instead of that gap being invisible. No FG% rate: FG% was never
+    # GP/decline-adjusted to begin with (see model.py), so there's no gap to
+    # explain and showing the same number twice would be noise, not signal.
+    def player_rate(r) -> dict:
+        return {
+            "pts": round(float(r["PTS_RATE"]), 1),
+            "reb": round(float(r["REB_RATE"]), 1),
+            "ast": round(float(r["AST_RATE"]), 1),
+            "st": round(float(r["ST_RATE"]), 1),
+            "blk": round(float(r["BLK_RATE"]), 1),
+            "to": round(float(r["TO_RATE"]), 1),
+            "threep": round(float(r["3PTM_RATE"]), 1),
+            "ftm": round(float(r["FTM_RATE"]), 1),
+            "dd": round(float(r["DD_RATE"]), 2),
+            "td": round(float(r["TD_RATE"]), 2),
+        }
+
     def note_short(note: str) -> str:
         # Two note templates exist today (see DATA_AVAILABILITY_NOTE, main.py):
         # "No 2025-26 data -- projected from <season>[; DD/TD not available...]"
@@ -203,7 +226,10 @@ def build_data() -> dict:
             "tags": player_tags(z),
             "stats": {
                 "projected": player_projected(r),
+                "rate": player_rate(r),
                 "actual": actual_2025_26.get(r["PLAYER_NAME"]),
+                "gpFactor": round(float(r["GP_FACTOR"]), 3),
+                "declineFactor": round(float(r["DECLINE_FACTOR"]), 3),
             },
         })
 
@@ -763,6 +789,12 @@ tr.chart-row:not(.open){display:none;}
     {key:"td", label:"TD", dec:2}
   ];
   var ACTUAL_FIELDS = STAT_FIELDS.slice(0, 11); /* everything but dd, td */
+  /* rate has no gp/min/fgPct -- gp/min aren't rate quantities, and FG% was
+     never GP/decline-adjusted to begin with (model.py), so there's no gap
+     to show for it. */
+  var RATE_FIELDS = STAT_FIELDS.filter(function(f){
+    return f.key !== "gp" && f.key !== "min" && f.key !== "fgPct";
+  });
 
   function fmtStat(v, dec, stripZero){
     var s = v.toFixed(dec);
@@ -778,7 +810,14 @@ tr.chart-row:not(.open){display:none;}
   }
 
   function statsBlockHTML(stats){
-    var out = '<div class="statBlockLabel">Projected 2026-27 per game</div>' +
+    var out = "";
+    if (stats.rate){
+      out += '<div class="statBlockLabel">Rate — before availability/age adjustment</div>' +
+        '<div class="statRow">' + statCardsHTML(stats.rate, RATE_FIELDS) + '</div>';
+    }
+    var adjBits = [stats.gpFactor.toFixed(2) + '× GP_FACTOR'];
+    if (stats.declineFactor < 1) adjBits.push(stats.declineFactor.toFixed(2) + '× DECLINE_FACTOR');
+    out += '<div class="statBlockLabel">Projected 2026-27 per game — ' + adjBits.join(' × ') + ' applied</div>' +
       '<div class="statRow">' + statCardsHTML(stats.projected, STAT_FIELDS) + '</div>';
     if (stats.actual){
       out += '<div class="statBlockLabel">Actual 2025-26 per game — ' + stats.actual.gp + ' GP</div>' +

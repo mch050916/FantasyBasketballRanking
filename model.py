@@ -522,11 +522,21 @@ def project_stats(season_dfs: list[pd.DataFrame],
 
             if not vals:
                 row[cat] = np.nan
+                row[f"{cat}_RATE"] = np.nan
                 continue
 
             wt        = sum(wts)
             projected = sum(v * w for v, w in zip(vals, wts)) / wt
-            row[cat]  = projected * gp_factor * decline_factor
+            # `{cat}` stays the GP/decline-adjusted value everything else in
+            # the pipeline (G-scores, the draft board's headline numbers)
+            # already depends on -- not touched here. `{cat}_RATE` is the
+            # same season-blended number BEFORE that multiply: the pure
+            # skill-rate projection, with no availability or aging tax
+            # baked in. Exists so a consumer can show "why" a player's
+            # headline number is lower than their rate alone would suggest,
+            # instead of GP_FACTOR/DECLINE_FACTOR's effect being invisible.
+            row[f"{cat}_RATE"] = projected
+            row[cat] = projected * gp_factor * decline_factor
 
         # ── FG% — volume-weighted, no GP adjustment ──────────────────────
         row["FG%"] = compute_weighted_fg_pct(
@@ -536,11 +546,14 @@ def project_stats(season_dfs: list[pd.DataFrame],
         )
 
         # ── DD and TD — GP-adjusted ──────────────────────────────────────
-        row["DD"] = player_derived.get("DD", 0.0) * gp_factor * decline_factor
-        row["TD"] = player_derived.get("TD", 0.0) * gp_factor * decline_factor
+        row["DD_RATE"] = player_derived.get("DD", 0.0)
+        row["TD_RATE"] = player_derived.get("TD", 0.0)
+        row["DD"] = row["DD_RATE"] * gp_factor * decline_factor
+        row["TD"] = row["TD_RATE"] * gp_factor * decline_factor
 
         # ── TECH — GP-adjusted ───────────────────────────────────────────
-        row["TECH"] = tech_per_game.get(player, 0.05) * gp_factor * decline_factor
+        row["TECH_RATE"] = tech_per_game.get(player, 0.05)
+        row["TECH"] = row["TECH_RATE"] * gp_factor * decline_factor
 
         # ── GP and MIN — raw, for filtering and display ──────────────────
         row["GP"]  = player_season_stats[first].get("GP", np.nan)
