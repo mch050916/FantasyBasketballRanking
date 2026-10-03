@@ -39,8 +39,16 @@ LEAGUE_CONFIG = {
     #   - TO: elite players naturally create more → discount the penalty (0.5)
     #   - TECH: real signal but small magnitude → small weight (0.3)
     #   - DD/TD: custom to your league → tune based on how often they decide
-    #     a weekly matchup. Current setting: 0.8 treats them like a counting
-    #     stat but slightly below PTS/REB/AST in importance.
+    #     a weekly matchup. Reset to 1.0 (2026-10): the earlier 0.72/0.56
+    #     trims were compensating for a since-fixed sigma/tau unit-mismatch
+    #     bug in compute_g_scores that was inflating DD/TD's G-score scale
+    #     far beyond every other category's (see model.py's no-skew-transform
+    #     note). With that root cause fixed, DD/TD sit on the same scale as
+    #     every other category on their own -- these trims were patching a
+    #     symptom that no longer exists, and were stacking a second discount
+    #     on top of the fix. milestone_calibration below is untouched: that's
+    #     a separate, independently-justified outlier-compression step for
+    #     sparse event-rate stats, not bug compensation.
     #
     # To tune: after each season, check which categories your team won/lost
     # most often and whether the weights reflected those outcomes.
@@ -57,8 +65,8 @@ LEAGUE_CONFIG = {
         "TO":   0.5,
         "PF":   0.5,
         "TECH": 0.3,
-        "DD":   0.72,  # Phase 2: trim remaining milestone carry without erasing DD value
-        "TD":   0.56,  # stronger trim after repeat exact-league milestone distortion
+        "DD":   1.0,
+        "TD":   1.0,
     },
 
     # ── Milestone stat calibration ────────────────────────────────────────
