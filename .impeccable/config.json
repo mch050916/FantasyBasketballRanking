@@ -1,0 +1,98 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "design-system-font",
+        "value": "helvetica",
+        "files": [
+          "prototypes/redesign2/whiteboard.html"
+        ],
+        "createdAt": "2026-10-02T12:04:42.473Z",
+        "reason": "redesign comparison prototype, deliberately off-system by design, not the shipped artifact"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "helvetica neue",
+        "files": [
+          "prototypes/redesign2/wayfinding.html"
+        ],
+        "createdAt": "2026-10-02T12:09:58.945Z",
+        "reason": "redesign comparison prototype, deliberately off-system by design, not the shipped artifact"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "courier new",
+        "files": [
+          "prototypes/redesign2/green-bar-mainframe.html"
+        ],
+        "createdAt": "2026-10-02T12:38:16.292Z",
+        "reason": "redesign comparison prototype, deliberately off-system by design, not the shipped artifact"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "helvetica",
+        "files": [
+          "prototypes/redesign2/scorers-table.html"
+        ],
+        "createdAt": "2026-10-02T12:38:43.904Z",
+        "reason": "redesign comparison prototype, deliberately off-system by design, not the shipped artifact"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "helvetica",
+        "files": [
+          "prototypes/redesign2/trading-card-album.html"
+        ],
+        "createdAt": "2026-10-02T12:39:30.461Z",
+        "reason": "redesign comparison prototype, deliberately off-system by design, not the shipped artifact"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "courier new",
+        "files": [
+          "prototypes/redesign2/teletype-wire.html"
+        ],
+        "createdAt": "2026-10-02T12:39:59.276Z",
+        "reason": "redesign comparison prototype, deliberately off-system by design, not the shipped artifact"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "inter",
+        "files": [
+          "prototypes/redesign2/modern-saas.html"
+        ],
+        "createdAt": "2026-10-02T12:51:38.091Z",
+        "reason": "redesign comparison prototype, deliberately off-system by design, not the shipped artifact"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "inter",
+        "files": [
+          "prototypes/redesign2/modern-dark-dashboard.html"
+        ],
+        "createdAt": "2026-10-02T12:52:28.503Z",
+        "reason": "redesign comparison prototype, deliberately off-system by design, not the shipped artifact"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "inter",
+        "files": [
+          "prototypes/redesign2/modern-dark-landing.html"
+        ],
+        "createdAt": "2026-10-02T13:00:31.260Z",
+        "reason": "redesign comparison prototype, deliberately off-system by design, not the shipped artifact"
+      },
+      {
+        "rule": "clipped-overflow-container",
+        "value": "*",
+        "files": [
+          "index.html"
+        ],
+        "createdAt": "2026-10-03T01:53:36.120Z",
+        "reason": "backdrop overflow:hidden only clips decorative background rings meant to bleed off-viewport; no tooltips/menus live inside it"
+      }
+    ]
+  }
+}

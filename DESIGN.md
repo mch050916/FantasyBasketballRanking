@@ -1,235 +1,233 @@
 ---
-name: DURANT Draft Board — Trading-Floor Terminal
-description: A Bloomberg-terminal-style, single-file offline draft-day tool for one operator scanning ranked fantasy basketball players under pick-clock pressure.
+name: DURANT — The Ember Signal
+description: A near-black, single-accent, system-sans visual world spanning a real landing page and a dense offline draft-day tool, built for fast operator scanning, not card chrome.
 colors:
-  bg: "#0a0c0f"
-  surface: "#10141a"
-  surface-alt: "#141a22"
-  surface-hover: "#1a222c"
-  text: "#e8e6df"
-  text-dim: "#9aa3b2"
-  text-faint: "#808a96"
-  accent: "#d98e3b"
+  bg: "#0b0c10"
+  panel: "rgba(255,255,255,.055)"
+  panel-solid: "#15171c"
+  panel-alt-solid: "#1b1e24"
+  border: "rgba(255,255,255,.08)"
+  border-strong: "rgba(255,255,255,.16)"
+  ink: "#eef0f4"
+  ink-dim: "#a7acb8"
+  ink-faint: "#838a97"
+  ember: "#ff7a33"
   flag: "#e0a83f"
-  drafted: "#d97362"
-  pos-z: "#4a8f6b"
-  neg-z: "#d97362"
-  strength: "#5aa37a"
-  weakness: "#d9605a"
-  border: "#1c222b"
-  border-strong: "#2b333f"
+  strength: "#3ddc97"
+  weakness: "#ff6b6b"
 typography:
-  mono:
-    fontFamily: 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace'
+  display:
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif'
+    fontSize: "44px"
+    fontWeight: 800
+    lineHeight: 1.1
+    letterSpacing: "-0.02em"
+  headline:
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif'
+    fontSize: "26px"
+    fontWeight: 800
+    lineHeight: 1.2
+    letterSpacing: "-0.01em"
+  body:
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif'
     fontSize: "13px"
     fontWeight: 400
     lineHeight: "normal"
     letterSpacing: "normal"
   label:
-    fontFamily: 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace'
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif'
     fontSize: "11px"
     fontWeight: 700
     letterSpacing: "0.08em"
-  wordmark:
-    fontFamily: 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace'
-    fontSize: "12px"
-    fontWeight: 700
-    letterSpacing: "0.14em"
-  tab:
-    fontFamily: 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace'
-    fontSize: "12px"
-    fontWeight: 700
-    letterSpacing: "0.1em"
+  code:
+    fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace'
+    fontSize: "12.5px"
+    fontWeight: 400
+    letterSpacing: "normal"
 rounded:
-  all: "0px"
+  control: "7px"
+  control-lg: "9px"
+  container: "14px"
+  pill: "999px"
+  table: "0px"
 spacing:
   xs: "2px"
-  sm: "6px"
-  md: "9px"
-  lg: "14px"
-  xl: "22px"
+  sm: "8px"
+  md: "14px"
+  lg: "24px"
+  xl: "60px"
 components:
-  tab:
-    backgroundColor: "transparent"
-    textColor: "{colors.text-dim}"
-    typography: "{typography.tab}"
-    padding: "12px 2px 10px"
-  tab-active:
-    backgroundColor: "transparent"
-    textColor: "{colors.accent}"
-    typography: "{typography.tab}"
-  chip:
-    backgroundColor: "{colors.surface}"
-    textColor: "{colors.text-dim}"
-    typography: "{typography.mono}"
-    rounded: "{rounded.all}"
-    padding: "6px 10px"
-  chip-on:
-    backgroundColor: "{colors.accent}"
-    textColor: "{colors.bg}"
-    rounded: "{rounded.all}"
-    padding: "6px 10px"
+  button-primary:
+    backgroundColor: "{colors.ember}"
+    textColor: "#17120c"
+    rounded: "{rounded.control-lg}"
+    padding: "12px 22px"
   search-input:
-    backgroundColor: "{colors.surface}"
-    textColor: "{colors.text}"
-    typography: "{typography.mono}"
-    rounded: "{rounded.all}"
+    backgroundColor: "{colors.panel-solid}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.control}"
     padding: "7px 10px"
     width: "220px"
-  tag-pos:
+  chip:
+    backgroundColor: "{colors.panel-solid}"
+    textColor: "{colors.ink-dim}"
+    rounded: "{rounded.control}"
+    padding: "6px 10px"
+  chip-on:
+    backgroundColor: "{colors.ember}"
+    textColor: "{colors.bg}"
+    rounded: "{rounded.control}"
+    padding: "6px 10px"
+  tag-strength:
     backgroundColor: "{colors.strength}"
     textColor: "{colors.strength}"
-    rounded: "{rounded.all}"
-    padding: "2px 6px"
-  tag-neg:
+    rounded: "{rounded.control}"
+    padding: "4px 9px"
+  tag-weakness:
     backgroundColor: "{colors.weakness}"
     textColor: "{colors.weakness}"
-    rounded: "{rounded.all}"
-    padding: "2px 6px"
+    rounded: "{rounded.control}"
+    padding: "4px 9px"
+  toolkit-card:
+    backgroundColor: "{colors.panel-solid}"
+    textColor: "{colors.ink}"
+    padding: "26px 26px 24px"
 ---
 
-# Design System: DURANT Draft Board — Trading-Floor Terminal
+# Design System: DURANT — The Ember Signal
 
 ## Overview
 
-**Creative North Star: "The Trading-Floor Terminal"**
+**Creative North Star: "The Ember Signal"**
 
-This board reads like a live trading-desk monitor built for one operator making fast, decisive calls, not the friendly card-dashboard layout every fantasy tool defaults to. A near-black terminal ground, bone-white monospace type, and amber emphasis carry the whole surface; the only two departures from neutral ink are the amber rank/value/active-state accent and the signed green/red category deltas that read like a P&L feed. There is no card chrome anywhere: rows are separated by hairlines, corners are square, and density beats decoration at every choice point, because the tool exists to be scanned under a pick-clock, not admired.
+This is a full visual-world replacement of the prior "Trading-Floor Terminal" system, read directly from the shipped build (`index.html` and the `TEMPLATE` string in `scripts/build_draft_board.py`), not from the direction contract's planning language. The old world committed to amber on black with all-monospace terminal type and zero radius everywhere; the shipped world keeps near-black and a warm single accent, but drops the terminal cosplay — no ticker-strip furniture, no monospace-everywhere, no `>> FILLED` order-confirmation marker. What replaced it is quieter: a near-black ground, flat translucent-white panels instead of solid navy-gray surfaces, one ember-orange accent, and ordinary system UI type for every role except literal CLI command snippets.
 
-The system commits fully to real terminal furniture rather than a generic "dark mode" reskin: a status-dot ticker strip at the header, tabular numerals wherever numbers must compare column to column, and a signature "executed order" drafted-state (`>> FILLED`) that treats marking a player as filling a trade, not just toggling a checkbox. This is a deliberate, disclosed risk — the direction sits closest to the incumbent board's own prior dark theme and to the genre default for stats tools — mitigated by committing to that terminal-specific vocabulary rather than a plain repaint.
-
-This is a full visual-world replacement (not an extension of a prior DESIGN.md); tokens below are read directly from the shipped build, not from the pre-build direction contract.
+The two surfaces now read as one coherent product rather than a tool plus an orphaned splash page. `index.html` is a real small website — sticky blurred nav, hero with a single restrained accent-stroke arc mark behind the wordmark, a numbered 2x2 toolkit grid with staggered entrance motion — while `draft_board_2026_27.html` stays a dense, flat, data-first table for scanning under pick-clock pressure. The same tokens (bg, panel, border, ember, strength/weakness green-red) run through both; what differs is composition, not vocabulary. A deliberate density split governs shape: standalone controls (search, chips, buttons, tags, toasts) get a small 5–10px radius, but the ranked table itself stays flat and square-cornered, because a live-draft tool needs row density, not card chrome.
 
 **Key Characteristics:**
-- Near-black terminal ground with a single warm amber accent, reserved for rank/value emphasis and active state
-- One typeface family for everything — mono set as both `--mono` and `--sans` — no separate display face
-- Zero border-radius anywhere; hairline dividers instead of card containers
-- Signed green/red deltas for category strength/weakness, driven by the same ±0.75σ threshold everywhere it appears
-- A named signature state (`>> FILLED`) standing in for "drafted," styled as an executed order, not a fade or checkbox
+- Near-black ground (`#0b0c10`) with flat, translucent-white panels (`rgba(255,255,255,.055–.16)`) — no solid navy-gray surface tokens
+- A single accent, ember orange (`#ff7a33`), replacing the old world's amber and its multi-hue drafted/flag palette
+- System sans-serif UI type everywhere; monospace survives only in literal CLI command snippets, not as a UI voice
+- Small radius (5–10px) on standalone controls; the dense table stays flat and unrounded — a deliberate, not accidental, split
+- One restrained abstract "arc" mark used exactly once (behind the hero wordmark); not repeated as a motif elsewhere
+- No colored glow shadows and no gradient text anywhere — both deliberately avoided, flagged in-build as generic-AI-UI tells
 
 ## Colors
 
-A near-monochrome bone-on-black terminal ground with amber as the single warm accent and a green/red signed pair reserved strictly for data polarity (never for arbitrary decoration).
+A near-monochrome near-black ground with one warm accent and a green/red signed pair reserved for data polarity.
 
 ### Primary
-- **Terminal Amber** (`#d98e3b`): rank numbers, the Val (DURANT total value) column, the active tab's label and underline, the season tag border, focus outlines, `::selection` background, cliff-marker dashed rule, tier-block titles, position-rank badge.
+- **Ember** (`#ff7a33`): primary CTA button fill, hero headline's one emphasized word, eyebrow labels, nav wordmark dot, live-status pill text/border, toolkit card hover border and "go" link, rank number and Val accent bar, active tab label/underline, chip-on fill, cliff-marker dashed border, focus outlines, `::selection` background, tier-block titles.
 
 ### Secondary
-- **Signal Green** (`#4a8f6b` chart bars / `#5aa37a` tags and strong balance cells): positive z-score bars in the expanded chart, strength tags, and the "strong" step of the balance strip.
-- **Signal Red** (`#d97362` drafted marker / `#d9605a` tags and chart negative bars): negative z-score bars, weakness tags, the balance strip's negative steps, and the drafted-row `>> FILLED` marker color (a distinct hue role from generic weakness-red, sharing the family).
-- **Flag Amber-Light** (`#e0a83f`): data-availability warnings (`[!]` disclaimer banner, inline "no 25-26 data" notes, chart-row note), kept one step lighter than the primary accent so it reads as "notice" rather than "primary emphasis."
+- **Strength Green** (`#3ddc97`): positive z-score chart bars, strength tags, "mine" category-need chips when positive.
+- **Weakness Red** (`#ff6b6b`): negative z-score chart bars, weakness tags, and — unlike the prior world — the drafted-row strikethrough color too. The old system gave "drafted" its own distinct red hue (`#d97362`) separate from "weakness" red (`#d9605a`); the shipped build collapses both onto the single weakness red (`#ff6b6b`). This is an observed simplification, not a redundant token to re-split.
+- **Flag Amber** (`#e0a83f`): data-availability notices only (`[!]` disclaimer banner, inline "no prior-season data" notes) — kept visually distinct from ember so a notice never reads as the primary accent.
 
 ### Neutral
-- **Terminal Black** (`#0a0c0f`): page background.
-- **Panel** (`#10141a`): table zebra-striping (even rows), stat-card background alternate.
-- **Panel Alt** (`#141a22`): header/ticker bar background, stat-card fill, disclaimer banner fill.
-- **Panel Hover** (`#1a222c`): row hover background.
-- **Bone Text** (`#e8e6df`): primary text — player names, values.
-- **Dim Text** (`#9aa3b2`): secondary text — position/team meta, unselected tab labels, chips.
-- **Faint Text** (`#808a96`): tertiary text — placeholder text, counts, chart axis labels, tier player-counts.
-- **Hairline** (`#1c222b`): row dividers, tab-strip base rule.
-- **Hairline Strong** (`#2b333f`): sticky-header rule, input/chip/select borders, scrollbar thumb.
+- **Near-Black** (`#0b0c10`): page background on both surfaces.
+- **Panel** (`rgba(255,255,255,.055)`): row-hover tone on the draft board (translucent, so it layers correctly over zebra striping).
+- **Panel Solid** (`#15171c`): toolkit cards, search/chip/select fills, stat-card alt fill, zebra-striped table rows.
+- **Panel Alt Solid** (`#1b1e24`): card hover fill on the landing page, toast background, disclaimer banner fill.
+- **Ink** (`#eef0f4`): primary text — player names, headline, body copy.
+- **Ink Dim** (`#a7acb8`): secondary text — lede copy, meta (position/team), unselected tab labels, chip text.
+- **Ink Faint** (`#838a97`): tertiary text — placeholder, stat labels, table column headers, card numbering.
+- **Border** (`rgba(255,255,255,.08)`): default hairline — row dividers, card grid lines, section rules.
+- **Border Strong** (`rgba(255,255,255,.16)`): structural rule — sticky-header base, input/chip/select borders, scrollbar thumb.
 
 ### Named Rules
-**The One Accent Rule.** Amber (`#d98e3b`) marks value and active state only — rank, Val, active tab, focus rings. It never doubles as a status color; strength/weakness always render in the green/red pair, never in amber, so amber's meaning ("this is the number/selection that matters right now") stays singular.
+**The One Accent Rule.** Ember (`#ff7a33`) is the system's only decorative/brand color. It never does double duty as a status color — strength/weakness always render in the green/red pair, never in ember, so ember's meaning ("primary action, emphasis, or active state") stays singular.
 
-**The Signed-Only Color Rule.** Green and red never appear as decoration. Both hues are driven by the same underlying z-score and the same ±0.75σ threshold in every place they appear (tags, balance strip, expanded chart) — a color that isn't backed by that threshold does not get to use these hues.
+**The One Owned Device Rule.** The faint quarter-circle arc stroke behind the hero wordmark appears exactly once, at 8% opacity, on the landing page only. It is not a repeatable background motif — a future surface should not inherit "add an arc" as a system pattern; it is this one page's signature, not a component.
 
 ## Typography
 
-**Body/Display/Label Font:** `ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace` — declared identically as both `--mono` and `--sans`; there is no separate display or humanist face anywhere in the system.
+**UI Font:** `-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif` (the draft board additionally lists `Inter` in its stack) — used for every role on both surfaces: headline, body, labels, table data, tags, nav.
+**Code Font:** `ui-monospace, "SF Mono", Menlo, monospace` — used exclusively for literal CLI command snippets on the landing page's toolkit cards (e.g. `python scripts/punt_planner.py --team "YourTeam"`). It is not a UI voice; nothing else in the system uses it.
 
-**Character:** One monospace voice for the entire surface — table data, labels, the wordmark, tab names, tags, tier titles. This is a deliberate world commitment (not an oversight): a terminal reads as a terminal because numbers align in fixed-width columns and labels read like ticker text, not because of a paired display/body hierarchy. There is no separate "display" or "system" face; introducing one would break the world.
+**Character:** A plain, legible system-UI voice carries the whole product now. This is a direct reversal of the prior world's "one monospace voice for everything" doctrine — note the draft board's CSS still names a `--mono` custom property, but it is now assigned the identical sans-serif stack as `--sans`; the variable name is vestigial, not a live typographic distinction. Numeric legibility is preserved not through monospace but through `font-variant-numeric: tabular-nums` applied directly to every comparison column.
 
 ### Hierarchy
-- **Wordmark** (700, 12px, letter-spacing 0.14em): "DURANT TERM" in the header bar only.
-- **Tab label** (700, 12px, letter-spacing 0.1em, uppercase): Veterans/Rookies tab text; amber when active.
-- **Section/column label** (700, 11px, letter-spacing 0.08em, uppercase, faint text): table column headers, stat-card labels, tier-title suffix, chart axis labels.
-- **Player name** (700, 13.5px): the one slightly-larger-than-body weight in the table, anchoring the row.
-- **Body/data** (400, 13px, tabular numerals): table cell values, stat cards, chart values — `font-variant-numeric: tabular-nums` set at the `td` level so every numeric column compares cleanly row to row.
-- **Micro-label** (700, 9–11px): tag pills, balance-strip category letters, chart bar values, the `>> FILLED` marker.
+- **Display / Hero H1** (800, 44px, line-height 1.1, letter-spacing -0.02em; 32px below 720px): the landing page's one headline, with exactly one word recolored ember via `<em>` (not italic — the system repurposes `<em>` as a color hook, never for italic emphasis).
+- **Headline / Section Title** (800, 26px, letter-spacing -0.01em): "Everything for draft day..." toolkit section title.
+- **Title / Card Name** (700, 16px): toolkit card names (Draft Board, Punt Planner, etc.).
+- **Body / Lede** (400, 16.5px, line-height 1.6, ink-dim): hero supporting copy, max-width 520px.
+- **Body / Data** (400, 13px, tabular-nums): table cell values — set at the `td` level so every numeric column compares cleanly row to row.
+- **Label** (700, 11-12px, letter-spacing .08-.1em, uppercase): eyebrow labels, table column headers, tab labels, tier titles, nav wordmark.
+- **Stat Number** (800, 26px, tabular-nums): the hero's 3-stat row (14 categories / 100% offline / 3 CLI companions) and the draft board's live counters.
 
 ### Named Rules
-**The Tabular-Numerals Rule.** Every cell where numbers must compare vertically (`Val`, category z-scores, GP/MIN/PTS stat cards) sets `font-variant-numeric: tabular-nums`. A number that doesn't need column comparison (prose, notes) is exempt.
+**The Tabular-Numerals Rule.** Every cell where numbers must compare vertically (Val, z-scores, hero stat row) sets `font-variant-numeric: tabular-nums`, carried over unchanged from the prior world — this survived the redesign because it is a legibility mechanism, not a terminal-aesthetic one.
 
-**The No-Display-Face Rule.** The system uses exactly one type family, monospace, for every role. This is durable and load-bearing to the "terminal" world; it is a rule to keep, not a gap to fill with a future headline face.
+**The No-Monospace-UI Rule.** Monospace type is reserved for literal command-line text the user would type or paste verbatim. It does not return as a UI label font, a wordmark font, or a data font anywhere — that role belongs to the system sans stack now.
 
 ## Layout
 
-Single-column, full-bleed layout with a sticky header stack (terminal ticker bar → tab strip → search/controls row) and a dense table filling the rest of the viewport — no page margins, no card containers, no max-width constraint. The sticky table header offset is computed at runtime from the actual topbar height (`syncStickyOffset()`), not a fixed guess, since the topbar's content (search row + controls row) varies between the Veterans and Rookies tabs.
+The landing page (`index.html`) uses a centered `max-width: 1180px` container (`.wrap`) with 24px horizontal padding, and real page sections: sticky blurred nav → hero (88px top padding) → a `border-top` rule-divided toolkit section (60px vertical padding) → footer. The hero's entrance elements (eyebrow, h1, lede, actions, stats) fade up in a staggered sequence (0s, .06s, .12s, .18s, .24s delays) via a shared `fadeUp` keyframe. The toolkit section is a `2x2` grid (`repeat(2, 1fr)`, 1px gap filled by `--border` so dividers read as hairlines between tiles) that collapses to one column below 720px; each card's entrance is staggered an additional .05s–.23s.
 
-Horizontal padding is 14px (`.wrap`, `.termbar`, `.topbar`) — the system's one consistent page gutter. Table cell padding is 7–9px vertical, 8px horizontal; the expanded chart row adds a 34px left indent so its content visually nests under the row that opened it.
+The draft board (`draft_board_2026_27.html`) stays single-column, full-bleed: a sticky header stack (tabs → search row → controls row) above a dense table filling the rest of the viewport, no max-width, no page margins. The sticky table-header offset is computed at runtime from the live topbar height (`--topbar-h`), not a fixed guess. Horizontal padding is 14px (`.wrap`, `.topbar`) on this surface — tighter than the landing page's 24px, consistent with a denser, tool-not-site posture.
 
-**Responsive breakpoint: 640px.** Below this width:
-- The search input narrows from 220px to 150px, and the stats line wraps to its own row (`order:10`) rather than staying inline right of the controls.
-- The wordmark ("DURANT TERM") is hidden — the ticker and season tag alone carry the header bar's identity at narrow width.
-- The category chart gains horizontal scroll (`overflow-x:auto`) rather than compressing 12 columns illegibly.
-- **`.rowMid` (positional-rank badge + GP count) and `.balanceStrip` (the 12-cell threshold strip) are dropped entirely, not shrunk.** This is a documented, deliberate density trade: both are supplementary reads that duplicate information available one tap away in the expanded per-player chart row, and the alternative — shrinking a 250px, 12-cell strip to fit a phone width — would force horizontal scroll on the collapsed row itself, which the system treats as worse than omission. The tags (strength/weakness pills) stay visible at every width; they are the one always-on category signal.
+**Responsive breakpoints:** the landing page collapses its 2x2 toolkit grid to one column and shrinks the H1 to 32px at 720px. The draft board narrows its search input (220px → 150px), wraps the stats line to its own row, scrolls the category chart horizontally, and drops the positional-rank badge and 12-cell balance strip entirely (not shrunk) at 640px — both are supplementary reads duplicated one tap away in the expanded per-player chart row.
 
 ## Elevation & Depth
 
-No shadows anywhere in the system — a flat terminal ground with tonal layering as the only depth cue. Table rows step through four flat tones (`--bg` → `--surface` even-row zebra → `--surface-hover` on hover → `--bg` again when drafted, explicitly reverting the zebra tone to read as "receded"), and the expanded chart row sits on `--surface` to read as nested content, not an elevated panel. Borders (`--border`, `--border-strong`) do the separation work that shadows would do in a lifted system.
+Flat by default on both surfaces — tonal layering and hairline borders do the separation work, not shadows. The one exception is interaction feedback: the primary CTA button lifts 2px and gains a **neutral dark elevation shadow** (`0 8px 20px rgba(0,0,0,.4)`) on hover, and toolkit cards lift 3px with an ember-tinted left border on hover. Both are deliberately colorless/neutral-dark shadows, not colored "glow" shadows — the build explicitly avoids tinted glow as a known generic-AI-UI tell.
+
+### Shadow Vocabulary
+- **Button hover elevation** (`box-shadow: 0 8px 20px rgba(0,0,0,.4)`): the only shadow in the system; fires on `.btnPrimary:hover` only.
 
 ### Named Rules
-**The Flat-Ground Rule.** Nothing lifts. Depth and state are communicated by background-tone stepping and hairline borders only; introducing a `box-shadow` anywhere would contradict the terminal-monitor world this system is built to read as.
+**The No-Glow Rule.** No shadow in this system carries a hue from the accent or semantic palette. Depth, where it exists at all, reads as a neutral dark elevation cue, never as a colored halo around an element.
 
 ## Shapes
 
-Square corners everywhere — `border-radius: 0` is set explicitly on inputs, chips, chart bars, tags, the scrollbar thumb, and stat cards (the codebase's `--radius` equivalent is simply absent; every rounded-capable rule pins `border-radius:0`). Containers are bounded by 1px hairlines (`--border` for row dividers, `--border-strong` for structural rules like the sticky header base and input/chip borders), never by a filled card shape. The one exception to straight lines is the status dot in the header bar, a 7px filled circle — a single rounded glyph standing in for a terminal's "live" indicator, not a shape language applied elsewhere.
+A deliberate two-register system: standalone controls get a small, tasteful radius (5-10px), while the dense table stays flat and square. Search input, chips, and the sort select use 7-8px; the primary button uses 9px; the toast and disclaimer banner use 8-10px; tags use 5px; the toolkit-card grid container (not the individual cards) uses 14px with `overflow: hidden` to clip tile corners; the nav status pill uses a full 999px pill. Against that, the table itself, its header, rows, stat cards, and chart bars are explicitly `border-radius: 0` (chart bars gain a tiny 2px cap only on the rounded end facing away from the shared baseline). Borders throughout are translucent white (`rgba(255,255,255,.08)` / `.16`) rather than solid navy-gray hairlines — a flatter, more "glass panel" border language than the prior world's opaque hex hairlines.
 
 ### Named Rules
-**The Square-Corner Rule.** `border-radius: 0` is the default for every boxed element (inputs, chips, tags, cards, scrollbar). The status dot is the one named exception, justified as a literal live-indicator convention, not a precedent for rounding elsewhere.
+**The Control-vs-Table Radius Rule.** Small radius (5-10px) belongs to standalone interactive chrome (buttons, inputs, chips, tags, toasts, pills). The ranked table is exempt by design — a live-draft tool needs row density, not card chrome, so the table stays flat regardless of how rounded its surrounding controls are.
 
 ## Components
 
-### Tabs
-Veterans / Rookies, uppercase mono labels with a trailing faint-mono player count. Inactive tabs sit in dim text with a transparent underline; the active tab turns amber text with a 2px amber bottom border. No background fill differentiates active from inactive — color and underline alone carry the state, consistent with the flat-ground rule.
+### Buttons
+- **Primary:** ember fill (`#ff7a33`), dark ink text (`#17120c`), 9px radius, 12px/22px padding, 700 weight. Hover lifts 2px with a neutral dark shadow (see Elevation).
+- **Ghost / secondary link:** no fill, ink-dim text, color shifts to full ink on hover — used for the hero's "See the toolkit" smooth-scroll link.
 
-### Chips
-- **Style:** square, 1px `--border-strong` outline, `--surface` background, mono bold label, no fill at rest.
-- **State:** `.chip.on` inverts to solid amber background with black (`--bg`) text — used for the "Hide drafted" toggle and the position filter chips (PG/SG/SF/PF/C, generated from the data). Selected/filter state, not primary/secondary action.
+### Nav
+Sticky, `rgba(11,12,16,.75)` background with `backdrop-filter: blur(10px)`, bottom hairline border. Wordmark pairs a 7px ember dot with 800-weight text. A live-status pill (full 999px radius, 1px border) reads "no draft in progress" in ink-faint at rest, or switches to ember text/border and a drafted/your-team count once `localStorage` shows a draft underway — read live from the draft board's own storage keys, no duplicated dataset.
 
-### Search Input
-Square, 1px `--border-strong` border, `--surface` fill, mono type, placeholder in faint text (`Search… ( / )` — the keyboard-shortcut hint is baked into the placeholder copy itself). Focus state swaps the border to amber and adds a matching 1px amber outline; no glow or shadow.
+### Toolkit Card
+Numbered (01-04), flat panel-solid fill inside a hairline-divided grid, 3px left border that stays transparent at rest and turns ember on hover alongside a 3px lift. Houses a name, description, and either a "go" link (card 1, linking to the draft board) or a literal monospace CLI command snippet (cards 2-4) in a `rgba(0,0,0,.35)` inset block.
 
-### Sort Select
-A native `<select>` element, themed only at the shell level (square border, `--surface` background, mono bold label) — its dropdown popup chrome is intentionally left as the browser's native cross-platform default. This was a disclosed finish-review keep-decision, not an oversight: custom-theming a native select popup was judged disproportionate scope for a personal, single-user, single-session tool. Not a system rule to extend — a future component needing a styled dropdown should not inherit "leave native chrome" as doctrine; it was a scope call for this one control.
-
-### The Ranked Table (signature component)
-The dense monospace grid is the board's primary surface: `#` (rank, click-to-draft) | Player (name + pos/team meta) | Val (amber, tabular) | a combined cell holding strength/weakness tags, positional-rank badge, GP count, and the 12-cell balance strip. Even rows carry a subtle `--surface` zebra tone; hover lifts to `--surface-hover`; the header row is sticky with an offset measured from the live topbar height. Rows are keyboard-activatable (`tabindex`, `role="button"`, Enter/Space) as well as clickable.
+### Search Input / Chips / Sort Select
+Flat panel-solid fill, 1px `border-strong` outline, 7-8px radius, sans-serif type (not monospace, a reversal from the prior world). Focus swaps the border to ember and adds a matching ember outline; no glow. Chip-on state inverts to solid ember fill with near-black text.
 
 ### Tags (strength/weakness pills)
-Up to 2 green "strength" + 2 red "weakness" pills per row, square, 1px `currentColor` border, 18%-opacity tinted fill (`color-mix`), mono bold 11px category label only (no numeric value — the value lives in the expanded chart). Driven by the same ±0.75σ z-score threshold as the balance strip. TD, TECH, TO, and DD are permanently excluded from tag generation (`TAG_EXCLUDE`) because their pool variance is bimodal or trivially correlated with usage and would dominate every player's tags — verified by hand against 130 real players (see `build_draft_board.py` header comment). This exclusion is a data-legibility finding about the DURANT model's own category distribution, not a visual-system prohibition; it should not be read as "never show TD/TECH" in any future surface.
+Up to 2 green + 2 red pills per row, 5px radius, 1px `currentColor` border, 18%-opacity tinted fill (`color-mix`), sans-serif 700-weight label. Driven by the same ±0.75σ z-score threshold as the balance strip, carried over unchanged from the prior world.
 
-### Balance Strip
-12 fixed-order category cells to the right of the tags, each a small colored swatch + faint category-letter label. Colors step through 4 states from the same z-score (strong/mild green, mild/strong red, or border-neutral for "typical" or for the 4 tag-excluded categories, shown as neutral placeholders rather than omitted so the 12-category layout stays fixed-width). Dropped below 640px (see Layout).
+### Val (Value) — scoreboard readout (signature component)
+The Val column no longer renders as plain ember-colored text (the prior world's treatment). It now renders as a scoreboard readout: right-aligned, tabular-nums, 700-weight, with a 2px solid ember border running down its left edge as a separator bar rather than color alone carrying the emphasis.
 
-### The ">> FILLED" Drafted-State Signature (signature component)
-The system's most distinctive rule: marking a player drafted does not fade or strike the whole row cheaply — it renders a `>> FILLED` tag in the drafted-red hue immediately before the player's name (mono, bold, 10px, tracked), strikes the name through in that same red, and dims (25–35% opacity) every secondary element in the row — tags, balance strip, GP badge, positional-rank badge, notes — while returning the row's background to base `--bg` (explicitly overriding the zebra tone, so a drafted row visually "recedes" rather than merely graying). The row still hover-highlights to `--surface`. This reads as an executed trade confirmation, matching the STORY beat in the direction contract, not a generic "unavailable" treatment (no full opacity fade, no removal from view unless "Hide drafted" is active).
+### Drafted State
+Marking a player drafted dims the row's secondary elements to 25-35% opacity, strikes the player name through in weakness red, and reverts the row to base background (explicitly overriding zebra striping so a drafted row visually recedes). The prior world's `>> FILLED` prefix-tag marker is dropped entirely — this build uses plain dim + strikethrough, no textual confirmation tag.
 
-### Toast / Undo
-A single bottom-centered toast (`position:fixed`, square corners, `--surface-alt` fill, 1px `--border-strong` outline) confirms every drafted-toggle regardless of trigger (click, keyboard, rank-cell), with a "click or ⌘Z to undo" hint appended for undoable actions. Single-slot undo only (most recent action), matching a fast correction path rather than a full history stack. Auto-dismisses after 2.5s or on click.
+### Toast
+Bottom-centered, panel-alt-solid fill, 1px `border-strong` outline, 10px radius, fades/translates on show. Confirms every drafted-toggle with an optional "click or ⌘Z to undo" hint.
 
-### The Expanded Per-Player Chart Row
-Clicking a row (or its rank cell) inserts a nested `tr.chart-row` beneath it: two rows of stat cards (Projected 2026-27, then Actual 2025-26 per-game, or an italic "No 2025-26 data" placeholder), then a 12-column bar chart on a shared zero baseline. Bars run up (green, positive z) or down (red, negative z) from a 1px baseline rule at 32px, height clamped visually at ±3σ though the printed numeric value is never clamped. Only one chart row is open at a time (`openChart`); opening a new one closes the prior. Bars scroll horizontally rather than compress below 640px.
-
-### Rookie Tier Blocks
-Rookies render as tier-grouped blocks (`.tier-block`) instead of a numeric rank column, because rookies sharing a draft-slot bucket share identical baseline projections by construction (disclosed via a standing `[!]`-prefixed disclaimer banner above the section). Each block has an amber, uppercase, tracked tier title with a faint mono player-count suffix, underlined by a `--border-strong` hairline — a lighter-weight echo of the veteran table's header style rather than a new visual language.
-
-### Cliff Marker
-A 2px dashed amber top-border (`tr.cliff`) marks a value-gap exceeding a fixed threshold (0.25) between adjacent undrafted players when sorted by Value — live and reactive to drafted-state, but only meaningful (and only rendered) in Value-sort order, since a category sort's row order isn't Value order.
+### The Ranked Table (signature component)
+The dense grid stays the board's primary surface and stays flat by design (see Shapes): rank | player (name + meta) | Val (scoreboard readout) | combined tags/badges/balance-strip cell. Zebra striping and hover tone are now translucent-white (`rgba(255,255,255,.055)`) rather than a solid hex panel tone.
 
 ## Do's and Don'ts
 
 ### Do:
-- **Do** keep every numeric column (`Val`, z-scores, stat cards) on `tabular-nums` so figures compare cleanly down a column.
-- **Do** drive every green/red instance (tags, balance strip, chart bars) from the same ±0.75σ z-score threshold — a color not backed by that threshold has no place in this system.
-- **Do** use `border-radius: 0` on every new boxed element (inputs, chips, tags, cards) — the status dot is the sole named exception.
-- **Do** treat the `>> FILLED` executed-order pattern (prefix tag + strikethrough + secondary-element dimming + zebra-tone reversion) as the canonical "item is done/committed" state for any future row-based list in this tool, not a fade or removal.
-- **Do** route future edits through `scripts/build_draft_board.py`'s `TEMPLATE` string — `draft_board_2026_27.html` is a generated artifact, rewritten wholesale by `python3 scripts/build_draft_board.py`; hand-editing the generated HTML directly will be silently discarded on the next build.
+- **Do** keep the table flat (`border-radius: 0`) even as every standalone control around it carries 5-10px radius — this split is deliberate, not an inconsistency to fix.
+- **Do** use ember (`#ff7a33`) as the only decorative accent; drive strength/weakness exclusively through the green/red pair.
+- **Do** render the Val column as a scoreboard readout (right-aligned, tabular-nums, left ember border bar), not plain colored text.
+- **Do** route future edits through `scripts/build_draft_board.py`'s `TEMPLATE` string — `draft_board_2026_27.html` is a generated artifact, rewritten wholesale by `python3 scripts/build_draft_board.py`.
+- **Do** use the neutral dark elevation shadow (`0 8px 20px rgba(0,0,0,.4)`) for the one hover-lift case that needs a shadow at all.
 
 ### Don't:
-- **Don't** introduce a second type family (display, serif, or system-UI sans) anywhere in this world — the single monospace voice is load-bearing to the terminal identity, confirmed across every role from wordmark to body data.
-- **Don't** add `box-shadow` or any lifted/card treatment — depth is tonal-layering only (see Elevation & Depth); a shadow would contradict the flat-ground terminal world.
-- **Don't** canonize the native, unstyled `<select>` dropdown popup as a system-wide "leave selects native" rule. It is recorded here as a disclosed, scope-bounded keep-decision for this personal single-user tool's sort control, not a design-system prohibition against ever styling a dropdown.
-- **Don't** read the `TAG_EXCLUDE` category exclusions (TD, TECH, TO, DD) as a visual rule against ever surfacing those categories — they're fully shown, un-excluded, in the expanded chart. The exclusion is specific to badge/tag generation, where their variance behavior would dominate every player's tags; it is a data-legibility finding, not a display prohibition.
+- **Don't** reintroduce monospace as a UI type voice. It is reserved for literal CLI command snippets only (see Typography).
+- **Don't** add a colored "glow" shadow or gradient text anywhere — both are deliberately avoided as generic AI-UI tells; the one shadow in the system is neutral dark, and no text anywhere uses a gradient fill.
+- **Don't** repeat the hero's arc-stroke mark as a recurring background motif on other pages or sections — it is a one-time signature, not a component (see The One Owned Device Rule).
+- **Don't** reintroduce a `>> FILLED`-style textual confirmation tag for the drafted state — the shipped build deliberately replaced it with plain dim + strikethrough; recording the old marker as current doctrine would misstate what's actually live.
+- **Don't** treat the draft board's `--mono` custom property name as evidence that monospace survives as a UI font there — it currently resolves to the same sans-serif stack as `--sans`. This is a naming leftover in the build, not a token to design against.

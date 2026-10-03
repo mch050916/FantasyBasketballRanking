@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DURANT</title>
+<style>
+  :root{
+    --bg:#0b0c10; --flat:#15171c; --flat-hover:#1b1e24;
+    --border:rgba(255,255,255,.08); --border-strong:rgba(255,255,255,.16);
+    --ink:#eef0f4; --ink-dim:#a7acb8; --ink-faint:#838a97;
+    --ember:#ff7a33;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;background:var(--bg);}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    color:var(--ink);-webkit-font-smoothing:antialiased;
+  }
+  ::selection{background:var(--ember);color:var(--bg);}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 24px;}
+
+  @keyframes fadeUp{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:translateY(0);}}
+  @keyframes float{0%,100%{transform:translateY(0);}50%{transform:translateY(-10px);}}
+
+  /* ---- page backdrop: the arc motif, scaled up into the page's one
+     recurring textural device (still a single family, still restrained —
+     see DESIGN.md's One Owned Device rule) rather than a flat void ---- */
+  .backdrop{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none;}
+  .backdrop::before{content:"";position:absolute;top:-30%;right:-20%;width:1100px;height:1100px;
+    background:radial-gradient(circle, rgba(255,122,51,.14), transparent 62%);}
+  .ring{position:absolute;border:1.5px solid var(--ember);border-radius:50%;opacity:.12;}
+  .ring.r1{top:-340px;right:-360px;width:900px;height:900px;}
+  .ring.r2{top:-220px;right:-240px;width:640px;height:640px;opacity:.17;}
+  .ring.r3{top:-120px;right:-140px;width:420px;height:420px;opacity:.24;}
+
+  /* ---- nav ---- */
+  nav{position:sticky;top:0;z-index:10;background:rgba(11,12,16,.75);backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--border);}
+  .navRow{max-width:1180px;margin:0 auto;padding:14px 24px;display:flex;align-items:center;gap:32px;}
+  .navWordmark{font-weight:800;font-size:15px;letter-spacing:.01em;display:flex;align-items:center;gap:9px;}
+  .navMark{width:20px;height:20px;border:3px solid var(--ember);border-radius:50%;
+    border-right-color:transparent;border-bottom-color:transparent;transform:rotate(45deg);flex:none;}
+  .navLinks{display:flex;align-items:center;gap:22px;flex:1;}
+  .navLinks a{font-size:13px;font-weight:600;color:var(--ink-dim);text-decoration:none;
+    transition:color .15s ease;}
+  .navLinks a:hover{color:var(--ink);}
+  .navStatus{font-size:12px;color:var(--ink-faint);border:1px solid var(--border);border-radius:999px;
+    padding:4px 11px;white-space:nowrap;}
+  .navStatus.live{color:var(--ember);border-color:rgba(255,122,51,.4);}
+
+  /* ---- hero ---- */
+  .hero{padding:88px 0 60px;position:relative;display:grid;grid-template-columns:1.15fr .85fr;
+    gap:32px;align-items:center;}
+  .eyebrow{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ember);
+    margin:0 0 16px;animation:fadeUp .5s ease both;}
+  h1{font-size:44px;line-height:1.1;font-weight:800;letter-spacing:-.02em;margin:0 0 20px;max-width:680px;
+    animation:fadeUp .5s ease .06s both;}
+  h1 em{font-style:normal;color:var(--ember);}
+  .lede{font-size:16.5px;line-height:1.6;color:var(--ink-dim);max-width:520px;margin:0 0 32px;
+    animation:fadeUp .5s ease .12s both;}
+  .heroActions{display:flex;align-items:center;gap:18px;margin-bottom:56px;flex-wrap:wrap;
+    animation:fadeUp .5s ease .18s both;}
+  .btnPrimary{display:inline-flex;align-items:center;gap:8px;background:var(--ember);color:#17120c;
+    font-weight:700;font-size:14.5px;padding:12px 22px;border-radius:9px;text-decoration:none;
+    transition:transform .15s ease, box-shadow .15s ease;}
+  .btnPrimary:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(0,0,0,.4);}
+  .btnGhost{font-size:14px;font-weight:600;color:var(--ink-dim);text-decoration:none;
+    transition:color .15s ease;}
+  .btnGhost:hover{color:var(--ink);}
+  .stats{display:flex;gap:40px;flex-wrap:wrap;animation:fadeUp .5s ease .24s both;}
+  .stat b{display:block;font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;}
+  .stat span{font-size:12.5px;color:var(--ink-faint);letter-spacing:.02em;}
+
+  /* ---- hero preview card: fills the empty right gutter with a live taste
+     of the actual board instead of nothing ---- */
+  .heroVisual{animation:fadeUp .6s ease .2s both;}
+  .previewCard{background:var(--flat);border:1px solid var(--border);border-radius:14px;
+    border-top:3px solid var(--ember);padding:18px 18px 10px;box-shadow:0 20px 50px rgba(0,0,0,.4);
+    animation:float 5s ease-in-out infinite;animation-delay:1s;}
+  .previewHead{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+  .previewLabel{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--ink-faint);}
+  .previewLive{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--ink-faint);}
+  .previewLive .dot{width:6px;height:6px;border-radius:50%;background:var(--ember);}
+  .previewRow{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);}
+  .previewRow:last-child{border-bottom:none;}
+  .previewRank{font-size:12px;font-weight:700;color:var(--ink-faint);width:14px;
+    font-variant-numeric:tabular-nums;}
+  .previewName{flex:1;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap;}
+  .previewVal{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink);
+    border-left:2px solid var(--ember);padding-left:7px;}
+
+  /* ---- toolkit section ---- */
+  .section{padding:60px 0;border-top:1px solid var(--border);}
+  .sectionEyebrow{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--ember);margin:0 0 10px;}
+  .sectionTitle{font-size:26px;font-weight:800;letter-spacing:-.01em;margin:0 0 36px;max-width:480px;}
+  .cards{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--border);
+    border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+  .card{background:var(--flat);padding:26px 26px 24px;border-left:3px solid transparent;
+    transition:background .18s ease, border-color .18s ease, transform .18s ease;
+    opacity:0;animation:fadeUp .5s ease both;}
+  .card:nth-child(1){animation-delay:.05s;}
+  .card:nth-child(2){animation-delay:.11s;}
+  .card:nth-child(3){animation-delay:.17s;}
+  .card:nth-child(4){animation-delay:.23s;}
+  .card:hover{background:var(--flat-hover);border-left-color:var(--ember);transform:translateY(-3px);}
+  .cardHead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:10px;}
+  .cardNum{font-size:12px;font-weight:800;color:var(--ink-faint);letter-spacing:.04em;}
+  .cardName{font-weight:700;font-size:16px;margin:0 0 8px;}
+  .cardDesc{font-size:13.5px;color:var(--ink-dim);line-height:1.6;margin:0 0 16px;min-height:42px;}
+  .cardGo{display:inline-flex;align-items:center;gap:6px;font-weight:600;font-size:13.5px;color:var(--ember);
+    text-decoration:none;}
+  .cardGo:hover{text-decoration:underline;}
+  .cardCmd{display:block;background:rgba(0,0,0,.35);border:1px solid var(--border);border-radius:7px;
+    font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:12.5px;color:var(--ink-dim);
+    padding:9px 11px;overflow-x:auto;white-space:pre;}
+  .cardHint{font-size:12px;color:var(--ink-faint);line-height:1.5;margin:10px 0 0;}
+  .cardHint code{font-family:ui-monospace,"SF Mono",Menlo,monospace;color:var(--ink-dim);}
+
+  footer{border-top:1px solid var(--border);padding:28px 0 40px;display:flex;justify-content:space-between;
+    align-items:center;flex-wrap:wrap;gap:10px;}
+  .footWordmark{font-weight:800;font-size:13px;color:var(--ink-dim);}
+  .footMeta{font-size:12.5px;color:var(--ink-faint);}
+
+  @media (max-width:860px){
+    .hero{grid-template-columns:1fr;}
+    .heroVisual{max-width:380px;}
+  }
+  @media (max-width:720px){
+    h1{font-size:32px;}
+    .cards{grid-template-columns:1fr;}
+    .navLinks{display:none;}
+  }
+</style>
+</head>
+<body>
+<div class="backdrop"><span class="ring r1"></span><span class="ring r2"></span><span class="ring r3"></span></div>
+
+<nav>
+  <div class="navRow">
+    <div class="navWordmark"><span class="navMark"></span>DURANT</div>
+    <div class="navLinks">
+      <a href="#toolkit">Toolkit</a>
+      <a href="draft_board_2026_27.html">Draft Board</a>
+    </div>
+    <span class="navStatus" id="navStatus">no draft in progress</span>
+  </div>
+</nav>
+
+<div class="wrap hero">
+  <div>
+    <div class="eyebrow">Fantasy basketball &middot; 14-category H2H</div>
+    <h1>Draft on variance,<br>not just <em>averages</em>.</h1>
+    <p class="lede">DURANT ranks every player with a variance-penalized model built for
+      head-to-head category leagues — then helps you draft, punt, and trade on top of it.</p>
+    <div class="heroActions">
+      <a class="btnPrimary" href="draft_board_2026_27.html">Open Draft Board &rarr;</a>
+      <a class="btnGhost" href="#toolkit">See the toolkit &darr;</a>
+    </div>
+    <div class="stats">
+      <div class="stat"><b>14</b><span>scored categories</span></div>
+      <div class="stat"><b>100%</b><span>offline, no server</span></div>
+      <div class="stat"><b>3</b><span>CLI companions</span></div>
+    </div>
+  </div>
+  <div class="heroVisual">
+    <div class="previewCard">
+      <div class="previewHead">
+        <span class="previewLabel">Top of the board</span>
+        <span class="previewLive"><span class="dot"></span>live</span>
+      </div>
+      <div id="previewRows"></div>
+    </div>
+  </div>
+</div>
+
+<div class="wrap section" id="toolkit">
+  <div class="sectionEyebrow">Toolkit</div>
+  <div class="sectionTitle">Everything for draft day, and the season after.</div>
+  <div class="cards">
+    <div class="card">
+      <div class="cardHead"><span class="cardNum">01</span></div>
+      <div class="cardName">Draft Board</div>
+      <div class="cardDesc">Live draft-day board — search, filter, sort, mark picks, and track your
+        own team's category needs in real time. Works fully offline.</div>
+      <a class="cardGo" href="draft_board_2026_27.html">Open board &rarr;</a>
+      <p class="cardHint">Regenerate after any pipeline rerun: <code>python scripts/build_draft_board.py</code>
+        &middot; live-sync from a Yahoo draft: see README &rarr; "Draft board"</p>
+    </div>
+    <div class="card">
+      <div class="cardHead"><span class="cardNum">02</span></div>
+      <div class="cardName">Punt Planner</div>
+      <div class="cardDesc">Ranks which categories a roster is already losing most, and re-ranks
+        the full player pool with one category's weight zeroed.</div>
+      <code class="cardCmd">python scripts/punt_planner.py --team "YourTeam"</code>
+    </div>
+    <div class="card">
+      <div class="cardHead"><span class="cardNum">03</span></div>
+      <div class="cardName">Trade Finder</div>
+      <div class="cardDesc">Searches every 1-for-1 swap in the league for trades that improve
+        both sides' expected categories won per week.</div>
+      <code class="cardCmd">python scripts/find_trades.py --team "YourTeam"</code>
+    </div>
+    <div class="card">
+      <div class="cardHead"><span class="cardNum">04</span></div>
+      <div class="cardName">Buy Low / Sell High</div>
+      <div class="cardDesc">Diffs real in-season per-game performance against each player's
+        preseason projection, weighted the same way the model values categories.</div>
+      <code class="cardCmd">python scripts/buy_low_sell_high.py</code>
+    </div>
+  </div>
+</div>
+
+<footer class="wrap">
+  <span class="footWordmark">DURANT</span>
+  <span class="footMeta">2026-27 season &middot; all CLI tools need rosters.csv (copy rosters_example.csv) and run from the project root with .venv active</span>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  // Same origin as draft_board_2026_27.html -- reads its own localStorage
+  // keys directly. No dataset duplicated here: just counts, not a second
+  // category panel (that's what the board itself is for).
+  function loadSet(key){
+    try { return JSON.parse(localStorage.getItem(key) || "[]"); }
+    catch(e){ return []; }
+  }
+  var el = document.getElementById("navStatus");
+  var drafted = loadSet("draftBoard2026_27_drafted");
+  var mine = loadSet("draftBoard2026_27_mine");
+  if (drafted.length){
+    el.className = "navStatus live";
+    el.textContent = drafted.length + " drafted · " + mine.length + " on your team";
+  } else {
+    el.textContent = "no draft in progress";
+  }
+
+  // Hero preview card -- a static top-5 taste of the real board, not live
+  // data (no need to duplicate the model's CSV output here just for a
+  // decorative hero widget).
+  var TOP5 = [
+    ["1", "Nikola Jokić", "13.14"],
+    ["2", "Jayson Tatum", "12.03"],
+    ["3", "Tyrese Haliburton", "11.84"],
+    ["4", "Luka Dončić", "11.70"],
+    ["5", "LeBron James", "11.60"]
+  ];
+  document.getElementById("previewRows").innerHTML = TOP5.map(function(p){
+    return '<div class="previewRow"><span class="previewRank">' + p[0] + '</span>' +
+      '<span class="previewName">' + p[1] + '</span>' +
+      '<span class="previewVal">' + p[2] + '</span></div>';
+  }).join("");
+})();
+</script>
+</body>
+</html>

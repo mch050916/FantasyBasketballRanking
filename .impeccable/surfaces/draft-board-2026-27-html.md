@@ -36,3 +36,13 @@ Redesign (full visual world replacement) of `draft_board_2026_27.html`, the stan
 
 - Exact ticker content/behavior at full scale (which players/stats feature, refresh cadence — this is a static file, so "live" is stylistic, not literal).
 - Whether the rookie tab's tier-based grouping (vs. numeric rank) gets its own visual treatment within this world.
+
+## Shipped divergence (recorded by /impeccable document, 2026-10-03)
+
+The build that actually shipped diverges from this direction contract in several load-bearing ways; the build is the source of truth (see root `DESIGN.md`, "The Ember Signal"), this contract is kept as the historical record of what was planned, not edited to match:
+
+- No ticker-style header strip — the shipped header is a plain sticky tab bar with no scrolling "top movers" content.
+- Monospace was dropped as the UI voice; the shipped system uses a system sans-serif stack everywhere except literal CLI command snippets on the landing page.
+- Amber (`#d98e3b`) was replaced by ember orange (`#ff7a33`); the drafted-state red collapsed onto the same hex as weakness red (`#ff6b6b`) rather than keeping its own hue.
+- The `>> FILLED` executed-order tag was dropped in favor of plain dim + strikethrough on the drafted row.
+- Hairline/square-corner-everywhere gave way to a split: standalone controls (search, chips, buttons, tags, toasts) now carry 5–10px radius; only the table itself stays flat.

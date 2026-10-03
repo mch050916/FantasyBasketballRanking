@@ -1,137 +1,141 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-28T00:00:00Z",
-  "title": "Design System: DURANT Draft Board — Trading-Floor Terminal",
+  "generatedAt": "2026-10-03T00:00:00Z",
+  "title": "Design System: DURANT — The Ember Signal",
   "extensions": {
     "colorMeta": {
-      "bg": { "role": "neutral", "displayName": "Terminal Black", "canonical": "#0a0c0f", "tonalRamp": ["#050607", "#0a0c0f", "#10141a", "#141a22", "#1a222c", "#2b333f", "#5a6472", "#9aa3b2"] },
-      "surface": { "role": "neutral", "displayName": "Panel", "canonical": "#10141a", "tonalRamp": ["#0a0c0f", "#10141a", "#141a22", "#1a222c", "#242c37", "#3a4450", "#6b7684", "#9aa3b2"] },
-      "surface-alt": { "role": "neutral", "displayName": "Panel Alt", "canonical": "#141a22", "tonalRamp": ["#0a0c0f", "#10141a", "#141a22", "#1a222c", "#2b333f", "#4a5462", "#808a96", "#c4c9d0"] },
-      "surface-hover": { "role": "neutral", "displayName": "Panel Hover", "canonical": "#1a222c", "tonalRamp": ["#0e1116", "#141a22", "#1a222c", "#232c38", "#3a4450", "#5a6472", "#9aa3b2", "#e8e6df"] },
-      "text": { "role": "neutral", "displayName": "Bone Text", "canonical": "#e8e6df", "tonalRamp": ["#3a3a35", "#5c5c56", "#807f77", "#a3a29a", "#c5c3b9", "#e8e6df", "#f2f1ec", "#faf9f6"] },
-      "text-dim": { "role": "neutral", "displayName": "Dim Text", "canonical": "#9aa3b2", "tonalRamp": ["#2a2e35", "#454b55", "#616874", "#7c8494", "#9aa3b2", "#b7bfcb", "#d3d9e0", "#eef0f3"] },
-      "text-faint": { "role": "neutral", "displayName": "Faint Text", "canonical": "#808a96", "tonalRamp": ["#242830", "#3e434c", "#575e69", "#707885", "#808a96", "#9ba3ad", "#bac0c8", "#dadde1"] },
-      "border": { "role": "neutral", "displayName": "Hairline", "canonical": "#1c222b", "tonalRamp": ["#0f1319", "#1c222b", "#2b333f", "#3e4753", "#565f6b", "#7a828d", "#a5abb3", "#d3d6da"] },
-      "border-strong": { "role": "neutral", "displayName": "Hairline Strong", "canonical": "#2b333f", "tonalRamp": ["#171b21", "#2b333f", "#3e4753", "#525c69", "#6d7683", "#909aa5", "#b8bfc7", "#dfe2e6"] },
-      "accent": { "role": "primary", "displayName": "Terminal Amber", "canonical": "#d98e3b", "tonalRamp": ["#4a2e0f", "#6e4718", "#946122", "#b97a2c", "#d98e3b", "#e5ab6c", "#efc899", "#f8e4c6"] },
-      "flag": { "role": "primary", "displayName": "Flag Amber-Light", "canonical": "#e0a83f", "tonalRamp": ["#4d3812", "#73531c", "#996e27", "#c08a31", "#e0a83f", "#eabc6e", "#f3d29d", "#faeacb"] },
-      "drafted": { "role": "secondary", "displayName": "Executed-Order Red", "canonical": "#d97362", "tonalRamp": ["#4a2019", "#6e3025", "#944032", "#b95441", "#d97362", "#e59a8d", "#efc1b8", "#f8e2dc"] },
-      "strength": { "role": "secondary", "displayName": "Signal Green (Strength)", "canonical": "#5aa37a", "tonalRamp": ["#1c3a2a", "#2a5740", "#397557", "#48926d", "#5aa37a", "#87c1a1", "#b3dcc6", "#dff1e7"] },
-      "weakness": { "role": "secondary", "displayName": "Signal Red (Weakness)", "canonical": "#d9605a", "tonalRamp": ["#4a1f1c", "#6e2f2a", "#944038", "#b94f46", "#d9605a", "#e68e89", "#f0b8b4", "#f9e0de"] },
-      "pos-z": { "role": "secondary", "displayName": "Chart Bar Positive", "canonical": "#4a8f6b", "tonalRamp": ["#183226", "#25503b", "#336d50", "#3e8060", "#4a8f6b", "#7bb397", "#aed4c1", "#dcecdf"] },
-      "neg-z": { "role": "secondary", "displayName": "Chart Bar Negative", "canonical": "#d97362", "tonalRamp": ["#4a2019", "#6e3025", "#944032", "#b95441", "#d97362", "#e59a8d", "#efc1b8", "#f8e2dc"] }
+      "bg": { "role": "neutral", "displayName": "Near-Black", "canonical": "#0b0c10", "tonalRamp": ["#05060a", "#0b0c10", "#15171c", "#1b1e24", "#2b2e35", "#53575f", "#848890", "#c4c7cc"] },
+      "panel": { "role": "neutral", "displayName": "Panel (translucent)", "canonical": "rgba(255,255,255,.055)", "tonalRamp": ["rgba(255,255,255,.02)", "rgba(255,255,255,.04)", "rgba(255,255,255,.055)", "rgba(255,255,255,.08)", "rgba(255,255,255,.12)", "rgba(255,255,255,.2)", "rgba(255,255,255,.35)", "rgba(255,255,255,.55)"] },
+      "panel-solid": { "role": "neutral", "displayName": "Panel Solid", "canonical": "#15171c", "tonalRamp": ["#0b0c10", "#15171c", "#1b1e24", "#242831", "#3a3f49", "#5a606c", "#8a909c", "#c4c8ce"] },
+      "panel-alt-solid": { "role": "neutral", "displayName": "Panel Alt Solid", "canonical": "#1b1e24", "tonalRamp": ["#0b0c10", "#15171c", "#1b1e24", "#262a32", "#3e434d", "#5e6470", "#8e94a0", "#c6cad0"] },
+      "border": { "role": "neutral", "displayName": "Hairline", "canonical": "rgba(255,255,255,.08)", "tonalRamp": ["rgba(255,255,255,.03)", "rgba(255,255,255,.05)", "rgba(255,255,255,.08)", "rgba(255,255,255,.12)", "rgba(255,255,255,.16)", "rgba(255,255,255,.25)", "rgba(255,255,255,.4)", "rgba(255,255,255,.6)"] },
+      "border-strong": { "role": "neutral", "displayName": "Hairline Strong", "canonical": "rgba(255,255,255,.16)", "tonalRamp": ["rgba(255,255,255,.06)", "rgba(255,255,255,.1)", "rgba(255,255,255,.16)", "rgba(255,255,255,.22)", "rgba(255,255,255,.3)", "rgba(255,255,255,.42)", "rgba(255,255,255,.6)", "rgba(255,255,255,.78)"] },
+      "ink": { "role": "neutral", "displayName": "Ink", "canonical": "#eef0f4", "tonalRamp": ["#2d2f33", "#4c4f55", "#6c7078", "#8c909a", "#acb0b9", "#cdd0d7", "#e3e5ea", "#f7f8fa"] },
+      "ink-dim": { "role": "neutral", "displayName": "Ink Dim", "canonical": "#a7acb8", "tonalRamp": ["#2c2f34", "#464a52", "#616672", "#7c8290", "#a7acb8", "#bec2cc", "#d6d9df", "#eef0f3"] },
+      "ink-faint": { "role": "neutral", "displayName": "Ink Faint", "canonical": "#838a97", "tonalRamp": ["#262a31", "#3f444d", "#595f6a", "#727886", "#838a97", "#9ba1ac", "#bcc0c8", "#dde0e4"] },
+      "ember": { "role": "primary", "displayName": "Ember Orange", "canonical": "#ff7a33", "tonalRamp": ["#4d2410", "#742f10", "#a53c12", "#d6511c", "#ff7a33", "#ff9c63", "#ffc19b", "#ffe3cf"] },
+      "flag": { "role": "secondary", "displayName": "Flag Amber", "canonical": "#e0a83f", "tonalRamp": ["#4d3812", "#73531c", "#996e27", "#c08a31", "#e0a83f", "#eabc6e", "#f3d29d", "#faeacb"] },
+      "strength": { "role": "secondary", "displayName": "Strength Green", "canonical": "#3ddc97", "tonalRamp": ["#0f3a28", "#17573c", "#1f7550", "#2aa272", "#3ddc97", "#75e6b8", "#aaefd4", "#dcf9ec"] },
+      "weakness": { "role": "secondary", "displayName": "Weakness Red", "canonical": "#ff6b6b", "tonalRamp": ["#4d1f1f", "#742e2e", "#a53f3f", "#d65454", "#ff6b6b", "#ff9393", "#ffbaba", "#ffe1e1"] }
     },
     "typographyMeta": {
-      "mono": { "displayName": "Terminal Mono", "purpose": "The single type voice for the entire system — body, data, labels, wordmark; no separate display face exists." },
-      "label": { "displayName": "Tracked Label", "purpose": "Uppercase column headers, tier titles, stat-card labels." },
-      "wordmark": { "displayName": "Wordmark", "purpose": "DURANT TERM header lockup only." },
-      "tab": { "displayName": "Tab Label", "purpose": "Veterans/Rookies tab text." }
+      "display": { "displayName": "Display", "purpose": "Landing-page hero H1 only; one word recolored ember via a repurposed <em>." },
+      "headline": { "displayName": "Headline", "purpose": "Toolkit section title." },
+      "body": { "displayName": "Body", "purpose": "Table data, lede copy, card descriptions." },
+      "label": { "displayName": "Label", "purpose": "Eyebrows, column headers, tab labels, tier titles — uppercase, tracked." },
+      "code": { "displayName": "Code", "purpose": "Literal CLI command snippets on toolkit cards only; not a UI font." }
     },
-    "shadows": [],
+    "shadows": [
+      { "name": "button-hover-elevation", "value": "0 8px 20px rgba(0,0,0,.4)", "purpose": "Neutral dark lift on the primary CTA button hover. Deliberately colorless — no accent-tinted glow anywhere in the system." }
+    ],
     "motion": [
-      { "name": "toast-fade", "value": "opacity .15s, transform .15s", "purpose": "Toast show/hide transition." },
-      { "name": "state-hover", "value": "background-color transitions rely on browser default (no explicit transition declared on tr:hover)", "purpose": "Row hover tone step." }
+      { "name": "fade-up", "value": "opacity 0->1, translateY 14px->0, .5s ease, staggered .06s per hero element and .05-.23s per toolkit card", "purpose": "Hero and toolkit-card entrance on page load." },
+      { "name": "card-hover-lift", "value": "transform: translateY(-3px); border-left-color: var(--ember); transition: .18s ease", "purpose": "Toolkit card hover." },
+      { "name": "button-hover-lift", "value": "transform: translateY(-2px); transition: .15s ease", "purpose": "Primary button hover, paired with button-hover-elevation shadow." }
     ],
     "breakpoints": [
-      { "name": "mobile", "value": "640px" }
+      { "name": "landing-mobile", "value": "720px" },
+      { "name": "board-mobile", "value": "640px" }
     ]
   },
   "components": [
     {
-      "name": "Active Tab",
-      "kind": "nav",
-      "refersTo": "tab-active",
-      "description": "Veterans/Rookies tab, active state — amber label and 2px amber underline, no background fill.",
-      "html": "<button class=\"ds-tab ds-tab-active\">Veterans <span class=\"ds-count\">130</span></button>",
-      "css": ".ds-tab{font-family:ui-monospace,\"SF Mono\",SFMono-Regular,Menlo,Consolas,\"Liberation Mono\",monospace;font-weight:700;font-size:12px;letter-spacing:.1em;text-transform:uppercase;background:none;border:none;border-bottom:2px solid transparent;padding:12px 2px 10px;cursor:pointer;color:#9aa3b2;}.ds-tab .ds-count{font-weight:400;color:#808a96;margin-left:6px;}.ds-tab-active{color:#d98e3b;border-bottom-color:#d98e3b;}.ds-tab-active .ds-count{color:#9aa3b2;}.ds-tab:focus-visible{outline:1px solid #d98e3b;outline-offset:-1px;}"
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Hero CTA ('Open Draft Board'). Ember fill, dark ink text, 9px radius, neutral dark elevation on hover.",
+      "html": "<a class=\"ds-btn-primary\" href=\"#\">Open Draft Board &rarr;</a>",
+      "css": ".ds-btn-primary{display:inline-flex;align-items:center;gap:8px;background:#ff7a33;color:#17120c;font-weight:700;font-size:14.5px;padding:12px 22px;border-radius:9px;text-decoration:none;transition:transform .15s ease, box-shadow .15s ease;}.ds-btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(0,0,0,.4);}"
     },
     {
-      "name": "Chip (filter toggle)",
-      "kind": "chip",
-      "refersTo": "chip",
-      "description": "Position-filter / hide-drafted chip. Square, outlined at rest, solid amber when active.",
-      "html": "<button class=\"ds-chip ds-chip-on\">PG</button>",
-      "css": ".ds-chip{font-family:ui-monospace,\"SF Mono\",SFMono-Regular,Menlo,Consolas,\"Liberation Mono\",monospace;font-size:12px;font-weight:700;letter-spacing:.04em;color:#9aa3b2;background:#10141a;border:1px solid #2b333f;border-radius:0;padding:6px 10px;cursor:pointer;}.ds-chip:hover{background:#1a222c;}.ds-chip:focus-visible{outline:1px solid #d98e3b;outline-offset:0;}.ds-chip-on{color:#0a0c0f;background:#d98e3b;border-color:#d98e3b;}"
+      "name": "Toolkit Card",
+      "kind": "card",
+      "refersTo": "toolkit-card",
+      "description": "Numbered landing-page card (01-04). Flat panel fill, transparent-to-ember left border on hover, 3px lift.",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-num\">01</div><div class=\"ds-card-name\">Draft Board</div><div class=\"ds-card-desc\">Live draft-day board — search, filter, sort, mark picks.</div><a class=\"ds-card-go\" href=\"#\">Open board &rarr;</a></div>",
+      "css": ".ds-card{background:#15171c;padding:26px 26px 24px;border-left:3px solid transparent;transition:background .18s ease, border-color .18s ease, transform .18s ease;}.ds-card:hover{background:#1b1e24;border-left-color:#ff7a33;transform:translateY(-3px);}.ds-card-num{font-size:12px;font-weight:800;color:#838a97;letter-spacing:.04em;}.ds-card-name{font-weight:700;font-size:16px;margin:8px 0;}.ds-card-desc{font-size:13.5px;color:#a7acb8;line-height:1.6;}.ds-card-go{font-weight:600;font-size:13.5px;color:#ff7a33;text-decoration:none;}.ds-card-go:hover{text-decoration:underline;}"
     },
     {
       "name": "Search Input",
       "kind": "input",
       "refersTo": "search-input",
-      "description": "Terminal search field with keyboard-shortcut hint baked into placeholder copy.",
-      "html": "<input class=\"ds-search\" type=\"text\" placeholder=\"Search… ( / )\">",
-      "css": ".ds-search{font-family:ui-monospace,\"SF Mono\",SFMono-Regular,Menlo,Consolas,\"Liberation Mono\",monospace;font-size:14px;color:#e8e6df;background:#10141a;border:1px solid #2b333f;border-radius:0;padding:7px 10px;width:220px;}.ds-search::placeholder{color:#808a96;}.ds-search:focus{outline:1px solid #d98e3b;outline-offset:0;border-color:#d98e3b;}"
+      "description": "Draft-board search field, sans-serif (not monospace), small radius.",
+      "html": "<input class=\"ds-search\" placeholder=\"Search… ( / )\">",
+      "css": ".ds-search{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Helvetica,Arial,sans-serif;font-size:14px;color:#eef0f4;background:#15171c;border:1px solid rgba(255,255,255,.16);border-radius:7px;padding:7px 10px;width:220px;}.ds-search::placeholder{color:#838a97;}.ds-search:focus{outline:1px solid #ff7a33;border-color:#ff7a33;}"
+    },
+    {
+      "name": "Chip (filter toggle)",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Position-filter / hide-drafted chip. Outlined at rest, solid ember when active.",
+      "html": "<button class=\"ds-chip ds-chip-on\">PG</button>",
+      "css": ".ds-chip{font-size:12px;font-weight:700;letter-spacing:.04em;color:#a7acb8;background:#15171c;border:1px solid rgba(255,255,255,.16);border-radius:7px;padding:6px 10px;cursor:pointer;}.ds-chip:focus-visible{outline:1px solid #ff7a33;}.ds-chip-on{color:#0b0c10;background:#ff7a33;border-color:#ff7a33;}"
     },
     {
       "name": "Strength/Weakness Tag",
       "kind": "chip",
-      "refersTo": "tag-pos",
-      "description": "Category strength (green) / weakness (red) pill, driven by ±0.75σ z-score threshold.",
-      "html": "<span class=\"ds-tag ds-tag-pos\">BLK</span><span class=\"ds-tag ds-tag-neg\">TO</span>",
-      "css": ".ds-tag{font-family:ui-monospace,\"SF Mono\",SFMono-Regular,Menlo,Consolas,\"Liberation Mono\",monospace;font-size:11px;font-weight:700;letter-spacing:.02em;border-radius:0;padding:2px 6px;border:1px solid currentColor;display:inline-block;}.ds-tag-pos{color:#5aa37a;background:color-mix(in srgb,#5aa37a 18%,transparent);}.ds-tag-neg{color:#d9605a;background:color-mix(in srgb,#d9605a 18%,transparent);}"
+      "refersTo": "tag-strength",
+      "description": "Category pill, up to 2 green + 2 red per row, driven by ±0.75σ z-score threshold.",
+      "html": "<span class=\"ds-tag ds-tag-pos\">AST</span>",
+      "css": ".ds-tag{font-size:14px;font-weight:700;letter-spacing:.02em;border-radius:5px;padding:4px 9px;border:1px solid currentColor;}.ds-tag-pos{color:#3ddc97;background:color-mix(in srgb, #3ddc97 18%, transparent);}.ds-tag-neg{color:#ff6b6b;background:color-mix(in srgb, #ff6b6b 18%, transparent);}"
     },
     {
-      "name": "Ranked Table Row (signature)",
+      "name": "Val Scoreboard Readout",
       "kind": "custom",
-      "refersTo": null,
-      "description": "Dense monospace row: rank | player+pos/team | value | tags+balance strip. Even-row zebra, hover step, keyboard-activatable.",
-      "html": "<table class=\"ds-table\"><tbody><tr class=\"ds-row\" tabindex=\"0\" role=\"button\"><td class=\"ds-rank\">7</td><td class=\"ds-name-cell\"><span class=\"ds-name\">Nikola Jokic</span><span class=\"ds-meta\">C · DEN</span></td><td class=\"ds-val\">4.82</td><td><span class=\"ds-tag ds-tag-pos\">FG%</span></td></tr></tbody></table>",
-      "css": ".ds-table{width:100%;border-collapse:collapse;font-family:ui-monospace,\"SF Mono\",SFMono-Regular,Menlo,Consolas,\"Liberation Mono\",monospace;}.ds-row{border-bottom:1px solid #1c222b;cursor:pointer;}.ds-row:nth-child(even){background:#10141a;}.ds-row:hover{background:#1a222c;}.ds-row:focus-visible{outline:1px solid #d98e3b;outline-offset:-1px;}.ds-rank{font-weight:700;font-size:12px;color:#9aa3b2;text-align:center;padding:6px 8px;font-variant-numeric:tabular-nums;}.ds-name{font-weight:700;font-size:13.5px;color:#e8e6df;}.ds-meta{font-size:11px;color:#9aa3b2;margin-left:6px;}.ds-val{font-weight:700;font-size:13px;color:#d98e3b;text-align:right;font-variant-numeric:tabular-nums;padding:7px 8px;}"
+      "refersTo": "val-readout",
+      "description": "Signature component: the player value column, right-aligned tabular-nums with a left ember border bar instead of plain colored text.",
+      "html": "<td class=\"ds-val\">142.8</td>",
+      "css": ".ds-val{font-weight:700;font-size:14px;color:#eef0f4;font-variant-numeric:tabular-nums;border-left:2px solid #ff7a33;padding-left:8px;text-align:right;}"
     },
     {
-      "name": "Drafted Row — >> FILLED (signature)",
+      "name": "Toast",
       "kind": "custom",
-      "refersTo": null,
-      "description": "The executed-order drafted state: prefix tag, strikethrough name, dimmed secondary elements, zebra-tone reverted to base background.",
-      "html": "<tr class=\"ds-row ds-drafted\"><td class=\"ds-rank\">7</td><td class=\"ds-name-cell\"><span class=\"ds-name\">Nikola Jokic</span></td></tr>",
-      "css": ".ds-drafted{background:#0a0c0f !important;}.ds-drafted:hover{background:#10141a !important;}.ds-drafted .ds-name{color:#808a96;text-decoration:line-through;text-decoration-color:#d97362;text-decoration-thickness:1px;}.ds-drafted .ds-name::before{content:\">> FILLED\";color:#d97362;font-weight:700;font-size:10px;letter-spacing:.04em;margin-right:8px;text-decoration:none;display:inline-block;}"
+      "refersTo": "toast",
+      "description": "Bottom-centered confirmation on every drafted-toggle, with optional undo hint.",
+      "html": "<div class=\"ds-toast ds-toast-show\">Marked drafted <span class=\"ds-toast-hint\">click or ⌘Z to undo</span></div>",
+      "css": ".ds-toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(8px);background:#1b1e24;border:1px solid rgba(255,255,255,.16);color:#eef0f4;font-size:13px;padding:9px 16px;border-radius:10px;opacity:0;transition:opacity .15s,transform .15s;}.ds-toast-show{opacity:1;transform:translateX(-50%) translateY(0);}.ds-toast-hint{color:#838a97;margin-left:8px;}"
     },
     {
-      "name": "Toast / Undo",
-      "kind": "custom",
-      "refersTo": null,
-      "description": "Bottom-centered confirmation toast fired on every drafted-toggle, with a single-slot undo hint.",
-      "html": "<div class=\"ds-toast ds-toast-show\">Marked drafted: Nikola Jokic<span class=\"ds-hint\">click or ⌘Z to undo</span></div>",
-      "css": ".ds-toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(8px);background:#141a22;border:1px solid #2b333f;color:#e8e6df;font-family:ui-monospace,\"SF Mono\",SFMono-Regular,Menlo,Consolas,\"Liberation Mono\",monospace;font-size:13px;padding:9px 16px;border-radius:0;cursor:pointer;opacity:0;pointer-events:none;transition:opacity .15s,transform .15s;}.ds-toast-show{opacity:1;transform:translateX(-50%) translateY(0);pointer-events:auto;}.ds-toast .ds-hint{color:#808a96;margin-left:8px;}"
-    },
-    {
-      "name": "Tier Block (rookies)",
-      "kind": "custom",
-      "refersTo": null,
-      "description": "Rookie draft-slot tier grouping, replacing numeric rank since tier members share identical baseline projections.",
-      "html": "<div class=\"ds-tier-block\"><div class=\"ds-tier-title\">Late First<span class=\"ds-n\">6 players</span></div></div>",
-      "css": ".ds-tier-block{margin:18px 0 8px;}.ds-tier-title{font-family:ui-monospace,\"SF Mono\",SFMono-Regular,Menlo,Consolas,\"Liberation Mono\",monospace;font-weight:800;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#d98e3b;border-bottom:1px solid #2b333f;padding-bottom:5px;margin-bottom:2px;}.ds-tier-title .ds-n{color:#808a96;font-weight:400;margin-left:8px;}"
+      "name": "Nav Status Pill",
+      "kind": "nav",
+      "refersTo": "nav-status",
+      "description": "Live draft-status pill in the landing-page sticky nav, reads localStorage from the draft board.",
+      "html": "<span class=\"ds-nav-status ds-nav-status-live\">12 drafted · 3 on your team</span>",
+      "css": ".ds-nav-status{font-size:12px;color:#838a97;border:1px solid rgba(255,255,255,.08);border-radius:999px;padding:4px 11px;}.ds-nav-status-live{color:#ff7a33;border-color:rgba(255,122,51,.4);}"
     }
   ],
   "narrative": {
-    "northStar": "The Trading-Floor Terminal",
-    "overview": "This board reads like a live trading-desk monitor built for one operator making fast, decisive calls, not the friendly card-dashboard layout every fantasy tool defaults to. A near-black terminal ground, bone-white monospace type, and amber emphasis carry the whole surface; the only two departures from neutral ink are the amber rank/value/active-state accent and the signed green/red category deltas that read like a P&L feed. There is no card chrome anywhere: rows are separated by hairlines, corners are square, and density beats decoration at every choice point, because the tool exists to be scanned under a pick-clock, not admired. The system commits fully to real terminal furniture rather than a generic dark-mode reskin: a status-dot ticker strip at the header, tabular numerals wherever numbers must compare column to column, and a signature executed-order drafted-state (>> FILLED) that treats marking a player as filling a trade, not just toggling a checkbox. This is a deliberate, disclosed risk — the direction sits closest to the incumbent board's own prior dark theme and to the genre default for stats tools — mitigated by committing to that terminal-specific vocabulary rather than a plain repaint.",
+    "northStar": "The Ember Signal",
+    "overview": "This is a full visual-world replacement of the prior \"Trading-Floor Terminal\" system, read directly from the shipped build (index.html and the TEMPLATE string in scripts/build_draft_board.py), not from the direction contract's planning language. The old world committed to amber on black with all-monospace terminal type and zero radius everywhere; the shipped world keeps near-black and a warm single accent, but drops the terminal cosplay — no ticker-strip furniture, no monospace-everywhere, no >> FILLED order-confirmation marker. What replaced it is quieter: a near-black ground, flat translucent-white panels instead of solid navy-gray surfaces, one ember-orange accent, and ordinary system UI type for every role except literal CLI command snippets. The two surfaces now read as one coherent product rather than a tool plus an orphaned splash page. index.html is a real small website — sticky blurred nav, hero with a single restrained accent-stroke arc mark behind the wordmark, a numbered 2x2 toolkit grid with staggered entrance motion — while draft_board_2026_27.html stays a dense, flat, data-first table for scanning under pick-clock pressure. The same tokens (bg, panel, border, ember, strength/weakness green-red) run through both; what differs is composition, not vocabulary. A deliberate density split governs shape: standalone controls (search, chips, buttons, tags, toasts) get a small 5–10px radius, but the ranked table itself stays flat and square-cornered, because a live-draft tool needs row density, not card chrome.",
     "keyCharacteristics": [
-      "Near-black terminal ground with a single warm amber accent, reserved for rank/value emphasis and active state",
-      "One typeface family for everything — mono set as both --mono and --sans — no separate display face",
-      "Zero border-radius anywhere; hairline dividers instead of card containers",
-      "Signed green/red deltas for category strength/weakness, driven by the same ±0.75σ threshold everywhere it appears",
-      "A named signature state (>> FILLED) standing in for drafted, styled as an executed order, not a fade or checkbox"
+      "Near-black ground (#0b0c10) with flat, translucent-white panels (rgba(255,255,255,.055–.16)) — no solid navy-gray surface tokens",
+      "A single accent, ember orange (#ff7a33), replacing the old world's amber and its multi-hue drafted/flag palette",
+      "System sans-serif UI type everywhere; monospace survives only in literal CLI command snippets, not as a UI voice",
+      "Small radius (5–10px) on standalone controls; the dense table stays flat and unrounded — a deliberate, not accidental, split",
+      "One restrained abstract \"arc\" mark used exactly once (behind the hero wordmark); not repeated as a motif elsewhere",
+      "No colored glow shadows and no gradient text anywhere — both deliberately avoided, flagged in-build as generic-AI-UI tells"
     ],
     "rules": [
-      { "name": "The One Accent Rule", "body": "Amber (#d98e3b) marks value and active state only — rank, Val, active tab, focus rings. It never doubles as a status color; strength/weakness always render in the green/red pair, never in amber.", "section": "colors" },
-      { "name": "The Signed-Only Color Rule", "body": "Green and red never appear as decoration. Both hues are driven by the same underlying z-score and the same ±0.75σ threshold in every place they appear.", "section": "colors" },
-      { "name": "The Tabular-Numerals Rule", "body": "Every cell where numbers must compare vertically sets font-variant-numeric: tabular-nums.", "section": "typography" },
-      { "name": "The No-Display-Face Rule", "body": "The system uses exactly one type family, monospace, for every role. This is durable and load-bearing to the terminal identity.", "section": "typography" },
-      { "name": "The Flat-Ground Rule", "body": "Nothing lifts. Depth and state are communicated by background-tone stepping and hairline borders only.", "section": "elevation" },
-      { "name": "The Square-Corner Rule", "body": "border-radius: 0 is the default for every boxed element. The status dot is the one named exception.", "section": "shapes" }
+      { "name": "The One Accent Rule", "body": "Ember (#ff7a33) is the system's only decorative/brand color. It never does double duty as a status color — strength/weakness always render in the green/red pair, never in ember, so ember's meaning (\"primary action, emphasis, or active state\") stays singular.", "section": "colors" },
+      { "name": "The One Owned Device Rule", "body": "The faint quarter-circle arc stroke behind the hero wordmark appears exactly once, at 8% opacity, on the landing page only. It is not a repeatable background motif — a future surface should not inherit \"add an arc\" as a system pattern; it is this one page's signature, not a component.", "section": "colors" },
+      { "name": "The Tabular-Numerals Rule", "body": "Every cell where numbers must compare vertically (Val, z-scores, hero stat row) sets font-variant-numeric: tabular-nums, carried over unchanged from the prior world — this survived the redesign because it is a legibility mechanism, not a terminal-aesthetic one.", "section": "typography" },
+      { "name": "The No-Monospace-UI Rule", "body": "Monospace type is reserved for literal command-line text the user would type or paste verbatim. It does not return as a UI label font, a wordmark font, or a data font anywhere — that role belongs to the system sans stack now.", "section": "typography" },
+      { "name": "The No-Glow Rule", "body": "No shadow in this system carries a hue from the accent or semantic palette. Depth, where it exists at all, reads as a neutral dark elevation cue, never as a colored halo around an element.", "section": "elevation" },
+      { "name": "The Control-vs-Table Radius Rule", "body": "Small radius (5-10px) belongs to standalone interactive chrome (buttons, inputs, chips, tags, toasts, pills). The ranked table is exempt by design — a live-draft tool needs row density, not card chrome, so the table stays flat regardless of how rounded its surrounding controls are.", "section": "shapes" }
     ],
     "dos": [
-      "Do keep every numeric column (Val, z-scores, stat cards) on tabular-nums so figures compare cleanly down a column.",
-      "Do drive every green/red instance (tags, balance strip, chart bars) from the same ±0.75σ z-score threshold — a color not backed by that threshold has no place in this system.",
-      "Do use border-radius: 0 on every new boxed element (inputs, chips, tags, cards) — the status dot is the sole named exception.",
-      "Do treat the >> FILLED executed-order pattern (prefix tag + strikethrough + secondary-element dimming + zebra-tone reversion) as the canonical 'item is done/committed' state for any future row-based list in this tool, not a fade or removal.",
-      "Do route future edits through scripts/build_draft_board.py's TEMPLATE string — draft_board_2026_27.html is a generated artifact, rewritten wholesale by python3 scripts/build_draft_board.py; hand-editing the generated HTML directly will be silently discarded on the next build."
+      "Do keep the table flat (border-radius: 0) even as every standalone control around it carries 5-10px radius — this split is deliberate, not an inconsistency to fix.",
+      "Do use ember (#ff7a33) as the only decorative accent; drive strength/weakness exclusively through the green/red pair.",
+      "Do render the Val column as a scoreboard readout (right-aligned, tabular-nums, left ember border bar), not plain colored text.",
+      "Do route future edits through scripts/build_draft_board.py's TEMPLATE string — draft_board_2026_27.html is a generated artifact, rewritten wholesale by python3 scripts/build_draft_board.py.",
+      "Do use the neutral dark elevation shadow (0 8px 20px rgba(0,0,0,.4)) for the one hover-lift case that needs a shadow at all."
     ],
     "donts": [
-      "Don't introduce a second type family (display, serif, or system-UI sans) anywhere in this world — the single monospace voice is load-bearing to the terminal identity, confirmed across every role from wordmark to body data.",
-      "Don't add box-shadow or any lifted/card treatment — depth is tonal-layering only; a shadow would contradict the flat-ground terminal world.",
-      "Don't canonize the native, unstyled <select> dropdown popup as a system-wide 'leave selects native' rule. It is recorded as a disclosed, scope-bounded keep-decision for this personal single-user tool's sort control, not a design-system prohibition against ever styling a dropdown.",
-      "Don't read the TAG_EXCLUDE category exclusions (TD, TECH, TO, DD) as a visual rule against ever surfacing those categories — they're fully shown, un-excluded, in the expanded chart. The exclusion is specific to badge/tag generation, where their variance behavior would dominate every player's tags; it is a data-legibility finding, not a display prohibition."
+      "Don't reintroduce monospace as a UI type voice. It is reserved for literal CLI command snippets only (see Typography).",
+      "Don't add a colored \"glow\" shadow or gradient text anywhere — both are deliberately avoided as generic AI-UI tells; the one shadow in the system is neutral dark, and no text anywhere uses a gradient fill.",
+      "Don't repeat the hero's arc-stroke mark as a recurring background motif on other pages or sections — it is a one-time signature, not a component (see The One Owned Device Rule).",
+      "Don't reintroduce a >> FILLED-style textual confirmation tag for the drafted state — the shipped build deliberately replaced it with plain dim + strikethrough; recording the old marker as current doctrine would misstate what's actually live.",
+      "Don't treat the draft board's --mono custom property name as evidence that monospace survives as a UI font there — it currently resolves to the same sans-serif stack as --sans. This is a naming leftover in the build, not a token to design against."
     ]
   }
 }
