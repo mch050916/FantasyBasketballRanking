@@ -10,11 +10,17 @@ works offline. Re-run this after any pipeline rerun to refresh the board.
 import json
 import math
 import re
+import sys
 from pathlib import Path
 
 import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))
+
+from data import fetch_current_teams      # noqa: E402
+from identity import canonical_player_key  # noqa: E402
+
 OUTPUT_PATH = REPO_ROOT / "draft_board_2026_27.html"
 
 Z_COLS = ["PTS_G", "REB_G", "AST_G", "ST_G", "BLK_G", "TO_G",
@@ -22,18 +28,21 @@ Z_COLS = ["PTS_G", "REB_G", "AST_G", "ST_G", "BLK_G", "TO_G",
 Z_LABELS = ["PTS", "REB", "AST", "ST", "BLK", "TO", "FG%", "FTM", "3PM", "DD", "TD", "TECH"]
 # Categories excluded from tag generation (not from the expanded chart, which
 # always shows all 12): TD is bimodal -- 105/130 players share its exact floor
-# value (see the category-weighting GitHub issue filed 2026-08-15) -- so
-# anyone above it reads as an extreme outlier and it dominates every strength
-# tag. TO correlates with usage, so nearly every good player reads as weak at
-# it -- true but not distinctive. TECH rides along with TD as part of the same
-# low-signal "milestone" group. DD has the same "dominates by variance" effect
-# as TD (its post-weight pool stdev, 0.71, is the largest of any category --
-# see the per-column-normalization note below) without being bimodal, so it's
-# excluded too. Verified by hand against 130 real players: including all four
-# gives Jokic "+FG% TD", Wembanyama "+TD DD", and "-TO" on nearly every
-# top-20 player; excluding them gives Wembanyama "+BLK REB", Harden
-# "+AST FTM -FG%", Gobert "+BLK FG% -AST 3PM".
-TAG_EXCLUDE = {"TO", "TD", "TECH", "DD"}
+# value -- so anyone above it reads as an extreme outlier and it dominates
+# every strength tag. TO correlates with usage, so nearly every good player
+# reads as weak at it -- true but not distinctive. TECH rides along with TD
+# as part of the same low-signal "milestone" group (smallest pool stdev of
+# any category, 0.148 post-fix -- barely any real variance to tag on).
+#
+# DD was excluded here too until 2026-10, on the reasoning that it had the
+# same "dominates by variance" effect as TD (then the largest post-weight
+# pool stdev of any category, 0.71). That was a real effect at the time, but
+# it was a symptom of a sigma/tau unit-mismatch bug in compute_g_scores
+# (fixed 2026-10) that had been inflating DD's G-score scale across the
+# board -- not something true about DD itself. Post-fix, DD's pool stdev
+# (0.464) sits solidly mid-pack, smaller than PTS/REB/AST/FGM/FTM/3PTM, so
+# it no longer dominates and is no longer excluded.
+TAG_EXCLUDE = {"TO", "TD", "TECH"}
 TAG_THRESHOLD = 0.75
 
 
@@ -49,6 +58,25 @@ def build_data() -> dict:
     # never prints a negative, without touching the underlying model output,
     # the CSVs, or anything validate.py/diagnostics reads.
     VAL_DISPLAY_SHIFT = -min(rankings["TOTAL_VALUE"].min(), rookies["TOTAL_VALUE"].min())
+
+    # Current-roster team, not last-recorded-season team: pos_lookup below is
+    # built from BBR's per-season totals files, which name whichever team a
+    # player finished the *previous* season on -- stale the moment someone
+    # changes teams in the offseason (30/130 veterans this build, see
+    # TEAM_CHANGED in durant_rankings_2026_27.csv). fetch_current_teams
+    # already exists for exactly this (GitHub issue #13's diagnostic flag) --
+    # reused here as the board's actual display source instead of leaving it
+    # BBR-only. Canonical-key matched (accents, "Jr."/suffix spelling) the
+    # same way every other cross-source player join in this pipeline is.
+    # Players absent from the live fetch (unsigned free agents as of the
+    # fetch date) fall back to pos_lookup's BBR team below -- no current data
+    # beats guessing, same principle as DATA_AVAILABILITY_NOTE elsewhere.
+    current_teams = {
+        canonical_player_key(name): team
+        for name, team in fetch_current_teams(
+            season="2026-27", cache_file=str(REPO_ROOT / "current_teams_cache.pkl")
+        ).items()
+    }
 
     pos_lookup: dict[str, tuple[str, str]] = {}
     # Actual 2025-26 per-game lines, joined only from that season's BBR totals
@@ -105,9 +133,14 @@ def build_data() -> dict:
     # (numpy default).
     col_mean = {c: float(rankings[c].mean()) for c in Z_COLS}
     col_stdev = {c: float(rankings[c].std(ddof=0)) for c in Z_COLS}
+    # Rookies are scored against their own population, never the veteran
+    # pool (same convention as TOTAL_VALUE -- see rosters.player_value_percentiles)
+    # -- a separate mean/stdev from the rookie CSV's own _G columns.
+    roo_col_mean = {c: float(rookies[c].mean()) for c in Z_COLS}
+    roo_col_stdev = {c: float(rookies[c].std(ddof=0)) for c in Z_COLS}
 
-    def player_z(r) -> list[float]:
-        return [round((float(r[c]) - col_mean[c]) / col_stdev[c], 3) if pd.notna(r[c]) else 0.0
+    def player_z(r, mean=col_mean, stdev=col_stdev) -> list[float]:
+        return [round((float(r[c]) - mean[c]) / stdev[c], 3) if pd.notna(r[c]) and stdev[c] else 0.0
                 for c in Z_COLS]
 
     def player_projected(r) -> dict:
@@ -154,6 +187,7 @@ def build_data() -> dict:
     vets = []
     for _, r in rankings.iterrows():
         pos, team = pos_lookup.get(r["PLAYER_NAME"], ("", ""))
+        team = current_teams.get(canonical_player_key(r["PLAYER_NAME"]), team)
         note = r["DATA_AVAILABILITY_NOTE"]
         note = "" if (isinstance(note, float) and math.isnan(note)) else str(note)
         z = player_z(r)
@@ -184,6 +218,7 @@ def build_data() -> dict:
             "reb": round(float(r["REB"]), 1),
             "ast": round(float(r["AST"]), 1),
             "min": round(float(r["MIN"]), 1),
+            "z": player_z(r, roo_col_mean, roo_col_stdev),
         })
 
     return {"zLabels": Z_LABELS, "tagExclude": sorted(TAG_EXCLUDE), "veterans": vets, "rookies": roos}
@@ -205,14 +240,14 @@ TEMPLATE = r"""<!doctype html>
 <title>DURANT Draft Board</title>
 <style>
 :root{
-  --bg:#0a0c0f; --surface:#10141a; --surface-alt:#141a22; --surface-hover:#1a222c;
-  --text:#e8e6df; --text-dim:#9aa3b2; --text-faint:#808a96;
-  --accent:#d98e3b; --flag:#e0a83f; --drafted:#d97362;
-  --pos-z:#4a8f6b; --neg-z:#d97362;
-  --strength:#5aa37a; --weakness:#d9605a;
-  --border:#1c222b; --border-strong:#2b333f;
-  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-  --sans: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --bg:#0b0c10; --surface:#15171c; --surface-alt:#1b1e24; --surface-hover:rgba(255,255,255,.045);
+  --text:#eef0f4; --text-dim:#a7acb8; --text-faint:#838a97;
+  --accent:#ff7a33; --flag:#e0a83f; --drafted:#ff6b6b;
+  --pos-z:#3ddc97; --neg-z:#ff6b6b;
+  --strength:#3ddc97; --weakness:#ff6b6b;
+  --border:rgba(255,255,255,.08); --border-strong:rgba(255,255,255,.16);
+  --mono: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Helvetica, Arial, sans-serif;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Helvetica, Arial, sans-serif;
 }
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:var(--sans);}
@@ -221,7 +256,7 @@ body{-webkit-font-smoothing:antialiased;}
 html{scrollbar-color:var(--border-strong) var(--bg);}
 ::-webkit-scrollbar{width:12px;height:12px;}
 ::-webkit-scrollbar-track{background:var(--bg);}
-::-webkit-scrollbar-thumb{background:var(--border-strong);border:3px solid var(--bg);border-radius:0;}
+::-webkit-scrollbar-thumb{background:var(--border-strong);border:3px solid var(--bg);border-radius:6px;}
 ::-webkit-scrollbar-thumb:hover{background:var(--text-faint);}
 
 /* ---------- header / controls ---------- */
@@ -240,7 +275,7 @@ html{scrollbar-color:var(--border-strong) var(--bg);}
 .controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--border);}
 .search{
   font-family:var(--sans);font-size:14px;color:var(--text);background:var(--surface);
-  border:1px solid var(--border-strong);border-radius:0;padding:7px 10px;width:220px;
+  border:1px solid var(--border-strong);border-radius:8px;padding:7px 10px;width:220px;
 }
 .search::placeholder{color:var(--text-faint);}
 .search:focus{outline:1px solid var(--accent);outline-offset:0;border-color:var(--accent);}
@@ -248,7 +283,7 @@ html{scrollbar-color:var(--border-strong) var(--bg);}
 .chips{display:flex;gap:1px;}
 .chip{
   font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--text-dim);
-  background:var(--surface);border:1px solid var(--border-strong);border-radius:0;
+  background:var(--surface);border:1px solid var(--border-strong);border-radius:7px;
   padding:6px 10px;cursor:pointer;user-select:none;
 }
 .chip.on{color:var(--bg);background:var(--accent);border-color:var(--accent);}
@@ -256,7 +291,7 @@ html{scrollbar-color:var(--border-strong) var(--bg);}
 
 .sortSelect{
   font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.02em;color:var(--text-dim);
-  background:var(--surface);border:1px solid var(--border-strong);border-radius:0;
+  background:var(--surface);border:1px solid var(--border-strong);border-radius:7px;
   padding:6px 9px;cursor:pointer;
 }
 
@@ -271,7 +306,7 @@ html{scrollbar-color:var(--border-strong) var(--bg);}
 .toast{
   position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(8px);
   background:var(--surface-alt);border:1px solid var(--border-strong);color:var(--text);
-  font-family:var(--mono);font-size:13px;padding:9px 16px;border-radius:0;cursor:pointer;
+  font-family:var(--mono);font-size:13px;padding:9px 16px;border-radius:10px;cursor:pointer;
   opacity:0;pointer-events:none;transition:opacity .15s,transform .15s;z-index:50;
 }
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0);pointer-events:auto;}
@@ -292,14 +327,15 @@ tbody tr:nth-child(even){background:var(--surface);}
 tbody tr:hover{background:var(--surface-hover);}
 tbody tr.hidden{display:none;}
 td{padding:7px 8px;vertical-align:middle;font-size:13px;font-variant-numeric:tabular-nums;}
-.rank{font-family:var(--mono);color:var(--text-dim);font-size:12px;font-weight:700;width:1%;font-variant-numeric:tabular-nums;cursor:pointer;padding:6px 8px;border-radius:0;text-align:center;}
+.rank{font-family:var(--mono);color:var(--text-dim);font-size:12px;font-weight:700;width:1%;font-variant-numeric:tabular-nums;cursor:pointer;padding:4px 10px;border-radius:6px;text-align:center;user-select:none;}
+.rankNum{display:block;padding:3px 0;}
 .rank:hover,.rank:focus-visible{background:var(--surface-hover);color:var(--accent);}
 .rank:focus-visible{outline:1px solid var(--accent);outline-offset:-1px;}
 .rankHint{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--text-faint);margin-top:2px;white-space:nowrap;}
 .name-cell{min-width:170px;}
 .name{font-weight:700;font-size:13.5px;color:var(--text);}
 .meta{font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-left:6px;}
-.val{font-family:var(--mono);font-weight:700;font-size:13px;color:var(--accent);font-variant-numeric:tabular-nums;}
+.val{font-weight:700;font-size:14px;color:var(--text);font-variant-numeric:tabular-nums;border-left:2px solid var(--accent);padding-left:8px;}
 
 /* drafted state -- the signature: an executed order, not a fade.
    ">> FILLED" reads like a terminal confirming a trade went through. */
@@ -309,12 +345,7 @@ tr.drafted .name{
   color:var(--text-faint);
   text-decoration:line-through;text-decoration-color:var(--drafted);text-decoration-thickness:1px;
 }
-tr.drafted .name::before{
-  content:">> FILLED";
-  color:var(--drafted);font-weight:700;font-size:10px;letter-spacing:.04em;
-  margin-right:8px;text-decoration:none;display:inline-block;
-}
-tr.drafted .meta,tr.drafted .val{color:var(--text-faint);}
+tr.drafted .meta,tr.drafted .val{color:var(--text-faint);border-left-color:var(--border-strong);}
 tr.drafted .tags{opacity:.25;}
 tr.chart-row.dim .chart{opacity:.25;}
 tr.drafted .noteInline{opacity:.35;}
@@ -345,7 +376,7 @@ tr.drafted .posRank{opacity:.35;}
 tr.cliff{border-top:2px dashed var(--accent);}
 .balanceStrip{display:flex;gap:1px;width:250px;margin-left:auto;flex:none;}
 .balanceCell{flex:1;display:flex;flex-direction:column;align-items:center;}
-.balanceCell .sw{width:100%;height:15px;border-radius:0;}
+.balanceCell .sw{width:100%;height:15px;border-radius:2px;}
 .balanceCell .l{font-family:var(--mono);font-size:8px;color:var(--text-faint);margin-top:2px;letter-spacing:-.03em;overflow:hidden;white-space:nowrap;}
 
 /* strength/weakness tags: up to 2 green + 2 red pills per row, category
@@ -355,7 +386,7 @@ tr.cliff{border-top:2px dashed var(--accent);}
 .tags{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:26px;}
 .tag{
   font-family:var(--mono);font-size:14px;font-weight:700;letter-spacing:.02em;
-  border-radius:0;padding:4px 9px;border:1px solid currentColor;
+  border-radius:5px;padding:4px 9px;border:1px solid currentColor;
 }
 .tag.pos{color:var(--strength);background:color-mix(in srgb, var(--strength) 18%, transparent);}
 .tag.neg{color:var(--weakness);background:color-mix(in srgb, var(--weakness) 18%, transparent);}
@@ -363,6 +394,24 @@ tr.cliff{border-top:2px dashed var(--accent);}
 .tagLegend .sw{display:inline-block;width:9px;height:9px;border-radius:1px;margin-right:5px;vertical-align:-1px;}
 .tagLegend .sw.pos{background:var(--strength);}
 .tagLegend .sw.neg{background:var(--weakness);}
+
+/* live category-need panel: sum of z-scores across rows marked "mine"
+   (shift+click a rank), weakest category first -- see updateMineSummary */
+.mineSummary{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 0;
+  border-bottom:1px solid var(--border);min-height:34px;}
+.mineLabel{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--text-dim);white-space:nowrap;}
+.mineHint{font-family:var(--mono);font-size:11px;color:var(--text-faint);font-style:italic;}
+.mineCat{font-family:var(--mono);font-size:11px;font-weight:700;padding:2px 6px;border:1px solid currentColor;border-radius:5px;white-space:nowrap;}
+.mineCat.pos{color:var(--strength);}
+.mineCat.neg{color:var(--weakness);}
+.mineCat.flat{color:var(--text-faint);}
+.mineStar{display:block;color:var(--text-faint);cursor:pointer;font-size:11px;font-weight:600;
+  letter-spacing:.03em;text-transform:uppercase;user-select:none;padding:4px 0 2px;
+  border-top:1px solid var(--border);}
+.mineStar:hover{color:var(--accent);}
+tr.mine .mineStar{color:var(--accent);font-weight:800;}
+tr.mine .rank{color:var(--accent);}
+tr.mine .name{text-decoration:underline;text-decoration-color:var(--accent);text-decoration-thickness:2px;}
 
 /* expanded row: projected/actual per-game stat cards, then the category chart */
 tr.chart-row td{padding:10px 8px 12px 34px;background:var(--surface);}
@@ -399,7 +448,7 @@ tr.chart-row:not(.open){display:none;}
 /* ---------- rookies ---------- */
 .disclaimer{
   background:var(--surface-alt);border:1px solid var(--border-strong);
-  color:var(--flag);font-family:var(--mono);font-size:12.5px;padding:10px 14px;margin:12px 0;border-radius:0;
+  color:var(--flag);font-family:var(--mono);font-size:12.5px;padding:10px 14px;margin:12px 0;border-radius:8px;
 }
 .disclaimer::before{content:"[!] ";font-weight:700;}
 .tier-block{margin:18px 0 8px;}
@@ -445,6 +494,7 @@ tr.chart-row:not(.open){display:none;}
   <div class="controls" id="rooControls" style="display:none">
     <div class="stats" id="statLineRoo"></div>
   </div>
+  <div class="mineSummary" id="mineSummary"></div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -462,6 +512,7 @@ tr.chart-row:not(.open){display:none;}
               <span class="sw pos"></span>strength ≥ +0.75σ
               <span class="sw neg"></span>weakness ≤ -0.75σ
               &nbsp;&nbsp;· click a row to see all 12 categories
+              &nbsp;&nbsp;· click &#9733; for "mine"
             </div>
           </th>
         </tr>
@@ -484,6 +535,7 @@ tr.chart-row:not(.open){display:none;}
   var Z_LABELS = DATA.zLabels;
   var TAG_EXCLUDE = new Set(DATA.tagExclude);
   var STORE_KEY = "draftBoard2026_27_drafted";
+  var MINE_KEY = "draftBoard2026_27_mine";
 
   function esc(s){
     return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
@@ -507,14 +559,24 @@ tr.chart-row:not(.open){display:none;}
     });
   }
 
-  function loadDrafted(){
-    try { return new Set(JSON.parse(localStorage.getItem(STORE_KEY) || "[]")); }
+  function loadSet(key){
+    try { return new Set(JSON.parse(localStorage.getItem(key) || "[]")); }
     catch(e){ return new Set(); }
   }
-  function saveDrafted(set){
-    localStorage.setItem(STORE_KEY, JSON.stringify(Array.from(set)));
+  function saveSet(key, set){
+    localStorage.setItem(key, JSON.stringify(Array.from(set)));
   }
-  var drafted = loadDrafted();
+  var drafted = loadSet(STORE_KEY);
+  function saveDrafted(){ saveSet(STORE_KEY, drafted); }
+
+  /* ---------- "mine" -- shift+click a rank to mark it as your own pick ----
+     Independent of `drafted`: punting/category-need only make sense scoped
+     to your own roster, not everyone who's gone off the board. Marking
+     "mine" also marks drafted (you can't own a pick nobody's made), but
+     un-marking "mine" leaves drafted alone -- for correcting a mis-click,
+     not un-drafting the player. */
+  var mine = loadSet(MINE_KEY);
+  function saveMine(){ saveSet(MINE_KEY, mine); }
 
   function zKey(kind, name){ return kind + ":" + name; }
 
@@ -540,7 +602,14 @@ tr.chart-row:not(.open){display:none;}
     if (isDrafted) drafted.add(rowObj.key); else drafted.delete(rowObj.key);
     rowObj.tr.classList.toggle("drafted", isDrafted);
     if (rowObj.chartRow) rowObj.chartRow.classList.toggle("dim", isDrafted);
-    saveDrafted(drafted);
+    saveDrafted();
+    if (!isDrafted && mine.has(rowObj.key)){
+      /* can't own a pick that's back on the board */
+      mine.delete(rowObj.key);
+      rowObj.tr.classList.remove("mine");
+      saveMine();
+      updateMineSummary();
+    }
     if (opts.silent){
       /* live-sync applies several picks per poll -- one consolidated toast
          from the caller beats one "Drafted: X" per player. */
@@ -564,6 +633,49 @@ tr.chart-row:not(.open){display:none;}
     var a = lastAction;
     lastAction = null;
     setRowDrafted(a.rowObj, a.prevState, {recordUndo: false});
+  }
+
+  function toggleMine(rowObj){
+    var isMine = !mine.has(rowObj.key);
+    if (isMine) mine.add(rowObj.key); else mine.delete(rowObj.key);
+    rowObj.tr.classList.toggle("mine", isMine);
+    saveMine();
+    if (isMine && !drafted.has(rowObj.key)) setRowDrafted(rowObj, true, {silent: true});
+    showToast((isMine ? "Marked mine: " : "Unmarked: ") + rowObj.name, false);
+    updateMineSummary();
+  }
+
+  /* ---------- live category-need panel ----------
+     Sums the per-category z-score (Z_LABELS order) across every veteran or
+     rookie marked "mine" -- a quick, honest, zero-backend read of which
+     categories your actual roster is weak in as you draft. Rookies are
+     z-scored against the rookie pool, not the veteran one (same convention
+     TOTAL_VALUE already uses), via build_draft_board.py's roo_col_mean/
+     roo_col_stdev -- summing both pools' z together treats "unusual for a
+     rookie" and "unusual for a veteran" as the same unit, an approximation
+     the alternative (no rookie signal at all) was strictly worse than. */
+  var mineSummaryEl = document.getElementById("mineSummary");
+  function updateMineSummary(){
+    var picks = vetRows.concat(rooRows).filter(function(r){ return mine.has(r.key); });
+
+    if (!picks.length){
+      mineSummaryEl.innerHTML = '<span class="mineLabel">MY TEAM (0)</span>' +
+        '<span class="mineHint">click the &#9733; next to a rank to start tracking your team</span>';
+    } else {
+      var sums = Z_LABELS.map(function(_, i){
+        return picks.reduce(function(acc, r){ return acc + r.z[i]; }, 0);
+      });
+      var order = Z_LABELS.map(function(_, i){ return i; })
+        .sort(function(a, b){ return sums[a] - sums[b]; });
+      var cells = order.map(function(i){
+        var cls = sums[i] >= 0.5 ? "pos" : (sums[i] <= -0.5 ? "neg" : "flat");
+        return '<span class="mineCat ' + cls + '">' + Z_LABELS[i] + ' ' +
+          (sums[i] >= 0 ? "+" : "") + sums[i].toFixed(1) + '</span>';
+      }).join("");
+      mineSummaryEl.innerHTML =
+        '<span class="mineLabel">MY TEAM (' + picks.length + ') -- weakest first:</span>' + cells;
+    }
+    syncStickyOffset(); /* defensive: chip count can still change wrap height */
   }
 
   /* ---------- tags (collapsed row) + expanded per-player chart ----------
@@ -595,10 +707,10 @@ tr.chart-row:not(.open){display:none;}
   var BALANCE_THRESHOLD = 0.75;
   var BALANCE_STRONG = 1.5;
   function balanceColor(z){
-    if (z >= BALANCE_STRONG) return "#5aa37a";
-    if (z >= BALANCE_THRESHOLD) return "#8fc4a6";
-    if (z <= -BALANCE_STRONG) return "#d9605a";
-    if (z <= -BALANCE_THRESHOLD) return "#e59a92";
+    if (z >= BALANCE_STRONG) return "#3ddc97";
+    if (z >= BALANCE_THRESHOLD) return "#6fae92";
+    if (z <= -BALANCE_STRONG) return "#ff6b6b";
+    if (z <= -BALANCE_THRESHOLD) return "#c98888";
     return "var(--border)";
   }
 
@@ -720,11 +832,14 @@ tr.chart-row:not(.open){display:none;}
     tr.dataset.pos = v.pos;
     var key = zKey("v", v.name);
     if (drafted.has(key)) tr.classList.add("drafted");
+    if (mine.has(key)) tr.classList.add("mine");
 
     var noteInline = v.noteShort ? '<span class="noteInline">' + esc(v.noteShort) + '</span>' : "";
 
     tr.innerHTML =
-      '<td class="rank" tabindex="0" role="button" title="Click to toggle drafted">' + v.rank + '</td>' +
+      '<td class="rank" tabindex="0" role="button" title="Click to toggle drafted">' +
+        '<span class="rankNum">' + v.rank + '</span>' +
+        '<span class="mineStar" title="Mark as your pick">&#9733; mine</span></td>' +
       '<td class="name-cell"><span class="name">' + esc(v.name) + '</span>' +
         '<span class="meta">' + esc(v.pos) + (v.team ? " · " + esc(v.team) : "") + '</span>' + noteInline + '</td>' +
       '<td class="num val">' + v.val.toFixed(2) + '</td>' +
@@ -741,6 +856,7 @@ tr.chart-row:not(.open){display:none;}
 
     var rankCell = tr.querySelector(".rank");
     rankCell.addEventListener("click", function(e){
+      if (e.target.closest(".mineStar")) return; /* star has its own handler */
       e.stopPropagation();
       setRowDrafted(rowObj, !drafted.has(key));
     });
@@ -749,6 +865,10 @@ tr.chart-row:not(.open){display:none;}
         e.preventDefault(); e.stopPropagation();
         setRowDrafted(rowObj, !drafted.has(key));
       }
+    });
+    tr.querySelector(".mineStar").addEventListener("click", function(e){
+      e.stopPropagation();
+      toggleMine(rowObj);
     });
 
     makeRowActivatable(tr);
@@ -938,16 +1058,23 @@ tr.chart-row:not(.open){display:none;}
       tr.dataset.name = m.name.toLowerCase();
       var key = zKey("r", m.name);
       if (drafted.has(key)) tr.classList.add("drafted");
+      if (mine.has(key)) tr.classList.add("mine");
       tr.innerHTML =
-        '<td class="rank">#' + m.pick + '</td>' +
+        '<td class="rank"><span class="rankNum">#' + m.pick + '</span>' +
+          '<span class="mineStar" title="Mark as your pick">&#9733; mine</span></td>' +
         '<td class="name-cell"><span class="name">' + esc(m.name) + '</span></td>' +
         '<td class="num val">' + m.val.toFixed(2) + '</td>' +
         '<td class="num" style="font-family:var(--mono);font-size:12px;color:var(--text-dim)">' +
           m.pts + ' pts · ' + m.reb + ' reb · ' + m.ast + ' ast · ' + m.min + ' min</td>';
-      var rowObj = {tr: tr, name: m.name, key: key, chartRow: null};
+      var rowObj = {tr: tr, name: m.name, key: key, z: m.z, chartRow: null};
       makeRowActivatable(tr);
-      tr.addEventListener("click", function(){
+      tr.addEventListener("click", function(e){
+        if (e.target.closest(".mineStar")) return; /* star has its own handler */
         setRowDrafted(rowObj, !drafted.has(key));
+      });
+      tr.querySelector(".mineStar").addEventListener("click", function(e){
+        e.stopPropagation();
+        toggleMine(rowObj);
       });
       tbody.appendChild(tr);
       rooRows.push(rowObj);
@@ -1065,6 +1192,7 @@ tr.chart-row:not(.open){display:none;}
   updateRooStats();
   updatePositionalRanks();
   updateCliffMarkers();
+  updateMineSummary();
   syncStickyOffset();
 })();
 </script>
