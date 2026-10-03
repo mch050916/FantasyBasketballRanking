@@ -357,6 +357,42 @@ def compute_weighted_fg_pct(player_season_stats: dict[str, pd.Series],
 
 # ── Projection ────────────────────────────────────────────────────────────────
 
+def _gp_weighted_blend_weights(final_weights: list[float],
+                               player_season_stats: dict[str, pd.Series],
+                               available_seasons: list[str],
+                               full_season_games: int = 82) -> list[float]:
+    """
+    Dampen each season's trend-adjusted blend weight by how much of that
+    season the player actually played (GP / full_season_games, capped at
+    1.0), then renormalize to sum to 1.0.
+
+    A thin-sample season (10 games before a season-ending injury) is noisy
+    evidence of a player's true per-game rate -- weighting it the same as a
+    full healthy season overstates confidence in that one data point. This
+    is a *different* correction from GP_FACTOR: GP_FACTOR discounts the
+    final per-game number for games expected to be missed going forward;
+    this discounts a past season's INFLUENCE on the rate estimate itself,
+    based on how much real data backs it. A season with zero games played
+    contributes zero weight here rather than needing special-case handling
+    elsewhere (part of GitHub issue #11's total-absence blind spot).
+    """
+    sample_weights = []
+    for season, w in zip(available_seasons, final_weights):
+        gp = player_season_stats[season].get("GP", np.nan)
+        confidence = min(float(gp) / full_season_games, 1.0) if pd.notna(gp) and gp > 0 else 0.0
+        sample_weights.append(w * confidence)
+
+    total = sum(sample_weights)
+    if total <= 0:
+        # No season has any real GP data -- fall back to the trend weights
+        # unchanged rather than dividing by zero. Shouldn't occur in
+        # practice (a player only reaches this function via a season row
+        # that exists), but this keeps the function total.
+        return final_weights
+
+    return [w / total for w in sample_weights]
+
+
 def project_stats(season_dfs: list[pd.DataFrame],
                   weights: list[float],
                   derived_stats: dict[str, dict[str, float]],
@@ -461,11 +497,25 @@ def project_stats(season_dfs: list[pd.DataFrame],
         )
         final_weights = trend_profile["weights"]
 
-        # Step 2: GP availability factor
+        # Step 2: GP availability factor -- uses the trend weights, not the
+        # sample-size-shrunk ones below. GP_FACTOR answers "how many games
+        # will this player play going forward," which should track the same
+        # recency/trend weighting as everything else; shrinking a thin
+        # season's influence on the *rate estimate* (next) is an unrelated
+        # concern and shouldn't also quietly change what GP_FACTOR measures.
         gp_factor = compute_gp_factor(
             player_season_stats=player_season_stats,
             available_seasons=available_seasons,
             weights=final_weights,
+        )
+
+        # Step 2b: shrink each season's blend weight toward zero for how
+        # thin its own sample is, so a 10-game season doesn't count as much
+        # toward the rate estimate as a 70-game one -- see
+        # _gp_weighted_blend_weights. Used only for the counting-stat blend
+        # below, not for gp_factor/decline_factor above.
+        rate_weights = _gp_weighted_blend_weights(
+            final_weights, player_season_stats, available_seasons,
         )
 
         first = available_seasons[0]
@@ -514,7 +564,7 @@ def project_stats(season_dfs: list[pd.DataFrame],
         # ── Counting categories — GP-adjusted ───────────────────────────
         for cat in counting_cats:
             vals, wts = [], []
-            for season, w in zip(available_seasons, final_weights):
+            for season, w in zip(available_seasons, rate_weights):
                 v = player_season_stats[season].get(cat, np.nan)
                 if pd.notna(v):
                     vals.append(v)
