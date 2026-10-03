@@ -52,6 +52,27 @@ RECENT_WEIGHT_MIN = 0.30
 RECENT_WEIGHT_MAX = 0.85
 ROLE_BOOST_SATURATION = 0.18
 
+# Per-category age at which decline starts (compute_decline_factor's
+# age_start), replacing one global 31.0 for every stat. A single scalar
+# applied uniformly is wrong in both directions at once: athleticism-driven
+# counting stats (blocks, steals, rebounds, and the rim-pressure/explosion
+# share of FG%) peak in the early-to-mid 20s and show their steepest real
+# decline around 29-31, while feel/skill stats (assists, 3PT and FT shooting,
+# the free-throw-rate-driven TECH proxy) hold up much longer -- veteran
+# passers and shooters routinely stay effective into their mid-30s. DD/TD
+# follow the athletic group since they're driven by the same rebounding/
+# finishing profile. Only age_start moves per category here, not the
+# penalty formula's shape or its 0.12 cap -- there isn't solid grounding in
+# this pipeline's own 3-season data to also justify different penalty
+# magnitudes per category, so that stays the one deliberately unchanged
+# lever. PTS/FGM/FGA/TO/PF keep the original 31.0 default (mixed athletic
+# and skill drivers, no clear literature lean either way).
+DECLINE_AGE_START = {
+    "BLK": 29.0, "ST": 29.0, "REB": 29.0, "DD": 29.0, "TD": 29.0,
+    "AST": 33.0, "3PTM": 33.0, "FTM": 33.0, "TECH": 33.0,
+}
+DECLINE_AGE_START_DEFAULT = 31.0
+
 
 # ── Kappa ─────────────────────────────────────────────────────────────────────
 
@@ -565,10 +586,25 @@ def project_stats(season_dfs: list[pd.DataFrame],
         # GitHub issue #10 (was silently off-by-one every prior rollover).
         raw_age = player_season_stats[first].get("AGE", np.nan)
         projection_age = raw_age + 1 if pd.notna(raw_age) else raw_age
+        # One decline factor per category (DECLINE_AGE_START), not a single
+        # scalar applied to everything -- see that constant's comment.
+        # `decline_factor` (the default-bucket value, same age_start the
+        # pipeline always used) is kept as the CSV's one DECLINE_FACTOR
+        # column for display/back-compat; the real per-category values
+        # drive the actual math below via decline_factor_by_cat.
         decline_factor = compute_decline_factor(
             age=projection_age,
             composite_score=float(trend_profile["composite_score"]),
+            age_start=DECLINE_AGE_START_DEFAULT,
         )
+        decline_factor_by_cat = {
+            cat: compute_decline_factor(
+                age=projection_age,
+                composite_score=float(trend_profile["composite_score"]),
+                age_start=DECLINE_AGE_START.get(cat, DECLINE_AGE_START_DEFAULT),
+            )
+            for cat in set(counting_cats) | {"DD", "TD", "TECH"}
+        }
 
         # A player with no game-log entry in ANY fetched season (never
         # matched by the NBA-API fetch at all, not just missing the newest
@@ -626,7 +662,7 @@ def project_stats(season_dfs: list[pd.DataFrame],
             # headline number is lower than their rate alone would suggest,
             # instead of GP_FACTOR/DECLINE_FACTOR's effect being invisible.
             row[f"{cat}_RATE"] = projected
-            row[cat] = projected * gp_factor * decline_factor
+            row[cat] = projected * gp_factor * decline_factor_by_cat[cat]
 
         # ── FG% — volume-weighted, no GP adjustment ──────────────────────
         row["FG%"] = compute_weighted_fg_pct(
@@ -639,12 +675,12 @@ def project_stats(season_dfs: list[pd.DataFrame],
         # ── DD and TD — GP-adjusted ──────────────────────────────────────
         row["DD_RATE"] = player_derived.get("DD", 0.0)
         row["TD_RATE"] = player_derived.get("TD", 0.0)
-        row["DD"] = row["DD_RATE"] * gp_factor * decline_factor
-        row["TD"] = row["TD_RATE"] * gp_factor * decline_factor
+        row["DD"] = row["DD_RATE"] * gp_factor * decline_factor_by_cat["DD"]
+        row["TD"] = row["TD_RATE"] * gp_factor * decline_factor_by_cat["TD"]
 
         # ── TECH — GP-adjusted ───────────────────────────────────────────
         row["TECH_RATE"] = tech_per_game.get(player, 0.05)
-        row["TECH"] = row["TECH_RATE"] * gp_factor * decline_factor
+        row["TECH"] = row["TECH_RATE"] * gp_factor * decline_factor_by_cat["TECH"]
 
         # ── GP and MIN — raw, for filtering and display ──────────────────
         row["GP"]  = player_season_stats[first].get("GP", np.nan)
