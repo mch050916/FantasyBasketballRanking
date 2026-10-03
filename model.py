@@ -332,27 +332,53 @@ def compute_gp_factor(player_season_stats: dict[str, pd.Series],
 
 def compute_weighted_fg_pct(player_season_stats: dict[str, pd.Series],
                             available_seasons: list[str],
-                            weights: list[float]) -> float:
+                            weights: list[float],
+                            league_prior: float | None = None,
+                            shrinkage_attempts: float = 150.0) -> float:
     """
     Compute a multi-season FG% projection weighted by shot volume.
 
     This preserves percentage semantics by blending made shots and attempts,
     rather than averaging raw percentages or accidentally returning attempts.
+
+    If `league_prior` is given, the blended rate above is pulled toward it
+    in proportion to how few real attempts actually back the estimate --
+    empirical-Bayes-style shrinkage. Taking a season-weighted percentage at
+    face value treats a 40-attempt sample (a role player limited by minutes
+    or injury) as equally trustworthy as a 900-attempt one, which it isn't.
+    `total_attempts` below is real attempts actually taken across the
+    loaded seasons (FGA/game x GP, unweighted by season/trend), distinct
+    from `weighted_fga`, which is a season-blended *rate*, not a sample
+    size. `shrinkage_attempts` is the prior's "pseudo sample size" -- 150 is
+    a deliberate, documented calibration (roughly 15-20 games at a typical
+    starter's volume), not a derived constant: a player with hundreds of
+    real attempts is barely shrunk, one with a few dozen is pulled
+    meaningfully toward the league rate instead of trusting noise.
     """
     weighted_fgm = 0.0
     weighted_fga = 0.0
+    total_attempts = 0.0
 
     for season, w in zip(available_seasons, weights):
         fga = player_season_stats[season].get("FGA", np.nan)
         pct = player_season_stats[season].get("FG%", np.nan)
+        gp  = player_season_stats[season].get("GP", np.nan)
         if pd.notna(fga) and pd.notna(pct) and fga > 0:
             weighted_fga += fga * w
             weighted_fgm += fga * pct * w
+            if pd.notna(gp) and gp > 0:
+                total_attempts += fga * gp
 
     if weighted_fga <= 0:
         return np.nan
 
-    return weighted_fgm / weighted_fga
+    raw_pct = weighted_fgm / weighted_fga
+
+    if league_prior is None or total_attempts <= 0:
+        return raw_pct
+
+    confidence = total_attempts / (total_attempts + shrinkage_attempts)
+    return confidence * raw_pct + (1.0 - confidence) * league_prior
 
 
 # ── Projection ────────────────────────────────────────────────────────────────
@@ -430,6 +456,20 @@ def project_stats(season_dfs: list[pd.DataFrame],
 
     counting_cats = ["FGM", "FGA", "3PTM", "FTM", "PTS", "REB",
                      "AST", "ST", "BLK", "TO", "PF"]
+
+    # League-wide shooting-efficiency prior for FG% shrinkage (see
+    # compute_weighted_fg_pct) -- the newest loaded season's own
+    # volume-weighted league average, across every player in that season's
+    # table (not just the eventual pool), so it isn't blended across
+    # possibly-different shooting-efficiency eras.
+    _newest = season_dfs[0]
+    _prior_fga = pd.to_numeric(_newest.get("FGA"), errors="coerce")
+    _prior_pct = pd.to_numeric(_newest.get("FG%"), errors="coerce")
+    _valid = _prior_fga.notna() & _prior_pct.notna() & (_prior_fga > 0)
+    league_fg_pct_prior = (
+        float((_prior_fga[_valid] * _prior_pct[_valid]).sum() / _prior_fga[_valid].sum())
+        if _valid.any() else None
+    )
 
     # Build season lookup for fast access
     season_lookup: dict[str, dict[str, pd.Series]] = {}
@@ -593,6 +633,7 @@ def project_stats(season_dfs: list[pd.DataFrame],
             player_season_stats=player_season_stats,
             available_seasons=available_seasons,
             weights=final_weights,
+            league_prior=league_fg_pct_prior,
         )
 
         # ── DD and TD — GP-adjusted ──────────────────────────────────────

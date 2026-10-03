@@ -80,9 +80,17 @@ class ProjectStatsTests(unittest.TestCase):
             available_seasons=["2024-25", "2023-24"],
             base_weights=[0.6, 0.4],
         )
-        expected_fg_pct = (
+        raw_expected_fg_pct = (
             (10.0 * 0.500 * trend_profile["weights"][0]) + (20.0 * 0.250 * trend_profile["weights"][1])
         ) / ((10.0 * trend_profile["weights"][0]) + (20.0 * trend_profile["weights"][1]))
+
+        # project_stats shrinks the raw blend toward a league-wide prior,
+        # weighted by real total attempts across the loaded seasons (see
+        # compute_weighted_fg_pct) -- the prior here is season_recent's own
+        # (and only) player's FG%, since that's the newest season's table.
+        total_attempts = (10.0 * 82) + (20.0 * 82)
+        confidence = total_attempts / (total_attempts + 150.0)
+        expected_fg_pct = confidence * raw_expected_fg_pct + (1 - confidence) * 0.500
 
         self.assertAlmostEqual(fg_pct, expected_fg_pct, places=6)
         self.assertGreaterEqual(fg_pct, 0.0)
