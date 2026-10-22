@@ -633,3 +633,54 @@ def evaluate_trade(rosters: dict[str, list[str]],
 
     return {"before": before, "after": after, "delta": delta,
             "roster_sizes_after": {n: len(p) for n, p in after_rosters.items()}}
+
+
+def summarize_trade_result(result: dict, team: str, partner: str) -> dict:
+    """
+    Structured summary of evaluate_trade's result, for both sides of a trade.
+
+    Uses the same share-based (win + 0.5*tie) convention
+    scripts/analyze_trade.py's printed report already uses -- a tie counts
+    as half a win, so the per-category deltas sum to exactly the headline
+    expected-categories-won delta. (result["delta"]["rates"] can't be reused
+    directly for this: it diffs raw win rates only, ignoring ties, which is
+    a different number from what the headline measures.)
+
+    Categories are returned best-change-first (same ordering
+    format_report's own table already uses), so a renderer doesn't have to
+    re-sort to show the biggest movers up top.
+    """
+    def share(rates: dict, cat: str) -> float:
+        return rates[cat]["win"] + 0.5 * rates[cat]["tie"]
+
+    def side(name: str) -> dict:
+        before_rates = result["before"][name]["rates"]
+        after_rates = result["after"][name]["rates"]
+        before_expected = result["before"][name]["expected"]
+        after_expected = result["after"][name]["expected"]
+        ordered_cats = sorted(
+            before_rates,
+            key=lambda c: share(after_rates, c) - share(before_rates, c),
+            reverse=True,
+        )
+        categories = [
+            {
+                "category": cat,
+                "before": share(before_rates, cat),
+                "after": share(after_rates, cat),
+                "delta": share(after_rates, cat) - share(before_rates, cat),
+                "tie_pct": after_rates[cat]["tie"] * 100,
+            }
+            for cat in ordered_cats
+        ]
+        return {
+            "before": before_expected,
+            "after": after_expected,
+            "delta": after_expected - before_expected,
+            "categories": categories,
+        }
+
+    return {
+        "n_categories": len(result["before"][team]["rates"]),
+        "teams": {team: side(team), partner: side(partner)},
+    }

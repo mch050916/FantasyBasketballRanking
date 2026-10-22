@@ -1360,6 +1360,32 @@ class ValidateTests(unittest.TestCase):
         self.assertEqual(loaded.iloc[0]["PLAYER_NAME"], "Player A")
         self.assertEqual(loaded.iloc[0]["MILESTONE_DOMINANT"], "DD")
 
+    def test_availability_miss_labeled_injury_confirmed_when_cause_known(self) -> None:
+        row = pd.Series({
+            "delta": -20.0,
+            "GP_FACTOR": 0.60,
+            "CAUSE_PROFILE_SUMMARY": "2024-25: injury_confirmed",
+        })
+        self.assertEqual(classify_miss_bucket(row), "availability miss (injury confirmed)")
+
+    def test_availability_miss_labeled_team_change_when_cause_known(self) -> None:
+        row = pd.Series({
+            "delta": -20.0,
+            "GP_FACTOR": 0.60,
+            "CAUSE_PROFILE_SUMMARY": "2024-25: team_change",
+        })
+        self.assertEqual(classify_miss_bucket(row), "availability miss (team change)")
+
+    def test_availability_miss_stays_plain_when_no_cause_known(self) -> None:
+        # Regression guard: no CAUSE_PROFILE_SUMMARY field at all (every
+        # existing caller's row shape before this change) must produce the
+        # exact same label as before.
+        row = pd.Series({
+            "delta": -20.0,
+            "GP_FACTOR": 0.60,
+        })
+        self.assertEqual(classify_miss_bucket(row), "availability miss")
+
 
 if __name__ == "__main__":
     unittest.main()

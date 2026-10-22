@@ -7,8 +7,13 @@ env/
 game_log_cache.pkl
 tech_cache.pkl
 draft_history_cache.pkl
+rookie_season_stats_cache.pkl
+draft_history_training_cache.pkl
 current_teams_cache.pkl
 buy_low_sell_high_cache.pkl
+injury_reports_cache.pkl
+combine_stats_cache.pkl
+season_schedule_cache.pkl
 
 # Generated output — not source, reproduced by running main.py
 durant_rankings_*.csv

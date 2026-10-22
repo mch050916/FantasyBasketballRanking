@@ -13,9 +13,11 @@ or Basketball Reference changes their CSV format, fixes go here.
 
 import pandas as pd
 import numpy as np
+import os
 import re
 import time
 import pickle
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +34,7 @@ from identity import (
 BBR_COL_MAP = {
     "Player": "PLAYER_NAME",
     "Team":   "BBR_TEAM",
+    "Pos":    "POSITION",
     "Age":    "AGE",
     "G":      "GP",
     "MP":     "MIN_TOTAL",
@@ -48,6 +51,8 @@ BBR_COL_MAP = {
     "PF":     "PF_T",
     "PTS":    "PTS_T",
 }
+
+MULTI_TEAM_MARKER_RE = re.compile(r"^(TOT|\d?TM)$")   # BBR's own aggregate-row markers: TOT, 2TM, 3TM, ...
 
 CACHE_SCHEMA_VERSION = 1
 NON_ACTIONABLE_SUPPRESSION_REGISTRY_FILE = Path(".planning/non_actionable_suppressions.csv")
@@ -72,24 +77,24 @@ def load_bbr_csv(path: str) -> pd.DataFrame:
 
     Handles:
     - Repeated header rows mid-file (BBR quirk)
-    - Traded players: keeps the TOT (full-season aggregate) row only
+    - Traded players: keeps the multi-team aggregate row (2TM/3TM/...) only
     - Missing FG%: recomputes from FGM/FGA if needed
 
     BBR_TEAM carries the raw team abbreviation through (used by
     fetch_current_teams/detect_team_changes for offseason-move flagging).
-    For a player traded mid-season, this is literally "TOT" (the aggregate
-    row kept above) rather than either real team -- a known, accepted
-    imprecision for that specific case; the offseason moves this is built
-    to catch (a player's team differs entirely from last season) are
-    unaffected.
+    For a player traded mid-season, this is the aggregate row marker
+    (2TM/3TM/etc. for the number of teams) rather than either real team -- a
+    known, accepted imprecision for that specific case; the offseason moves
+    this is built to catch (a player's team differs entirely from last season)
+    are unaffected.
     """
     df = pd.read_csv(path, skipinitialspace=True)
     df = df.dropna(subset=["Player"])
     df = df[df["Player"] != "Player"]   # BBR repeats header row mid-file
 
-    # For traded players, BBR has one row per team + a TOT aggregate row.
-    # Keep only TOT — it's the accurate full-season picture.
-    df["_is_tot"] = (df["Team"] == "TOT").astype(int)
+    # For traded players, BBR has one row per team + a multi-team aggregate row.
+    # Keep only the multi-team aggregate — it's the accurate full-season picture.
+    df["_is_tot"] = df["Team"].astype(str).str.match(MULTI_TEAM_MARKER_RE).astype(int)
     df = df.sort_values("_is_tot", ascending=False)
     df = df.drop_duplicates(subset="Player", keep="first")
     df = df.drop(columns=["_is_tot"])
@@ -98,8 +103,14 @@ def load_bbr_csv(path: str) -> pd.DataFrame:
     df = df[list(available.keys())].rename(columns=available)
 
     for col in df.columns:
-        if col not in ("PLAYER_NAME", "BBR_TEAM"):
+        if col not in ("PLAYER_NAME", "BBR_TEAM", "POSITION"):
             df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    if "POSITION" in df.columns:
+        # BBR occasionally lists dual eligibility ("PG-SG") -- only the
+        # primary (first) position is kept, same convention
+        # scripts/build_draft_board.py's own pos_lookup already uses.
+        df["POSITION"] = df["POSITION"].astype(str).str.split("-").str[0]
 
     df = df.dropna(subset=["GP"])
     df["GP"] = df["GP"].astype(int)
@@ -250,8 +261,15 @@ def _load_cached_tech_per_game(cache_path: Path,
     return payload, cache_status
 
 
-def _draft_history_cache_metadata(draft_years: list[str]) -> dict[str, list[str]]:
-    return {"draft_years": list(draft_years)}
+def _draft_history_cache_metadata(draft_years: list[str]) -> dict[str, object]:
+    # "fields" is a self-invalidating marker -- bumping it forces any
+    # pre-existing cache (built before person_id/draft_year were added) to
+    # rebuild automatically instead of silently returning rows missing
+    # those keys.
+    return {
+        "draft_years": list(draft_years),
+        "fields": ["overall_pick", "round_number", "person_id", "draft_year"],
+    }
 
 
 def _load_cached_draft_history(cache_path: Path,
@@ -286,6 +304,26 @@ def _load_cached_current_teams(cache_path: Path,
         return None, _invalid_cache_status("current-teams cache metadata mismatch")
     if not isinstance(payload, dict):
         return None, _invalid_cache_status("current-teams cache payload is not a player map")
+
+    return payload, cache_status
+
+
+def _season_schedule_cache_metadata(season: str) -> dict[str, str]:
+    return {"season": season}
+
+
+def _load_cached_season_schedule(cache_path: Path,
+                                 season: str) -> tuple[pd.DataFrame | None, dict[str, str | bool | dict | None]]:
+    payload, cache_status = _read_cache_envelope(cache_path, "season_schedule")
+    if not cache_status["valid"]:
+        return None, cache_status
+
+    expected_metadata = _season_schedule_cache_metadata(season)
+    metadata = cache_status["metadata"]
+    if metadata != expected_metadata:
+        return None, _invalid_cache_status("season-schedule cache metadata mismatch")
+    if not isinstance(payload, pd.DataFrame):
+        return None, _invalid_cache_status("season-schedule cache payload is not a DataFrame")
 
     return payload, cache_status
 
@@ -770,6 +808,8 @@ def fetch_draft_history(draft_years: list[str], cache_file: str) -> dict[str, di
                 result[name] = {
                     "overall_pick": int(row["OVERALL_PICK"]),
                     "round_number": int(row["ROUND_NUMBER"]),
+                    "person_id": int(row["PERSON_ID"]),
+                    "draft_year": year,
                 }
             print(f"   Draft history fetched for {len(df)} picks in {year}")
         except Exception as e:
@@ -782,6 +822,173 @@ def fetch_draft_history(draft_years: list[str], cache_file: str) -> dict[str, di
         _draft_history_cache_metadata(draft_years),
     )
     print(f"   Draft history cached for {len(result)} players")
+
+    return result
+
+
+ROOKIE_SEASON_CATEGORY_MAP = {
+    "GP": "GP", "MIN": "MIN", "PTS": "PTS", "REB": "REB", "AST": "AST",
+    "STL": "ST", "BLK": "BLK", "TOV": "TO", "PF": "PF", "FGM": "FGM",
+    "FGA": "FGA", "FG_PCT": "FG%", "FG3M": "3PTM", "FTM": "FTM",
+}
+
+
+def _rookie_season_stats_cache_metadata(draft_years: list[str]) -> dict[str, list[str]]:
+    return {"draft_years": sorted(set(draft_years))}
+
+
+def _load_cached_rookie_season_stats(cache_path: Path,
+                                     draft_years: list[str]) -> tuple[dict[str, dict[str, float]] | None, dict[str, str | bool | dict | None]]:
+    payload, cache_status = _read_cache_envelope(cache_path, "rookie_season_stats")
+    if not cache_status["valid"]:
+        return None, cache_status
+
+    expected_metadata = _rookie_season_stats_cache_metadata(draft_years)
+    if cache_status["metadata"] != expected_metadata:
+        return None, _invalid_cache_status("rookie-season-stats cache metadata mismatch")
+    if not isinstance(payload, dict):
+        return None, _invalid_cache_status("rookie-season-stats cache payload is not a player map")
+
+    return payload, cache_status
+
+
+def fetch_rookie_season_stats(draft_history: dict[str, dict], cache_file: str) -> dict[str, dict[str, float]]:
+    """
+    Fetch each drafted player's actual rookie-season per-game production
+    (one nba_api.stats.endpoints.PlayerCareerStats call per player,
+    per_mode36="PerGame") -- for building the historical training table in
+    scripts/build_rookie_baseline.py. `draft_history` entries must carry
+    "person_id" and "draft_year" (see fetch_draft_history).
+
+    Skips any player with no SEASON_ID row starting with their own
+    draft_year (hasn't played their rookie season yet -- not lookahead
+    bias) or whose matching row has GP == 0.
+
+    Returns: { canonical_player_key(name) -> {category -> float} } using
+    this pipeline's own category names (ROOKIE_SEASON_CATEGORY_MAP).
+
+    Caches results to disk -- delete the cache file to force a fresh fetch.
+    """
+    draft_years = [info["draft_year"] for info in draft_history.values()]
+    cache_path = Path(cache_file)
+    if cache_path.exists():
+        cached, cache_status = _load_cached_rookie_season_stats(cache_path, draft_years)
+        if cache_status["valid"]:
+            print("   Loading rookie-season stats from cache...")
+            return cached
+        print(f"   Rebuilding rookie-season-stats cache: {cache_status['reason']}")
+
+    from nba_api.stats.endpoints import PlayerCareerStats
+
+    result: dict[str, dict[str, float]] = {}
+
+    for name, info in draft_history.items():
+        try:
+            time.sleep(0.6)
+            pcs = PlayerCareerStats(player_id=info["person_id"], per_mode36="PerGame")
+            df = pcs.get_data_frames()[0]
+            season_rows = df[df["SEASON_ID"].astype(str).str.startswith(info["draft_year"])]
+            if season_rows.empty:
+                continue
+            # Handle mid-season trades: prefer TOT (season total) row if multiple rows exist
+            if len(season_rows) > 1:
+                tot_rows = season_rows[season_rows["TEAM_ABBREVIATION"] == "TOT"]
+                row = tot_rows.iloc[0] if not tot_rows.empty else season_rows.iloc[0]
+            else:
+                row = season_rows.iloc[0]
+            if pd.isna(row["GP"]) or float(row["GP"]) == 0:
+                continue
+            result[canonical_player_key(name)] = {
+                internal: float(row[nba_col])
+                for nba_col, internal in ROOKIE_SEASON_CATEGORY_MAP.items()
+            }
+        except Exception as e:
+            print(f"   [warn] Rookie-season fetch failed for {name}: {e}")
+
+    _write_cache_envelope(
+        cache_path, "rookie_season_stats", result,
+        _rookie_season_stats_cache_metadata(draft_years),
+    )
+    print(f"   Rookie-season stats cached for {len(result)} players")
+
+    return result
+
+
+COMBINE_RAW_COLUMNS = [
+    "WINGSPAN", "WEIGHT", "MAX_VERTICAL_LEAP", "LANE_AGILITY_TIME",
+    "THREE_QUARTER_SPRINT",
+]
+
+
+def _combine_stats_cache_metadata() -> dict[str, str]:
+    return {"season_all_time": "All Time"}
+
+
+def _load_cached_combine_stats(cache_path: Path) -> tuple[dict[str, dict[str, float]] | None, dict[str, str | bool | dict | None]]:
+    payload, cache_status = _read_cache_envelope(cache_path, "combine_stats")
+    if not cache_status["valid"]:
+        return None, cache_status
+
+    expected_metadata = _combine_stats_cache_metadata()
+    if cache_status["metadata"] != expected_metadata:
+        return None, _invalid_cache_status("combine-stats cache metadata mismatch")
+    if not isinstance(payload, dict):
+        return None, _invalid_cache_status("combine-stats cache payload is not a player map")
+
+    return payload, cache_status
+
+
+def fetch_combine_stats(cache_file: str) -> dict[str, dict[str, float]]:
+    """
+    Fetch every historical NBA Draft Combine measurement on record
+    (nba_api.stats.endpoints.DraftCombineStats, SeasonYear="All Time"),
+    keyed by canonical_player_key -- not scoped to any particular draft
+    year, so one cached fetch serves both the historical training classes
+    (scripts/build_rookie_baseline.py) and whichever class is currently
+    being drafted (main.py), without needing to guess which SeasonYear
+    value a given draft year's combine falls under.
+
+    Returns: { canonical_player_key(name) -> {raw column -> float, NaN if
+    missing/non-numeric} }, for the columns in COMBINE_RAW_COLUMNS.
+
+    Caches results to disk -- delete the cache file to force a fresh fetch.
+    """
+    cache_path = Path(cache_file)
+    if cache_path.exists():
+        cached, cache_status = _load_cached_combine_stats(cache_path)
+        if cache_status["valid"]:
+            print("   Loading combine stats from cache...")
+            return cached
+        print(f"   Rebuilding combine-stats cache: {cache_status['reason']}")
+
+    from nba_api.stats.endpoints import DraftCombineStats
+
+    result: dict[str, dict[str, float]] = {}
+
+    try:
+        print("   Fetching NBA Draft Combine measurements (all draft classes)...")
+        dcs = DraftCombineStats(league_id="00", season_all_time="All Time")
+        df = dcs.get_data_frames()[0]
+        for _, row in df.iterrows():
+            key = canonical_player_key(row["PLAYER_NAME"])
+            result[key] = {}
+            for col in COMBINE_RAW_COLUMNS:
+                if col in df.columns and pd.notna(row[col]):
+                    try:
+                        result[key][col] = float(row[col])
+                    except (ValueError, TypeError):
+                        result[key][col] = float("nan")
+                else:
+                    result[key][col] = float("nan")
+        print(f"   Combine measurements fetched for {len(df)} players")
+    except Exception as e:
+        print(f"   [warn] Combine-stats fetch failed: {e}")
+
+    if result:
+        _write_cache_envelope(cache_path, "combine_stats", result, _combine_stats_cache_metadata())
+        print(f"   Combine stats cached for {len(result)} players")
+    else:
+        print("   [warn] Combine-stats fetch returned no data -- not caching empty result, will retry next run")
 
     return result
 
@@ -831,7 +1038,74 @@ def fetch_current_teams(season: str, cache_file: str) -> dict[str, str]:
     return result
 
 
-MULTI_TEAM_MARKER_RE = re.compile(r"^\d?TM$")   # BBR's own aggregate-row markers: TOT, 2TM, 3TM, ...
+def fetch_season_schedule(season: str, cache_file: str) -> pd.DataFrame:
+    """
+    Fetch every real game date for every team in `season`.
+
+    Returns a DataFrame with one row per (team, game) -- GAME_DATE, TEAM
+    (nba_api tricode) -- both home and away sides of each game unpacked
+    into their own row, so counting rows per team per week gives that
+    team's real games-per-week.
+
+    One bulk API call (nba_api's ScheduleLeagueV2, the full season in one
+    request, confirmed live -- not one call per team/game). Caches results
+    to disk -- delete the cache file to force a fresh fetch.
+    """
+    cache_path = Path(cache_file)
+    if cache_path.exists():
+        cached, cache_status = _load_cached_season_schedule(cache_path, season)
+        if cache_status["valid"]:
+            print("   Loading season schedule from cache...")
+            return cached
+
+        print(f"   Rebuilding season-schedule cache: {cache_status['reason']}")
+
+    from nba_api.stats.endpoints import scheduleleaguev2
+
+    result = pd.DataFrame(columns=["GAME_DATE", "TEAM"])
+
+    try:
+        print(f"   Fetching full season schedule for {season}...")
+        games = scheduleleaguev2.ScheduleLeagueV2(season=season).get_data_frames()[0]
+        result = pd.concat([
+            games[["gameDate", "homeTeam_teamTricode"]].rename(
+                columns={"gameDate": "GAME_DATE", "homeTeam_teamTricode": "TEAM"}),
+            games[["gameDate", "awayTeam_teamTricode"]].rename(
+                columns={"gameDate": "GAME_DATE", "awayTeam_teamTricode": "TEAM"}),
+        ], ignore_index=True)
+        print(f"   Season schedule fetched: {len(games)} games, {len(result)} team-game rows")
+    except Exception as e:
+        print(f"   [warn] Season-schedule fetch failed for {season}: {e}")
+
+    _write_cache_envelope(
+        cache_path,
+        "season_schedule",
+        result,
+        _season_schedule_cache_metadata(season),
+    )
+
+    return result
+
+
+def games_per_team_for_week(schedule: pd.DataFrame, week_of: str | pd.Timestamp) -> pd.Series:
+    """
+    Count each team's real games within the ISO calendar week containing
+    `week_of` (any date in that Monday-Sunday week).
+
+    Same "a week" definition model.py's add_week_key uses for compute_tau
+    (ISO calendar week) -- not nba_api's own `weekNumber`, which doesn't
+    reliably align to a Monday-Sunday boundary.
+    """
+    dates = pd.to_datetime(schedule["GAME_DATE"])
+    iso = dates.dt.isocalendar()
+    week_key = iso["year"].astype(str) + "_" + iso["week"].astype(str)
+
+    target = pd.to_datetime(week_of).isocalendar()
+    target_key = f"{target.year}_{target.week}"
+
+    return schedule.loc[week_key == target_key, "TEAM"].value_counts()
+
+
 MULTI_TEAM_LABEL = "Multiple Teams"
 
 # BBR's abbreviation differs from nba_api's for exactly these 3 teams --
@@ -945,3 +1219,319 @@ def derive_stats_from_logs(game_logs: dict[str, dict[str, pd.DataFrame]]) \
                           f"game log — TD sourced from {season} instead")
 
     return derived
+
+
+# ── Injury reports (real injury-type data, not just games-missed counts) ────
+# Addresses the healthy-worker survivorship bias flagged in GitHub issue #11's
+# surrounding research: GP_FACTOR's multi-season blend can only ever see that
+# a player missed games, never why -- a season-ending ACL tear and three
+# unrelated minor ailments look identical to it. The NBA's own official
+# injury reports carry real injury-type text (body part + mechanism, e.g.
+# "Right Knee; ACL Tear") via the nbainjuries package, which PDF-parses them
+# from the league's own servers (requires a local Java runtime -- see
+# requirements.txt). Only covers 2021-22 onward, which already covers every
+# season this pipeline loads (game_log_seasons).
+
+# Approximate regular-season window per season this pipeline actually uses
+# (game_log_seasons in config.py) -- precision doesn't matter here, these
+# only seed a weekly sampling grid, not an exact game calendar.
+INJURY_REPORT_SEASON_WINDOWS = {
+    "2025-26": ("2025-10-20", "2026-04-13"),
+    "2024-25": ("2024-10-21", "2025-04-14"),
+    "2023-24": ("2023-10-23", "2024-04-15"),
+}
+
+INJURY_SEVERE_KEYWORDS = [
+    "surgery", "fracture", "tear", "rupture", "acl", "achilles", "mcl",
+    "meniscus", "labrum", "dislocat",
+]
+INJURY_NON_INJURY_REASONS = {"g league - two-way", "rest", "load management",
+                             "personal", "suspension", "not with team"}
+
+
+def _injury_reports_cache_metadata(seasons: list[str]) -> dict[str, object]:
+    return {"seasons": sorted(seasons)}
+
+
+def _load_cached_injury_reports(cache_path: Path,
+                                seasons: list[str]) -> tuple[pd.DataFrame | None, dict[str, str | bool | dict | None]]:
+    payload, cache_status = _read_cache_envelope(cache_path, "injury_reports")
+    if not cache_status["valid"]:
+        return None, cache_status
+
+    expected_metadata = _injury_reports_cache_metadata(seasons)
+    if cache_status["metadata"] != expected_metadata:
+        return None, _invalid_cache_status("injury-reports cache metadata mismatch")
+    if not isinstance(payload, pd.DataFrame):
+        return None, _invalid_cache_status("injury-reports cache payload is not a DataFrame")
+
+    return payload, cache_status
+
+
+def fetch_injury_reports(seasons: list[str], cache_file: str) -> pd.DataFrame:
+    """
+    Fetch real NBA injury-report snapshots for the given seasons.
+
+    No bulk/season endpoint exists in nbainjuries -- one call per snapshot
+    datetime, each downloading and PDF-parsing one report (~1s). Sampled
+    weekly (Mondays, 5:30pm ET, a standard report release time) across each
+    season's rough game window instead of every report of every game day:
+    dense enough that a real multi-week injury absence shows up in at least
+    one snapshot, without needing hundreds of queries per season. A
+    snapshot date with no report published (all-star break, a date just
+    outside the real season) fails individually and is skipped, not fatal
+    to the rest of the fetch.
+
+    Returns one row per (snapshot, player, team): Game Date, Game Time,
+    Matchup, Team, Player Name, Current Status, Reason, Season, Snapshot.
+    Empty DataFrame (same columns) if every snapshot fails. Caller
+    aggregates this into whatever per-player-season summary it needs (see
+    classify_injury_reason / summarize_season_injuries).
+    """
+    cache_path = Path(cache_file)
+    if cache_path.exists():
+        cached, cache_status = _load_cached_injury_reports(cache_path, seasons)
+        if cache_status["valid"]:
+            print("   Loading injury reports from cache...")
+            return cached
+        print(f"   Rebuilding injury-reports cache: {cache_status['reason']}")
+
+    import certifi
+    os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+    from nbainjuries import injury
+
+    columns = ["Game Date", "Game Time", "Matchup", "Team", "Player Name",
+               "Current Status", "Reason", "Season", "Snapshot"]
+
+    snapshots: list[tuple[str, datetime]] = []
+    for season in seasons:
+        window = INJURY_REPORT_SEASON_WINDOWS.get(season)
+        if window is None:
+            print(f"   [warn] No injury-report date window configured for {season}, skipping")
+            continue
+        d = datetime.fromisoformat(window[0])
+        end_d = datetime.fromisoformat(window[1])
+        while d <= end_d:
+            snapshots.append((season, d.replace(hour=17, minute=30)))
+            d += timedelta(days=7)
+
+    print(f"   Fetching {len(snapshots)} weekly injury-report snapshots "
+          f"across {len(seasons)} season(s)...")
+    frames = []
+    ok = failed = 0
+    for i, (season, ts) in enumerate(snapshots):
+        try:
+            df = injury.get_reportdata(ts, return_df=True)
+            if len(df):
+                df = df.copy()
+                df["Season"] = season
+                df["Snapshot"] = ts
+                frames.append(df)
+            ok += 1
+        except Exception:
+            failed += 1
+        if (i + 1) % 20 == 0 or i + 1 == len(snapshots):
+            print(f"      [{i + 1}/{len(snapshots)}] {ok} ok, {failed} no report")
+
+    result = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=columns)
+
+    _write_cache_envelope(cache_path, "injury_reports", result, _injury_reports_cache_metadata(seasons))
+    print(f"   Injury reports cached: {len(result)} rows from {ok}/{len(snapshots)} snapshots")
+    return result
+
+
+def classify_injury_reason(reason: str) -> tuple[str, bool]:
+    """
+    Classify one injury-report "Reason" string into (category, is_severe).
+
+    Format is semi-structured: "Injury/Illness - {body part}; {mechanism}"
+    for real injuries, or a short non-injury reason ("G League - Two-Way",
+    "Rest", "Personal", ...) for roster/scheduling entries that aren't
+    durability signal at all. `is_severe` is a conservative keyword match
+    (surgery, fracture, tear, ACL, Achilles, ...) against the mechanism --
+    real long-recovery injuries, not every day-to-day soreness/illness
+    entry. Unclassifiable or missing text returns ("unknown", False) rather
+    than guessing.
+    """
+    if not isinstance(reason, str) or not reason.strip():
+        return "unknown", False
+
+    lower = reason.strip().lower()
+    if any(lower.startswith(r) for r in INJURY_NON_INJURY_REASONS):
+        return "non_injury", False
+    if not lower.startswith("injury/illness"):
+        return "other", False
+
+    is_severe = any(keyword in lower for keyword in INJURY_SEVERE_KEYWORDS)
+    return "injury", is_severe
+
+
+# ── Injury-type-specific "year 1 back" discount ──────────────────────────────
+# A confirmed severe injury found in the newest loaded season is treated as
+# "this player is entering their first season back" for the season being
+# projected -- the common real pattern (injury costs most/all of the season
+# it happens in, player returns the following season). No multi-year injury
+# timeline is tracked; this is a one-season-deep signal, same depth as
+# RECENT_SEVERE_INJURY itself.
+#
+# Multipliers below come from NBA-specific peer-reviewed return-to-play
+# outcome studies, not a guess:
+#   - ACL reconstruction: PER -19.3% in year 1, back to no significant
+#     difference from pre-injury by year 2 (DeFroda et al., Orthop J Sports
+#     Med 2021, https://doi.org/10.1177/2325967120981649)
+#   - Achilles rupture/repair: PER -4.57 in year 1 *and* -4.38 in year 2,
+#     not a significant improvement between the two -- doesn't recover the
+#     way ACL does (Maman et al. 2026, https://doi.org/10.1177/23259671261461403;
+#     Amin et al., Am J Sports Med 2013, https://doi.org/10.1177/0363546513490659).
+#     -4.57 PER on a ~22-25 PER-range player (the typical player this flag
+#     actually hits) works out close to the same ~19-20% as ACL's own
+#     percentage, which is why the two multipliers below are close despite
+#     being independently sourced.
+#   - Meniscus surgery: MPG/PER decline at year 1, recover by year 2 (JSSM
+#     2024, https://www.jssm.org/researchjssm-24-363.xml.xml) -- no exact
+#     PER delta was available from what was checked, so this discount is
+#     set more conservatively (smaller) than the other two, not derived
+#     from the same precision of number.
+#
+# No other injury type gets a multiplier. Fractures, MCL/labrum tears,
+# dislocations, and anything else classify_injury_reason marks severe but
+# that doesn't match one of these three keywords stay flagged
+# (RECENT_SEVERE_INJURY) but undiscounted -- no NBA-specific outcome study
+# was found for them in the research behind this feature, and guessing a
+# number would be exactly the kind of fake precision this pipeline's
+# DATA_AVAILABILITY_NOTE convention avoids everywhere else.
+INJURY_TIER_KEYWORDS = {
+    "achilles": ["achilles"],
+    "acl": ["acl"],
+    "meniscus": ["meniscus"],
+}
+INJURY_TIER_YEAR1_DISCOUNT = {
+    "achilles": 0.80,
+    "acl": 0.81,
+    "meniscus": 0.90,
+}
+
+
+def classify_injury_tier(severe_reasons: list[str]) -> str | None:
+    """
+    Bucket a player's severe-injury reasons (summarize_season_injuries'
+    `severe_reasons`) into one of INJURY_TIER_YEAR1_DISCOUNT's three
+    study-backed tiers, or None if none match. First matching tier wins if
+    a player has reasons spanning more than one -- not just a tie-break of
+    convenience: INJURY_TIER_KEYWORDS is deliberately ordered
+    achilles/acl/meniscus, worst-to-mildest by the research behind the
+    discounts, so a player with both an ACL and an Achilles entry (Tyrese
+    Haliburton does, in the current pool) lands on the more cautious
+    classification rather than whichever happened to sort first.
+    """
+    combined = " ".join(severe_reasons).lower()
+    for tier, keywords in INJURY_TIER_KEYWORDS.items():
+        if any(keyword in combined for keyword in keywords):
+            return tier
+    return None
+
+
+def _injury_location(reason: str) -> str:
+    """Body-part token from a reason string, e.g. "Injury/Illness - Left
+    Knee; Surgery" -> "left knee"."""
+    body = reason.split(" - ", 1)[-1]
+    return body.split(";", 1)[0].strip().lower()
+
+
+def classify_injury_tier_with_carryover(current_reasons: list[str],
+                                         prior_reasons: list[str]) -> str | None:
+    """
+    Same as classify_injury_tier, but falls back to the immediately-prior
+    season's severe reasons when the current season's own text doesn't name
+    a tier. Real NBA injury reports sometimes genericize an ongoing injury
+    ("Surgery") in later updates after the original diagnosis report named
+    the specific structure (e.g. Kyrie Irving: 2024-25 reports say "Left
+    Knee; Sprain/ACL tear", 2025-26 reports for the same continuing absence
+    just say "Left Knee; Surgery" -- the ACL tear never resolved, the report
+    wording just changed). Only trusts the carry-over when a prior-season
+    reason shares the current season's body-part location -- a different
+    location is a separate, unrelated injury, not a genericized version of
+    this one (verified against Trae Young, whose current-season knee injury
+    is unrelated to a resolved prior-season Achilles tendinitis -- different
+    location, correctly excluded).
+    """
+    tier = classify_injury_tier(current_reasons)
+    if tier is not None or not prior_reasons:
+        return tier
+    current_locations = {_injury_location(r) for r in current_reasons}
+    matching_prior = [r for r in prior_reasons if _injury_location(r) in current_locations]
+    return classify_injury_tier(matching_prior) if matching_prior else None
+
+
+def reformat_lastfirst_name(name: str) -> str:
+    """
+    nbainjuries reports names as "Last, First" (suffixes stay with the last
+    name, e.g. "Porter Jr., Kevin") -- this pipeline's PLAYER_NAME is
+    "First Last" everywhere else. Splits on the first ", " only, so a
+    hyphenated or multi-word last name ("Gilgeous-Alexander, Shai") still
+    reformats correctly. Caller should still match on canonical_player_key
+    (identity.py), not this string directly -- reformatting fixes word
+    order, not accent/punctuation differences between the two sources.
+    """
+    if ", " not in name:
+        return name
+    last, first = name.split(", ", 1)
+    return f"{first} {last}"
+
+
+def _dedupe_similar_reasons(reasons: list[str]) -> list[str]:
+    """
+    Collapse near-duplicate reason strings describing the same body part and
+    mechanism but worded differently across snapshots (weekly sampling
+    often catches one real injury episode at several report dates, e.g.
+    "Right Achilles Repair; Management" and "Right Achilles; Repair" are
+    the same episode, not two, with the second just a shorter tag of the
+    same thing). Normalizes each reason to a bag-of-words set (lowercase,
+    punctuation stripped, word order ignored), then drops any reason whose
+    word set is a *subset* of another's -- not just exact-set duplicates --
+    keeping the longer, more specific original string. Ties (equal-length
+    or incomparable sets) keep first-seen.
+    """
+    keyed: list[tuple[frozenset[str], str]] = []
+    seen_keys: list[frozenset[str]] = []
+    for r in reasons:
+        key = frozenset(re.findall(r"[a-z0-9]+", r.lower()))
+        if key not in seen_keys:
+            seen_keys.append(key)
+            keyed.append((key, r))
+
+    return [
+        r for key, r in keyed
+        if not any(key < other_key for other_key, _ in keyed if other_key != key)
+    ]
+
+
+def summarize_season_injuries(injury_reports: pd.DataFrame) -> dict[str, dict[str, dict[str, object]]]:
+    """
+    Reduce raw injury-report rows to one severity summary per player per
+    season: { season -> { player_name -> {"had_severe_injury": bool,
+    "reasons": [distinct reason strings seen, near-duplicates collapsed]} } }.
+
+    Player names here are nbainjuries' own "Last, First" format -- callers
+    matching against this pipeline's "First Last" BBR names need
+    canonical_player_key (identity.py) or an explicit reformat; left to the
+    caller rather than guessed here, since the two sources' suffix/accent
+    handling isn't necessarily identical.
+    """
+    summary: dict[str, dict[str, dict[str, object]]] = {}
+    if injury_reports.empty:
+        return summary
+
+    for season, season_df in injury_reports.groupby("Season"):
+        season_summary: dict[str, dict[str, object]] = {}
+        for player, player_df in season_df.groupby("Player Name"):
+            reasons = _dedupe_similar_reasons(sorted(set(player_df["Reason"].dropna())))
+            severe_reasons = [r for r in reasons if classify_injury_reason(r)[1]]
+            season_summary[player] = {
+                "had_severe_injury": bool(severe_reasons),
+                "reasons": reasons,
+                "severe_reasons": severe_reasons,
+            }
+        summary[str(season)] = season_summary
+
+    return summary

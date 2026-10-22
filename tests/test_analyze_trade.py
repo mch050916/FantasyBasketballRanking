@@ -8,7 +8,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from trade import BANK_COLUMNS  # noqa: E402
+from trade import BANK_COLUMNS, summarize_trade_result  # noqa: E402
 
 import analyze_trade  # noqa: E402
 
@@ -104,8 +104,11 @@ class FormatReportTests(unittest.TestCase):
             "delta": {}, "roster_sizes_after": {},
         }
 
+    def _summary(self) -> dict:
+        return summarize_trade_result(self._result(), "Me", "You")
+
     def test_the_category_column_sums_to_the_headline(self) -> None:
-        text = analyze_trade.format_report(self._result(), "Me", "You", ["X"], ["Y"])
+        text = analyze_trade.format_report(self._summary(), "Me", "You", ["X"], ["Y"])
         line = [l for l in text.splitlines() if "(column sum)" in l][0]
         column_sum = float(line.split()[2])
         headline = float(line.split("headline")[1])
@@ -113,13 +116,13 @@ class FormatReportTests(unittest.TestCase):
 
     def test_a_tie_heavy_category_counts_half_a_win(self) -> None:
         # DD: win .40 tie .20 -> .50 before, win .55 tie .20 -> .65 after.
-        text = analyze_trade.format_report(self._result(), "Me", "You", [], [])
+        text = analyze_trade.format_report(self._summary(), "Me", "You", [], [])
         dd = [l for l in text.splitlines() if l.strip().startswith("DD")][0].split()
         self.assertAlmostEqual(float(dd[1]), 0.50, places=3)
         self.assertAlmostEqual(float(dd[2]), 0.65, places=3)
 
     def test_the_tie_percentage_is_still_shown(self) -> None:
-        text = analyze_trade.format_report(self._result(), "Me", "You", [], [])
+        text = analyze_trade.format_report(self._summary(), "Me", "You", [], [])
         dd = [l for l in text.splitlines() if l.strip().startswith("DD")][0]
         self.assertIn("20.0", dd)
 

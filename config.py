@@ -88,6 +88,15 @@ LEAGUE_CONFIG = {
     "num_teams":   10,   # active teams this season (was 8 last season)
     "roster_size": 13,   # active roster spots only (IL spots don't score)
 
+    # Starting lineup slots for ONE team (bench/IL excluded -- they don't
+    # draw on positional replacement level). Used by compute_positional_value
+    # (model.py) to compute POSITIONAL_VALUE: how much better a player is
+    # than the last startable player at their position, accounting for flex
+    # (G = PG/SG, F = SF/PF) and Util (any position) slots. Must sum to
+    # roster_size minus bench count (10 here, matching this league's real
+    # Yahoo roster).
+    "roster_slots": ["PG", "SG", "G", "SF", "PF", "F", "C", "Util", "Util", "Util"],
+
     # ── Projection settings ────────────────────────────────────────────────
     # Season weights: most recent season first.
     # With 2 BBR files: [0.5, 0.3] renormalises automatically to [0.625, 0.375].
@@ -117,7 +126,11 @@ LEAGUE_CONFIG = {
     "game_log_cache":     "game_log_cache.pkl",
     "tech_cache":         "tech_cache.pkl",
     "draft_history_cache": "draft_history_cache.pkl",
+    "rookie_season_stats_cache": "rookie_season_stats_cache.pkl",
     "current_teams_cache": "current_teams_cache.pkl",
+    "injury_reports_cache": "injury_reports_cache.pkl",
+    "combine_stats_cache": "combine_stats_cache.pkl",
+    "season_schedule_cache": "season_schedule_cache.pkl",
 }
 
 # ── Trade analyzer settings ───────────────────────────────────────────────

@@ -28,10 +28,12 @@ Opened as a local file in a browser during a live snake/auction draft, one conti
 
 ## Capabilities and Constraints
 
+This document (and the two constraints immediately below) describes the **draft board** specifically — the single static HTML file `scripts/build_draft_board.py` generates. The in-season tools (punt planner, trade finder, trade analyzer, buy low/sell high, schedule strength) are a separate capability with their own local-server model: `scripts/serve_dashboard.py` starts a small stdlib HTTP server, once, so those 5 tools run as browser forms instead of typed commands — see `docs/superpowers/specs/2026-10-21-dashboard-web-tools-design.md`. The draft board itself is untouched by that and stays exactly as described below.
+
 - Data is fully embedded at build time (JSON baked into the HTML) — no live data fetching, no backend.
 - Must keep working with zero network access.
 - Current data surface per player: rank, DURANT total value, per-category per-game stats/z-scores (12 categories: PTS, REB, AST, ST, BLK, TO, FG%, FTM, 3PM, DD, TD, TECH), derived strength/weakness tags, position, team, drafted/not-drafted state.
-- Two player pools shown as tabs: veterans and rookies (rookies use draft-slot tiers rather than a 1-N rank, since rookies within a bucket share identical baseline projections).
+- Two player pools shown as tabs: veterans and rookies (rookies get an individually ranked 1-N projection from a two-stage pick-curve + combine-residual regression, not a shared draft-slot bucket).
 - Redesign is visual only — this session's scope is a new look and feel, not new functionality or data.
 
 ## Evidence on Hand

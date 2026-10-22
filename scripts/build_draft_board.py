@@ -213,6 +213,13 @@ def build_data() -> dict:
         team = current_teams.get(canonical_player_key(r["PLAYER_NAME"]), team)
         note = r["DATA_AVAILABILITY_NOTE"]
         note = "" if (isinstance(note, float) and math.isnan(note)) else str(note)
+        # Real NBA injury-report text (body part + mechanism) for the most
+        # recent loaded season, when main.py's optional nbainjuries fetch
+        # found one -- see main.py's RECENT_SEVERE_INJURY. Diagnostic only,
+        # same as DATA_AVAILABILITY_NOTE: surfaced for a human to weigh, no
+        # projection adjustment.
+        injury = r.get("RECENT_SEVERE_INJURY", "")
+        injury = "" if (isinstance(injury, float) and math.isnan(injury)) else str(injury)
         z = player_z(r)
         vets.append({
             "rank": int(r["RANK"]),
@@ -222,6 +229,7 @@ def build_data() -> dict:
             "val": round(float(r["TOTAL_VALUE"]) + VAL_DISPLAY_SHIFT, 3),
             "note": note,
             "noteShort": note_short(note),
+            "injury": injury,
             "z": z,
             "tags": player_tags(z),
             "stats": {
@@ -236,7 +244,7 @@ def build_data() -> dict:
     roos = []
     for _, r in rookies.iterrows():
         roos.append({
-            "tier": r["TIER"],
+            "rank": int(r["RANK"]),
             "name": r["PLAYER_NAME"],
             "pick": int(r["OVERALL_PICK"]),
             "val": round(float(r["TOTAL_VALUE"]) + VAL_DISPLAY_SHIFT, 3),
@@ -246,6 +254,7 @@ def build_data() -> dict:
             "min": round(float(r["MIN"]), 1),
             "z": player_z(r, roo_col_mean, roo_col_stdev),
         })
+    roos.sort(key=lambda r: r["rank"])
 
     return {"zLabels": Z_LABELS, "tagExclude": sorted(TAG_EXCLUDE), "veterans": vets, "rookies": roos}
 
@@ -378,11 +387,30 @@ tr.drafted .noteInline{opacity:.35;}
 tr.drafted .balanceStrip{opacity:.35;}
 tr.drafted .rowGp{opacity:.35;}
 tr.drafted .posRank{opacity:.35;}
+tr.drafted .injuryInline{opacity:.35;}
 
 /* availability flag -- readable at a glance, no click required (only 13/130
    rows carry one, so it doesn't add noise). Full note text lives in the
    expanded chart row (.chartNote below). */
 .noteInline{font-family:var(--mono);font-size:11px;color:var(--flag);margin-left:6px;}
+
+/* confirmed severe-injury flag (real NBA injury-report text, see
+   main.py's RECENT_SEVERE_INJURY) -- distinct color from .noteInline since
+   it's a different, more serious signal (a real diagnosed injury, not a
+   data-coverage gap). A custom CSS tooltip on hover, not the native
+   title attribute -- title tooltips turned out unreliable in practice
+   (inconsistent show delay/positioning), so this renders its own
+   always-the-same popup from a data-tip attribute instead. */
+.injuryInline{position:relative;font-family:var(--mono);font-size:11px;color:var(--weakness);margin-left:6px;cursor:help;}
+.injuryInline:hover::after{
+  content:attr(data-tip);
+  position:absolute;left:0;top:calc(100% + 6px);z-index:100;
+  display:block;width:max-content;max-width:280px;
+  background:var(--surface-alt);border:1px solid var(--border-strong);
+  color:var(--text);font-weight:400;font-size:11px;letter-spacing:0;
+  text-transform:none;white-space:normal;line-height:1.4;
+  padding:7px 10px;box-shadow:0 8px 20px rgba(0,0,0,.5);
+}
 
 /* balance strip: 12 threshold-colored cells (same centered/scaled z the
    tags use, same ±0.75σ cutoff -- a cell colors if and only if that
@@ -548,7 +576,7 @@ tr.chart-row:not(.open){display:none;}
   </div>
 
   <div id="roosPane" style="display:none">
-    <div class="disclaimer">Speculative: historical draft-slot production baselines, not real in-season data. Rookies sharing a draft-slot bucket share identical projected stats by construction — tiers, not ranks.</div>
+    <div class="disclaimer">Speculative: pick-curve + combine-residual regression, not real in-season data. Each rookie gets an individually ranked projection.</div>
     <div id="rooTiers"></div>
   </div>
 </div>
@@ -874,13 +902,14 @@ tr.chart-row:not(.open){display:none;}
     if (mine.has(key)) tr.classList.add("mine");
 
     var noteInline = v.noteShort ? '<span class="noteInline">' + esc(v.noteShort) + '</span>' : "";
+    var injuryInline = v.injury ? '<span class="injuryInline" data-tip="' + esc(v.injury) + '" title="' + esc(v.injury) + '">&#8853; injury</span>' : "";
 
     tr.innerHTML =
       '<td class="rank" tabindex="0" role="button" title="Click to toggle drafted">' +
         '<span class="rankNum">' + v.rank + '</span>' +
         '<span class="mineStar" title="Mark as your pick">&#9733; mine</span></td>' +
       '<td class="name-cell"><span class="name">' + esc(v.name) + '</span>' +
-        '<span class="meta">' + esc(v.pos) + (v.team ? " · " + esc(v.team) : "") + '</span>' + noteInline + '</td>' +
+        '<span class="meta">' + esc(v.pos) + (v.team ? " · " + esc(v.team) : "") + '</span>' + noteInline + injuryInline + '</td>' +
       '<td class="num val">' + v.val.toFixed(2) + '</td>' +
       '<td><div class="rowRight"><div class="tags">' + tagsHTML(v.tags) + '</div>' +
         '<div class="rowMid">' +
@@ -974,7 +1003,8 @@ tr.chart-row:not(.open){display:none;}
 
   /* category sort: any of the 12 categories, descending by that category's
      z-score (already sign-corrected, e.g. TO), or back to "Value" (rank
-     order) -- veterans only, rookies keep their tier grouping. */
+     order) -- veterans only; rookies are always shown as a flat table
+     ordered by their individual rank. */
   var sortSelect = document.getElementById("sortSelect");
   (function(){
     var opt = document.createElement("option");
@@ -1078,50 +1108,42 @@ tr.chart-row:not(.open){display:none;}
 
   /* ---------- rookies ---------- */
   var rooWrap = document.getElementById("rooTiers");
-  var TIER_ORDER = [];
-  DATA.rookies.forEach(function(r){ if (TIER_ORDER.indexOf(r.tier) === -1) TIER_ORDER.push(r.tier); });
+  var rooSorted = DATA.rookies.slice().sort(function(a, b){ return a.rank - b.rank; });
 
   var rooRows = [];
-  TIER_ORDER.forEach(function(tier){
-    var members = DATA.rookies.filter(function(r){ return r.tier === tier; });
-    var block = document.createElement("div");
-    block.className = "tier-block";
-    block.innerHTML = '<div class="tier-title">' + esc(tier) + '<span class="n">' + members.length + ' players</span></div>';
-    var table = document.createElement("table");
-    var thead = document.createElement("thead");
-    thead.innerHTML = '<tr><th class="rank">Pick</th><th class="name-cell">Player</th><th class="num">Val</th><th class="num">Projected</th></tr>';
-    table.appendChild(thead);
-    var tbody = document.createElement("tbody");
-    members.forEach(function(m){
-      var tr = document.createElement("tr");
-      tr.dataset.name = m.name.toLowerCase();
-      var key = zKey("r", m.name);
-      if (drafted.has(key)) tr.classList.add("drafted");
-      if (mine.has(key)) tr.classList.add("mine");
-      tr.innerHTML =
-        '<td class="rank"><span class="rankNum">#' + m.pick + '</span>' +
-          '<span class="mineStar" title="Mark as your pick">&#9733; mine</span></td>' +
-        '<td class="name-cell"><span class="name">' + esc(m.name) + '</span></td>' +
-        '<td class="num val">' + m.val.toFixed(2) + '</td>' +
-        '<td class="num" style="font-family:var(--mono);font-size:12px;color:var(--text-dim)">' +
-          m.pts + ' pts · ' + m.reb + ' reb · ' + m.ast + ' ast · ' + m.min + ' min</td>';
-      var rowObj = {tr: tr, name: m.name, key: key, z: m.z, chartRow: null};
-      makeRowActivatable(tr);
-      tr.addEventListener("click", function(e){
-        if (e.target.closest(".mineStar")) return; /* star has its own handler */
-        setRowDrafted(rowObj, !drafted.has(key));
-      });
-      tr.querySelector(".mineStar").addEventListener("click", function(e){
-        e.stopPropagation();
-        toggleMine(rowObj);
-      });
-      tbody.appendChild(tr);
-      rooRows.push(rowObj);
+  var table = document.createElement("table");
+  var thead = document.createElement("thead");
+  thead.innerHTML = '<tr><th class="rank">#</th><th class="name-cell">Player</th><th class="num">Val</th><th class="num">Projected</th></tr>';
+  table.appendChild(thead);
+  var tbody = document.createElement("tbody");
+  rooSorted.forEach(function(m){
+    var tr = document.createElement("tr");
+    tr.dataset.name = m.name.toLowerCase();
+    var key = zKey("r", m.name);
+    if (drafted.has(key)) tr.classList.add("drafted");
+    if (mine.has(key)) tr.classList.add("mine");
+    tr.innerHTML =
+      '<td class="rank"><span class="rankNum">' + m.rank + '</span>' +
+        '<span class="mineStar" title="Mark as your pick">&#9733; mine</span></td>' +
+      '<td class="name-cell"><span class="name">' + esc(m.name) + '</span></td>' +
+      '<td class="num val">' + m.val.toFixed(2) + '</td>' +
+      '<td class="num" style="font-family:var(--mono);font-size:12px;color:var(--text-dim)">' +
+        'Pick ' + m.pick + ' · ' + m.pts + ' pts · ' + m.reb + ' reb · ' + m.ast + ' ast · ' + m.min + ' min</td>';
+    var rowObj = {tr: tr, name: m.name, key: key, z: m.z, chartRow: null};
+    makeRowActivatable(tr);
+    tr.addEventListener("click", function(e){
+      if (e.target.closest(".mineStar")) return; /* star has its own handler */
+      setRowDrafted(rowObj, !drafted.has(key));
     });
-    table.appendChild(tbody);
-    block.appendChild(table);
-    rooWrap.appendChild(block);
+    tr.querySelector(".mineStar").addEventListener("click", function(e){
+      e.stopPropagation();
+      toggleMine(rowObj);
+    });
+    tbody.appendChild(tr);
+    rooRows.push(rowObj);
   });
+  table.appendChild(tbody);
+  rooWrap.appendChild(table);
 
   function updateRooStats(){
     var total = rooRows.length;

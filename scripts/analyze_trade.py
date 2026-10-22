@@ -7,6 +7,8 @@ Usage:
 """
 
 import argparse
+import json
+import os
 import sys
 from pathlib import Path
 
@@ -23,7 +25,12 @@ from trade import (BANK_COLUMNS, add_missed_weeks,        # noqa: E402
                    build_week_bank, evaluate_trade,
                    games_per_week_pool, pooled_donor_bank,
                    quantize_bank_counts, scale_bank_to_projection,
-                   synthesize_bank)
+                   summarize_trade_result, synthesize_bank)
+
+# Set by dashboard_server.py's subprocess env only -- plain CLI usage never
+# sees this extra line. Lets the web dashboard render a structured verdict
+# card instead of parsing the printed report's aligned text.
+DASHBOARD_RESULT_PREFIX = "__DASHBOARD_RESULT__"
 
 
 def parse_names(raw: str | None) -> list[str]:
@@ -145,41 +152,35 @@ def build_replacement_bank(projections, rosters, league_tau, games_pool, trade_c
                                 "__replacement_level__", trade_config["seed"])
 
 
-def format_report(result, team, partner, give, get) -> str:
+def format_report(summary: dict, team: str, partner: str, give: list[str], get: list[str]) -> str:
+    """
+    Render summarize_trade_result's structured summary as the printed CLI
+    report. Pure text formatting only -- every number in this function
+    comes from summary, so the dashboard's JSON summary (see main()) and
+    this text can never silently disagree with each other.
+    """
     lines = []
     give_text = ", ".join(give) if give else "nothing"
     get_text = ", ".join(get) if get else "nothing"
     lines.append(f"\n{team} gives {give_text} -> receives {get_text}\n")
 
-    n_cats = len(LEAGUE_CONFIG["categories"])
-    lines.append(f"Expected categories won per week (of {n_cats}, vs league field)")
+    lines.append(f"Expected categories won per week (of {summary['n_categories']}, vs league field)")
     for name in (team, partner):
-        before = result["before"][name]["expected"]
-        after = result["after"][name]["expected"]
-        lines.append(f"  {name:<12} {before:6.2f} -> {after:6.2f}   {after - before:+6.2f}")
+        side = summary["teams"][name]
+        lines.append(f"  {name:<12} {side['before']:6.2f} -> {side['after']:6.2f}   {side['delta']:+6.2f}")
 
     # Each cell counts a tie as half a win, exactly as the headline does, so
     # the D column sums to the headline delta. Reporting raw win rates here
     # instead left a gap of ~14% between the table and the number it explains.
-    def share(rates, cat):
-        return rates[cat]["win"] + 0.5 * rates[cat]["tie"]
-
     lines.append(f"\nPer-category, {team}      BEFORE   AFTER       D    TIE%")
-    before_rates = result["before"][team]["rates"]
-    after_rates = result["after"][team]["rates"]
-    ordered = sorted(before_rates,
-                     key=lambda c: share(after_rates, c) - share(before_rates, c),
-                     reverse=True)
-    for cat in ordered:
-        b, a = share(before_rates, cat), share(after_rates, cat)
-        tie = after_rates[cat]["tie"] * 100
-        lines.append(f"  {cat:<22} {b:6.3f}  {a:6.3f}  {a - b:+7.3f}  {tie:6.1f}")
+    team_side = summary["teams"][team]
+    for cat in team_side["categories"]:
+        lines.append(f"  {cat['category']:<22} {cat['before']:6.3f}  {cat['after']:6.3f}"
+                     f"  {cat['delta']:+7.3f}  {cat['tie_pct']:6.1f}")
 
-    column_total = sum(share(after_rates, c) - share(before_rates, c)
-                       for c in before_rates)
-    headline = result["after"][team]["expected"] - result["before"][team]["expected"]
+    column_total = sum(cat["delta"] for cat in team_side["categories"])
     lines.append(f"  {'(column sum)':<22} {'':6}  {'':6}  {column_total:+7.3f}"
-                 f"   headline {headline:+.3f}")
+                 f"   headline {team_side['delta']:+.3f}")
 
     return "\n".join(lines)
 
@@ -310,7 +311,14 @@ def main() -> None:
     result = evaluate_trade(rosters, banks, args.team, args.partner, give, get,
                             LEAGUE_CONFIG["categories"], LEAGUE_CONFIG,
                             TRADE_CONFIG, replacement, player_values)
-    print(format_report(result, args.team, args.partner, give, get))
+    summary = summarize_trade_result(result, args.team, args.partner)
+    print(format_report(summary, args.team, args.partner, give, get))
+
+    if os.environ.get("DASHBOARD_JSON_SUMMARY"):
+        print(DASHBOARD_RESULT_PREFIX + json.dumps({
+            "team": args.team, "partner": args.partner,
+            "give": give, "get": get, **summary,
+        }))
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from config import LEAGUE_CONFIG, TRADE_CONFIG
-from trade import BANK_COLUMNS, add_missed_weeks, apply_trade, build_week_bank, pooled_donor_bank, quantize_bank_counts, category_win_rates, evaluate_roster_vs_field, evaluate_trade, expected_categories_won, games_per_week_pool, pad_to_roster_size, player_rng, scale_bank_to_projection, simulate_team_totals, synthesize_bank, trim_to_roster_size
+from trade import BANK_COLUMNS, add_missed_weeks, apply_trade, build_week_bank, pooled_donor_bank, quantize_bank_counts, category_win_rates, evaluate_roster_vs_field, evaluate_trade, expected_categories_won, games_per_week_pool, pad_to_roster_size, player_rng, scale_bank_to_projection, simulate_team_totals, summarize_trade_result, synthesize_bank, trim_to_roster_size
 
 
 def make_log(dates: list[str], **stats) -> pd.DataFrame:
@@ -943,3 +943,58 @@ class TechIsNotAFoulProxyTests(unittest.TestCase):
         banks = build_week_bank(logs, tech_rates={"A": 0.5, "B": 0.01})
         self.assertNotAlmostEqual(banks["A"][0, BANK_COLUMNS.index("TECH")],
                                   banks["B"][0, BANK_COLUMNS.index("TECH")])
+
+
+def _rates(**cats) -> dict:
+    return {c: {"win": w, "tie": t, "loss": 1.0 - w - t} for c, (w, t) in cats.items()}
+
+
+class SummarizeTradeResultTests(unittest.TestCase):
+    """
+    Structured summary of evaluate_trade's result, for a dashboard card --
+    same share-based (win + 0.5*tie) math analyze_trade.format_report prints,
+    just as data instead of aligned text.
+    """
+
+    def _result(self) -> dict:
+        before = _rates(PTS=(0.60, 0.00), DD=(0.40, 0.20))
+        after = _rates(PTS=(0.50, 0.00), DD=(0.55, 0.20))
+        exp = lambda r: sum(v["win"] + 0.5 * v["tie"] for v in r.values())
+        return {
+            "before": {"Me": {"expected": exp(before), "rates": before},
+                       "You": {"expected": 0.0, "rates": before}},
+            "after": {"Me": {"expected": exp(after), "rates": after},
+                      "You": {"expected": 0.0, "rates": after}},
+            "delta": {}, "roster_sizes_after": {},
+        }
+
+    def test_n_categories_counts_the_rated_categories(self) -> None:
+        summary = summarize_trade_result(self._result(), "Me", "You")
+        self.assertEqual(summary["n_categories"], 2)
+
+    def test_team_delta_matches_expected_before_after(self) -> None:
+        summary = summarize_trade_result(self._result(), "Me", "You")
+        me = summary["teams"]["Me"]
+        self.assertAlmostEqual(me["before"], 0.60 + 0.50)  # PTS .60 + DD .40+.5*.20
+        self.assertAlmostEqual(me["after"], 0.50 + 0.65)   # PTS .50 + DD .55+.5*.20
+        self.assertAlmostEqual(me["delta"], me["after"] - me["before"])
+
+    def test_category_rows_use_the_same_tie_heavy_half_win_convention(self) -> None:
+        # DD: win .40 tie .20 -> .50 before, win .55 tie .20 -> .65 after --
+        # the exact case FormatReportTests already covers for the printed
+        # report; this is the same math as data instead of text.
+        summary = summarize_trade_result(self._result(), "Me", "You")
+        dd = [c for c in summary["teams"]["Me"]["categories"] if c["category"] == "DD"][0]
+        self.assertAlmostEqual(dd["before"], 0.50, places=3)
+        self.assertAlmostEqual(dd["after"], 0.65, places=3)
+        self.assertAlmostEqual(dd["tie_pct"], 20.0, places=3)
+
+    def test_category_rows_sum_to_the_team_delta(self) -> None:
+        summary = summarize_trade_result(self._result(), "Me", "You")
+        me = summary["teams"]["Me"]
+        column_sum = sum(c["delta"] for c in me["categories"])
+        self.assertAlmostEqual(column_sum, me["delta"], places=3)
+
+    def test_both_team_and_partner_are_present(self) -> None:
+        summary = summarize_trade_result(self._result(), "Me", "You")
+        self.assertEqual(set(summary["teams"].keys()), {"Me", "You"})

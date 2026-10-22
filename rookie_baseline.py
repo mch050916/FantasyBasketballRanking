@@ -1,88 +1,234 @@
 """
-rookie_baseline.py — Historical rookie production baseline, by draft slot
-============================================================================
-Precomputed once from the last 3 completed draft classes (2023, 2024, 2025)
-via nba_api's DraftHistory + PlayerCareerStats endpoints -- NOT fetched or
-computed at pipeline runtime. See
-docs/superpowers/specs/2026-08-14-rookie-incorporation-design.md for the
-full design rationale.
+rookie_baseline.py — Two-stage rookie production model (pick curve + combine residual)
+=========================================================================================
+Stage 1: a continuous pick-slot curve (value = slope * ln(overall_pick) +
+intercept per category), fit once from the 3 most recent completed draft
+classes. Stage 2: a ridge-regularized residual adjustment from NBA Draft
+Combine measurements, included only for categories where leave-one-class-
+out cross-validation showed it actually reduces error (see
+run_leave_one_class_out_cv). Fitted coefficients live in the auto-generated
+rookie_baseline_fitted.py -- regenerate via scripts/build_rookie_baseline.py
+after a new draft class completes its rookie season.
 
-Methodology (reproduce this to refresh the table after future draft
-classes complete a rookie season):
-  1. For each draft year, fetch nba_api.stats.endpoints.DraftHistory
-     (season_year_nullable=<year>), keep picks 1-60.
-  2. For each drafted player, fetch
-     nba_api.stats.endpoints.PlayerCareerStats(player_id=..., per_mode36="PerGame"),
-     take the first row whose SEASON_ID starts with the draft year.
-  3. Skip players with no rookie-season row yet, or GP == 0 (not lookahead
-     bias -- these are draftees who haven't played their rookie season).
-  4. Bucket by overall pick (1-5, 6-14, 15-30, 31-60) and average each
-     category across the bucket.
-
-Sample sizes (2023-2025 draft classes): 1-5 n=15, 6-14 n=26, 15-30 n=46,
-31-60 n=75.
+See docs/superpowers/specs/2026-10-04-rookie-baseline-combine-regression-design.md
+for the full design rationale.
 """
 
+import math
+
+import numpy as np
 import pandas as pd
 
 from identity import canonical_player_key
 
+CATEGORIES = [
+    "GP", "MIN", "PTS", "REB", "AST", "ST", "BLK", "TO", "PF",
+    "FGM", "FGA", "FG%", "3PTM", "FTM",
+]
+
 TECH_DEFAULT = 0.05   # matches data.py:fetch_tech_per_game's own fallback estimate
 
-ROOKIE_BASELINE_BY_PICK_BUCKET: dict[tuple[int, int], dict[str, float]] = {
-    (1, 5): {
-        "GP": 70.333, "MIN": 26.313, "PTS": 13.547, "REB": 4.947, "AST": 2.94,
-        "ST": 0.92, "BLK": 0.753, "TO": 1.827, "PF": 2.233, "FGM": 5.093,
-        "FGA": 11.32, "FG%": 0.45, "3PTM": 1.4, "FTM": 1.98,
-        "DD": 0.0, "TD": 0.0, "TECH": TECH_DEFAULT,
-    },
-    (6, 14): {
-        "GP": 57.308, "MIN": 18.723, "PTS": 7.235, "REB": 3.604, "AST": 1.573,
-        "ST": 0.585, "BLK": 0.508, "TO": 1.015, "PF": 1.688, "FGM": 2.719,
-        "FGA": 6.065, "FG%": 0.434, "3PTM": 0.873, "FTM": 0.942,
-        "DD": 0.0, "TD": 0.0, "TECH": TECH_DEFAULT,
-    },
-    (15, 30): {
-        "GP": 50.022, "MIN": 16.672, "PTS": 6.417, "REB": 2.743, "AST": 1.63,
-        "ST": 0.48, "BLK": 0.285, "TO": 0.924, "PF": 1.378, "FGM": 2.367,
-        "FGA": 5.513, "FG%": 0.424, "3PTM": 0.798, "FTM": 0.885,
-        "DD": 0.0, "TD": 0.0, "TECH": TECH_DEFAULT,
-    },
-    (31, 60): {
-        "GP": 34.36, "MIN": 11.423, "PTS": 3.992, "REB": 2.053, "AST": 0.973,
-        "ST": 0.393, "BLK": 0.231, "TO": 0.551, "PF": 1.16, "FGM": 1.483,
-        "FGA": 3.401, "FG%": 0.429, "3PTM": 0.465, "FTM": 0.561,
-        "DD": 0.0, "TD": 0.0, "TECH": TECH_DEFAULT,
-    },
-}
+
+def fit_stage1_curve(rows: list[dict]) -> dict[str, dict[str, float]]:
+    """
+    Fit value = slope * ln(overall_pick) + intercept per category via
+    ordinary least squares, over every row with a real "actual" (rows with
+    actual=None -- no rookie-season data yet -- are skipped).
+    """
+    usable = [r for r in rows if r["actual"] is not None]
+    picks = np.array([r["overall_pick"] for r in usable], dtype=float)
+    ln_picks = np.log(picks)
+
+    coeffs: dict[str, dict[str, float]] = {}
+    for category in CATEGORIES:
+        values = np.array([r["actual"][category] for r in usable], dtype=float)
+        slope, intercept = np.polyfit(ln_picks, values, deg=1)
+        coeffs[category] = {"slope": float(slope), "intercept": float(intercept)}
+    return coeffs
 
 
-def get_rookie_baseline(overall_pick: int) -> dict[str, float] | None:
-    """
-    Return the historical per-game production baseline for a draft-slot
-    bucket, or None if the pick is out of range (undrafted, or an
-    off-by-error) -- undrafted players are explicitly out of scope for
-    this MVP.
-    """
-    for (lo, hi), baseline in ROOKIE_BASELINE_BY_PICK_BUCKET.items():
-        if lo <= overall_pick <= hi:
-            return dict(baseline)
-    return None
+def predict_stage1(stage1_coeffs: dict[str, dict[str, float]], category: str, overall_pick: int) -> float:
+    params = stage1_coeffs[category]
+    return params["slope"] * math.log(overall_pick) + params["intercept"]
 
 
-def pick_bucket_label(overall_pick: int) -> str | None:
+CURATED_COMBINE_FEATURES = [
+    "WINGSPAN", "WEIGHT", "MAX_VERTICAL_LEAP", "LANE_AGILITY_TIME",
+    "THREE_QUARTER_SPRINT",
+]
+
+
+def extract_combine_features(raw_combine_row: dict[str, float] | None) -> dict[str, float] | None:
     """
-    Return the draft-slot bucket label for a pick (e.g. "Picks 1-5"), or
-    None if out of range. Rookies sharing a bucket share identical baseline
-    stats by construction -- this is the real, non-manufactured grouping to
-    tier the rookie watch list by, instead of the arbitrary tie-break order
-    a numeric RANK 1-60 would otherwise assert (see GitHub issue, rookie
-    tiers change, 2026-08-15).
+    Reduce a raw combine row (data.py's COMBINE_RAW_COLUMNS) to the 5
+    curated Stage 2 features, or None if the player can't be scored --
+    triggers the Stage-1-only fallback (see predict_rookie_stats). Every
+    field is required -- each is an irreplaceable single measurement, not
+    an aggregate that tolerates partial data.
     """
-    for (lo, hi) in ROOKIE_BASELINE_BY_PICK_BUCKET:
-        if lo <= overall_pick <= hi:
-            return f"Picks {lo}-{hi}"
-    return None
+    if raw_combine_row is None:
+        return None
+
+    for field in CURATED_COMBINE_FEATURES:
+        value = raw_combine_row.get(field)
+        if value is None or (isinstance(value, float) and math.isnan(value)):
+            return None
+
+    return {field: float(raw_combine_row[field]) for field in CURATED_COMBINE_FEATURES}
+
+
+def fit_stage2_ridge(rows: list[dict], stage1_coeffs: dict[str, dict[str, float]],
+                     lam: float) -> dict[str, dict]:
+    """
+    Ridge-regress each category's Stage 1 residual (actual - Stage 1
+    prediction) against the 5 standardized CURATED_COMBINE_FEATURES, via
+    the closed-form solution beta = (X'X + lam*I)^-1 X'r. Only rows with
+    both a real "actual" and complete combine_features (see
+    extract_combine_features) are used.
+    """
+    usable = [r for r in rows if r["actual"] is not None and r["combine_features"] is not None]
+    if not usable:
+        return {}
+
+    X_raw = np.array(
+        [[r["combine_features"][f] for f in CURATED_COMBINE_FEATURES] for r in usable],
+        dtype=float,
+    )
+    feature_mean = X_raw.mean(axis=0)
+    feature_std = X_raw.std(axis=0, ddof=0)
+    feature_std = np.where(feature_std == 0, 1.0, feature_std)
+    X = (X_raw - feature_mean) / feature_std
+    identity = np.eye(X.shape[1])
+
+    params: dict[str, dict] = {}
+    for category in CATEGORIES:
+        residuals = np.array([
+            r["actual"][category] - predict_stage1(stage1_coeffs, category, r["overall_pick"])
+            for r in usable
+        ], dtype=float)
+        beta = np.linalg.solve(X.T @ X + lam * identity, X.T @ residuals)
+        params[category] = {
+            "beta": beta.tolist(),
+            "feature_mean": feature_mean.tolist(),
+            "feature_std": feature_std.tolist(),
+            "lambda": lam,
+        }
+    return params
+
+
+def predict_stage2_residual(stage2_params: dict[str, dict], category: str,
+                            combine_features: dict[str, float]) -> float:
+    params = stage2_params[category]
+    x = np.array([combine_features[f] for f in CURATED_COMBINE_FEATURES], dtype=float)
+    x_std = (x - np.array(params["feature_mean"])) / np.array(params["feature_std"])
+    return float(np.dot(x_std, params["beta"]))
+
+
+LAMBDA_GRID = [1.0, 3.0, 10.0, 30.0, 100.0]
+
+
+def run_leave_one_class_out_cv(rows_by_class: dict[str, list[dict]],
+                               lambda_grid: list[float] = LAMBDA_GRID) -> dict[str, dict]:
+    """
+    Leave-one-draft-class-out cross-validation: train on all classes but
+    one, predict the held-out class's real rookie-season production,
+    rotate through every class. Per category, reports whether adding the
+    Stage 2 combine-residual term (at whichever lambda in lambda_grid
+    minimizes pooled MAE across all 3 folds) beats Stage 1 alone -- a
+    category only gets stage2_included=True if the combined MAE is
+    strictly lower, not merely tied (the simpler model wins ties).
+    """
+    classes = list(rows_by_class.keys())
+    report: dict[str, dict] = {}
+
+    for category in CATEGORIES:
+        stage1_only_errors: list[float] = []
+        combined_errors_by_lambda: dict[float, list[float]] = {lam: [] for lam in lambda_grid}
+
+        for test_class in classes:
+            train_rows = [r for c in classes if c != test_class for r in rows_by_class[c]]
+            test_rows = [r for r in rows_by_class[test_class] if r["actual"] is not None]
+
+            stage1_coeffs = fit_stage1_curve(train_rows)
+
+            for r in test_rows:
+                if r["combine_features"] is None:
+                    continue
+                pred1 = predict_stage1(stage1_coeffs, category, r["overall_pick"])
+                stage1_only_errors.append(abs(pred1 - r["actual"][category]))
+
+            for lam in lambda_grid:
+                stage2_params = fit_stage2_ridge(train_rows, stage1_coeffs, lam)
+                if category not in stage2_params:
+                    continue
+                for r in test_rows:
+                    if r["combine_features"] is None:
+                        continue
+                    pred1 = predict_stage1(stage1_coeffs, category, r["overall_pick"])
+                    pred2 = predict_stage2_residual(stage2_params, category, r["combine_features"])
+                    combined_errors_by_lambda[lam].append(abs(pred1 + pred2 - r["actual"][category]))
+
+        stage1_only_mae = float(np.mean(stage1_only_errors)) if stage1_only_errors else float("nan")
+
+        best_lambda = None
+        best_combined_mae = None
+        for lam, errors in combined_errors_by_lambda.items():
+            if not errors:
+                continue
+            mae = float(np.mean(errors))
+            if best_combined_mae is None or mae < best_combined_mae:
+                best_combined_mae = mae
+                best_lambda = lam
+
+        # Require a 2% relative margin, not just a bare "<" win: with the
+        # row-set mismatch fixed (both MAEs now measured over the same
+        # combine-complete rows), many categories' margins shrink to
+        # well under 1% -- noise, not signal. The 2% margin subsumes the
+        # old math.isclose tie-guard (anything within 2% is exactly the
+        # kind of noise-level "win" that guard was built to catch).
+        stage2_included = (
+            best_combined_mae is not None
+            and best_combined_mae < stage1_only_mae * 0.98
+        )
+        report[category] = {
+            "stage1_only_mae": stage1_only_mae,
+            "best_combined_mae": best_combined_mae,
+            "chosen_lambda": best_lambda if stage2_included else None,
+            "stage2_included": stage2_included,
+        }
+
+    return report
+
+
+def predict_rookie_stats(fitted_model: dict, overall_pick: int,
+                         combine_features: dict[str, float] | None) -> dict[str, float]:
+    """
+    Final per-rookie prediction: Stage 1 (pick curve) plus Stage 2's
+    combine-residual adjustment, for whichever categories the leave-one-
+    class-out CV (run_leave_one_class_out_cv) found it actually helps.
+    Falls back to Stage 1 alone when combine_features is None (player has
+    no complete combine record -- see extract_combine_features) or for any
+    category CV didn't select Stage 2 for.
+    """
+    stage1_coeffs = fitted_model["stage1"]
+    stage2_params = fitted_model["stage2"]
+
+    result: dict[str, float] = {}
+    for category in CATEGORIES:
+        value = predict_stage1(stage1_coeffs, category, overall_pick)
+        if combine_features is not None and category in stage2_params:
+            value += predict_stage2_residual(stage2_params, category, combine_features)
+        if category == "GP":
+            value = min(value, 82.0)
+        if category in ("PTS", "REB", "AST", "ST", "BLK", "TO", "PF",
+                        "FGM", "FGA", "3PTM", "FTM", "MIN"):
+            value = max(value, 0.0)
+        result[category] = value
+
+    result["DD"] = 0.0
+    result["TD"] = 0.0
+    result["TECH"] = TECH_DEFAULT
+    return result
 
 
 ROOKIE_ROW_COLUMNS = [
@@ -92,17 +238,15 @@ ROOKIE_ROW_COLUMNS = [
 ]
 
 
-def build_rookie_rows(draft_history: dict[str, dict[str, int]],
-                      existing_players: set[str]) -> pd.DataFrame:
+def build_rookie_rows(draft_history: dict[str, dict], combine_stats: dict[str, dict],
+                      fitted_model: dict, existing_players: set[str]) -> pd.DataFrame:
     """
-    Build synthetic projection rows for drafted players with no prior NBA
-    history, from the historical draft-slot baseline.
+    Build synthetic projection rows for drafted players (picks 1-60) with
+    no prior NBA history, from the fitted two-stage regression model.
 
     Skips any player already present in existing_players (matched via
-    canonical_player_key, same identity scheme every other cross-source
-    match in this pipeline uses) -- they already have real projections
-    from project_stats() and must not be double-counted. Skips undrafted
-    or out-of-baseline-range picks (get_rookie_baseline returns None).
+    canonical_player_key) and any pick outside 1-60 (undrafted/out of
+    range -- not modeled, same scope as the original MVP).
     """
     existing_keys = {canonical_player_key(name) for name in existing_players}
 
@@ -111,13 +255,16 @@ def build_rookie_rows(draft_history: dict[str, dict[str, int]],
         if canonical_player_key(player_name) in existing_keys:
             continue
 
-        baseline = get_rookie_baseline(pick_info["overall_pick"])
-        if baseline is None:
+        overall_pick = pick_info["overall_pick"]
+        if not (1 <= overall_pick <= 60):
             continue
 
+        raw_combine = combine_stats.get(canonical_player_key(player_name))
+        combine_features = extract_combine_features(raw_combine) if raw_combine is not None else None
+
         row = {"PLAYER_NAME": player_name}
-        row.update(baseline)
-        row["OVERALL_PICK"] = pick_info["overall_pick"]
+        row.update(predict_rookie_stats(fitted_model, overall_pick, combine_features))
+        row["OVERALL_PICK"] = overall_pick
         rows.append(row)
 
     if not rows:

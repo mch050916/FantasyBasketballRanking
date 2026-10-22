@@ -10,6 +10,10 @@ from model import (
     calibrate_category_values,
     calibrate_milestone_value,
     compute_decline_factor,
+    compute_g_scores,
+    compute_gp_factor,
+    compute_kappa,
+    compute_positional_value,
     compute_tau,
     compute_trend_profile,
     project_stats,
@@ -478,6 +482,47 @@ class ProjectStatsTests(unittest.TestCase):
             places=9,
         )
 
+    def test_project_stats_excludes_injury_confirmed_season_via_cause_profile(self) -> None:
+        season_recent = pd.DataFrame([{
+            "PLAYER_NAME": "Hurt Guy", "AGE": 27, "GP": 30, "MIN": 30.0,
+            "FGM": 5.0, "FGA": 10.0, "FG%": 0.500, "3PTM": 2.0, "FTM": 4.0,
+            "PTS": 16.0, "REB": 5.0, "AST": 5.0, "ST": 1.0, "BLK": 0.5,
+            "TO": 2.0, "PF": 2.0,
+        }])
+        season_mid = pd.DataFrame([{
+            "PLAYER_NAME": "Hurt Guy", "AGE": 26, "GP": 82, "MIN": 30.0,
+            "FGM": 5.0, "FGA": 10.0, "FG%": 0.500, "3PTM": 2.0, "FTM": 4.0,
+            "PTS": 16.0, "REB": 5.0, "AST": 5.0, "ST": 1.0, "BLK": 0.5,
+            "TO": 2.0, "PF": 2.0,
+        }])
+        season_prior = pd.DataFrame([{
+            "PLAYER_NAME": "Hurt Guy", "AGE": 25, "GP": 82, "MIN": 30.0,
+            "FGM": 5.0, "FGA": 10.0, "FG%": 0.500, "3PTM": 2.0, "FTM": 4.0,
+            "PTS": 16.0, "REB": 5.0, "AST": 5.0, "ST": 1.0, "BLK": 0.5,
+            "TO": 2.0, "PF": 2.0,
+        }])
+
+        without_profile = project_stats(
+            season_dfs=[season_recent, season_mid, season_prior],
+            weights=[0.5, 0.3, 0.2],
+            derived_stats={},
+            tech_per_game={},
+            seasons=["2025-26", "2024-25", "2023-24"],
+        )
+        with_profile = project_stats(
+            season_dfs=[season_recent, season_mid, season_prior],
+            weights=[0.5, 0.3, 0.2],
+            derived_stats={},
+            tech_per_game={},
+            seasons=["2025-26", "2024-25", "2023-24"],
+            player_cause_profile={"Hurt Guy": {"2025-26": "injury_confirmed", "2024-25": "full_season", "2023-24": "full_season"}},
+        )
+
+        gp_factor_without = without_profile.iloc[0]["GP_FACTOR"]
+        gp_factor_with = with_profile.iloc[0]["GP_FACTOR"]
+        self.assertEqual(gp_factor_with, 1.0)
+        self.assertGreater(gp_factor_with, gp_factor_without)
+
 
 class AddWeekKeyTests(unittest.TestCase):
     def test_groups_dates_into_iso_weeks_without_mutating_input(self) -> None:
@@ -491,6 +536,324 @@ class AddWeekKeyTests(unittest.TestCase):
         logs = pd.DataFrame({"GAME_DATE": ["2025-12-30"], "PTS": [5]})
         result = add_week_key(logs)
         self.assertEqual(result.loc[0, "WEEK_KEY"], "2026_1")
+
+
+class ComputeGpFactorTests(unittest.TestCase):
+    def test_unexplained_low_gp_season_behaves_identically_to_current_code(self) -> None:
+        # Regression guard: no season_causes argument at all (the exact
+        # call shape every existing caller uses today) must produce the
+        # exact same factor as before this change -- zero behavior change
+        # for the unexplained majority.
+        player_season_stats = {
+            "2024-25": pd.Series({"GP": 40}),
+            "2023-24": pd.Series({"GP": 82}),
+        }
+        factor_without_causes_arg = compute_gp_factor(
+            player_season_stats=player_season_stats,
+            available_seasons=["2024-25", "2023-24"],
+            weights=[0.6, 0.4],
+        )
+        factor_with_unexplained_causes = compute_gp_factor(
+            player_season_stats=player_season_stats,
+            available_seasons=["2024-25", "2023-24"],
+            weights=[0.6, 0.4],
+            season_causes={"2024-25": "unexplained", "2023-24": "full_season"},
+        )
+        self.assertEqual(factor_without_causes_arg, factor_with_unexplained_causes)
+        # 0.6*40 + 0.4*82 = 56.8; 56.8/82 = 0.6927
+        self.assertAlmostEqual(factor_without_causes_arg, 0.6927, places=3)
+
+    def test_injury_confirmed_season_is_excluded_when_enough_seasons_remain(self) -> None:
+        player_season_stats = {
+            "2025-26": pd.Series({"GP": 40}),  # the injury-confirmed shortfall
+            "2024-25": pd.Series({"GP": 82}),  # a clean full season
+            "2023-24": pd.Series({"GP": 82}),  # a second clean full season
+        }
+        factor_with_injury_excluded = compute_gp_factor(
+            player_season_stats=player_season_stats,
+            available_seasons=["2025-26", "2024-25", "2023-24"],
+            weights=[0.5, 0.3, 0.2],
+            season_causes={"2025-26": "injury_confirmed", "2024-25": "full_season", "2023-24": "full_season"},
+        )
+        factor_without_exclusion = compute_gp_factor(
+            player_season_stats=player_season_stats,
+            available_seasons=["2025-26", "2024-25", "2023-24"],
+            weights=[0.5, 0.3, 0.2],
+        )
+        # Excluding the confirmed-injury season leaves two clean 82-GP
+        # seasons -> factor of 1.0, strictly higher than the blended
+        # (lower) unmodified factor. 2 remaining seasons clears
+        # MIN_REMAINING_SEASONS_AFTER_EXCLUSION, so the exclusion applies.
+        self.assertEqual(factor_with_injury_excluded, 1.0)
+        self.assertGreater(factor_with_injury_excluded, factor_without_exclusion)
+
+    def test_injury_confirmed_exclusion_suppressed_when_it_would_leave_zero_seasons(self) -> None:
+        # The guard suppresses the exclusion before it ever empties
+        # gp_vals, so this returns the single season's own (unexcluded,
+        # floor-clamped) factor, not the pre-existing "no gp_vals at all"
+        # fallback of 1.0.
+        player_season_stats = {"2024-25": pd.Series({"GP": 20})}
+        factor = compute_gp_factor(
+            player_season_stats=player_season_stats,
+            available_seasons=["2024-25"],
+            weights=[1.0],
+            season_causes={"2024-25": "injury_confirmed"},
+        )
+        # 20/82 = 0.2439, clipped to the 0.50 floor.
+        self.assertEqual(factor, 0.50)
+
+    def test_injury_confirmed_season_not_excluded_when_only_one_season_would_remain(self) -> None:
+        # Real shape from the ADR-0001 validation gate: a player with
+        # exactly 2 real seasons, one injury-confirmed. Excluding it would
+        # leave only 1 remaining season -- below the 2-season guard -- so
+        # this must NOT apply the exclusion: the result must be identical
+        # to the unexcluded blend.
+        player_season_stats = {
+            "2025-26": pd.Series({"GP": 40}),
+            "2023-24": pd.Series({"GP": 82}),
+        }
+        factor_with_causes = compute_gp_factor(
+            player_season_stats=player_season_stats,
+            available_seasons=["2025-26", "2023-24"],
+            weights=[0.6, 0.4],
+            season_causes={"2025-26": "injury_confirmed", "2023-24": "full_season"},
+        )
+        factor_without_causes = compute_gp_factor(
+            player_season_stats=player_season_stats,
+            available_seasons=["2025-26", "2023-24"],
+            weights=[0.6, 0.4],
+        )
+        self.assertEqual(factor_with_causes, factor_without_causes)
+        self.assertAlmostEqual(factor_with_causes, 0.6927, places=3)
+
+    def test_unlabeled_synthetic_season_does_not_count_toward_remaining(self) -> None:
+        # Real shape from the whole-branch review: Saddiq Bey has 2 real
+        # seasons (one injury-confirmed) plus one synthetic GP=0 entry
+        # for a season he's fully absent from (_missing_season_gp) --
+        # causes.py never labels a synthetic season, so it must not
+        # count toward "remaining" real seasons. Without this fix, the
+        # guard would see 2 "remaining" entries (the 1 real non-injury
+        # season + the unlabeled synthetic one) and wrongly apply the
+        # exclusion, leaving only 1 real season actually backing the
+        # blend -- exactly the pathology this guard exists to prevent.
+        player_season_stats = {
+            "2025-26": pd.Series({"GP": 72}),   # real, not injury-confirmed
+            "2023-24": pd.Series({"GP": 63}),   # real, injury-confirmed
+            "2024-25": pd.Series({"GP": 0}),    # synthetic _missing_season_gp entry
+        }
+        season_causes = {
+            "2025-26": "unexplained",
+            "2023-24": "injury_confirmed",
+            # "2024-25" deliberately absent -- causes.py never labels a
+            # season it has no real GP/team data for.
+        }
+        factor_with_causes = compute_gp_factor(
+            player_season_stats=player_season_stats,
+            available_seasons=["2025-26", "2023-24", "2024-25"],
+            weights=[0.5, 0.3, 0.2],
+            season_causes=season_causes,
+        )
+        factor_without_causes = compute_gp_factor(
+            player_season_stats=player_season_stats,
+            available_seasons=["2025-26", "2023-24", "2024-25"],
+            weights=[0.5, 0.3, 0.2],
+        )
+        # Only 1 real labeled non-injury season ("2025-26") would remain
+        # -- below MIN_REMAINING_SEASONS_AFTER_EXCLUSION -- so the
+        # exclusion must be suppressed: identical to the unexcluded blend.
+        self.assertEqual(factor_with_causes, factor_without_causes)
+
+    def test_injury_confirmed_exclusion_can_lower_the_factor_too(self) -> None:
+        # The exclusion removes a season because its cause is already
+        # priced in elsewhere, not because it was a bad season -- if the
+        # excluded season happens to be the player's BEST availability
+        # data point, removing it can legitimately lower the factor.
+        # Real shape: a player whose confirmed-injury season was their
+        # highest-GP season of the three (e.g. Jerami Grant).
+        player_season_stats = {
+            "2025-26": pd.Series({"GP": 57}),  # injury-confirmed, but his best season
+            "2024-25": pd.Series({"GP": 47}),
+            "2023-24": pd.Series({"GP": 54}),
+        }
+        season_causes = {
+            "2025-26": "injury_confirmed",
+            "2024-25": "unexplained",
+            "2023-24": "unexplained",
+        }
+        factor_with_exclusion = compute_gp_factor(
+            player_season_stats=player_season_stats,
+            available_seasons=["2025-26", "2024-25", "2023-24"],
+            weights=[0.5, 0.3, 0.2],
+            season_causes=season_causes,
+        )
+        factor_without_exclusion = compute_gp_factor(
+            player_season_stats=player_season_stats,
+            available_seasons=["2025-26", "2024-25", "2023-24"],
+            weights=[0.5, 0.3, 0.2],
+        )
+        # 2 real non-injury seasons remain (clears the guard floor), so
+        # the exclusion applies -- and here it legitimately LOWERS the
+        # factor, since the excluded season was the best of the three.
+        self.assertLess(factor_with_exclusion, factor_without_exclusion)
+
+
+class ComputePositionalValueTests(unittest.TestCase):
+    def test_overflow_players_start_via_flex_and_util_before_bench(self) -> None:
+        # 1 team, slots PG/G/Util (1 each) -- 4 PGs compete for 3 guard-
+        # eligible slots. Highest value fills the dedicated PG slot first,
+        # next fills the flex G slot, next fills Util, and the 4th is left
+        # on the bench (below replacement).
+        config = {
+            "num_teams": 1,
+            "roster_slots": ["PG", "G", "Util"],
+        }
+        df = pd.DataFrame([
+            {"PLAYER_NAME": "P1", "POSITION": "PG", "TOTAL_VALUE": 10.0},
+            {"PLAYER_NAME": "P2", "POSITION": "PG", "TOTAL_VALUE": 8.0},
+            {"PLAYER_NAME": "P3", "POSITION": "PG", "TOTAL_VALUE": 6.0},
+            {"PLAYER_NAME": "P4", "POSITION": "PG", "TOTAL_VALUE": 4.0},
+        ])
+
+        result = compute_positional_value(df, config)
+        by_name = result.set_index("PLAYER_NAME")["POSITIONAL_VALUE"]
+
+        # Replacement level = lowest TOTAL_VALUE among the 3 players who
+        # actually started (P3, value 6) -- P1/P2/P3 all start (dedicated,
+        # flex, Util in turn), P4 is pushed below replacement.
+        self.assertAlmostEqual(by_name["P1"], 4.0)   # 10 - 6
+        self.assertAlmostEqual(by_name["P3"], 0.0)   # 6 - 6 (at replacement)
+        self.assertAlmostEqual(by_name["P4"], -2.0)  # 4 - 6 (benched)
+
+    def test_position_with_no_flex_benches_sooner_than_one_with_flex(self) -> None:
+        # 1 team, 1 dedicated slot each for PG/C, a flex G slot (PG-eligible,
+        # not C-eligible), and no Util -- isolates the effect of PG having a
+        # flex outlet while C has none.
+        config = {
+            "num_teams": 1,
+            "roster_slots": ["PG", "G", "C"],
+        }
+        df = pd.DataFrame([
+            {"PLAYER_NAME": "PG1", "POSITION": "PG", "TOTAL_VALUE": 10.0},
+            {"PLAYER_NAME": "C1",  "POSITION": "C",  "TOTAL_VALUE": 9.0},
+            {"PLAYER_NAME": "PG2", "POSITION": "PG", "TOTAL_VALUE": 5.0},
+            {"PLAYER_NAME": "C2",  "POSITION": "C",  "TOTAL_VALUE": 4.0},
+        ])
+
+        result = compute_positional_value(df, config)
+        by_name = result.set_index("PLAYER_NAME")["POSITIONAL_VALUE"]
+
+        # PG2 starts via the G flex slot (replacement = 5, itself).
+        # C2 has nowhere left to go once the single C slot is taken by C1
+        # (no flex, no Util) -- benched, well below C's replacement (9).
+        self.assertAlmostEqual(by_name["PG2"], 0.0)   # 5 - 5
+        self.assertAlmostEqual(by_name["C2"], -5.0)   # 4 - 9
+
+
+class ComputeGScoresPoolSizeTests(unittest.TestCase):
+    def _make_projected(self, n_players: int) -> pd.DataFrame:
+        cats = list(LEAGUE_CONFIG["categories"].keys())
+        rows = []
+        for i in range(n_players):
+            row = {"PLAYER_NAME": f"Player {i}", "MIN": float(40 - i), "PTS": float(20 - i * 0.1), "FGA": float(10.0 + i)}
+            for cat in cats:
+                if cat not in row:
+                    row[cat] = 1.0 + (i % 5) * 0.1
+            rows.append(row)
+        return pd.DataFrame(rows)
+
+    def test_pool_size_none_matches_config_derived_default(self) -> None:
+        projected = self._make_projected(LEAGUE_CONFIG["num_teams"] * LEAGUE_CONFIG["roster_size"] + 20)
+
+        default_result = compute_g_scores(projected, {}, {}, LEAGUE_CONFIG)
+        explicit_result = compute_g_scores(
+            projected, {}, {}, LEAGUE_CONFIG,
+            pool_size=LEAGUE_CONFIG["num_teams"] * LEAGUE_CONFIG["roster_size"],
+        )
+
+        pd.testing.assert_frame_equal(default_result, explicit_result)
+
+    def test_explicit_pool_size_includes_more_players_than_the_config_default(self) -> None:
+        floor = LEAGUE_CONFIG["num_teams"] * LEAGUE_CONFIG["roster_size"]
+        projected = self._make_projected(floor + 20)
+
+        default_result = compute_g_scores(projected, {}, {}, LEAGUE_CONFIG)
+        widened_result = compute_g_scores(projected, {}, {}, LEAGUE_CONFIG, pool_size=floor + 20)
+
+        self.assertEqual(len(default_result), floor)
+        self.assertEqual(len(widened_result), floor + 20)
+
+
+class ComputeGScoresExtraRowsTests(unittest.TestCase):
+    def _row(self, name: str, min_: float, pts: float) -> dict:
+        cats = list(LEAGUE_CONFIG["categories"].keys())
+        row = {"PLAYER_NAME": name, "MIN": min_, "PTS": pts, "FGA": 10.0}
+        for cat in cats:
+            if cat not in row:
+                # Constant across every row (norm pool and extra alike) so
+                # every category except PTS has zero variance and
+                # contributes nothing to TOTAL_VALUE -- isolates the PTS
+                # math for hand verification below.
+                row[cat] = 1.0
+        return row
+
+    def test_norm_pool_total_value_identical_with_or_without_extra_rows(self) -> None:
+        projected = pd.DataFrame([
+            self._row("P0", 40.0, 20.0),
+            self._row("P1", 39.0, 10.0),
+            self._row("P2", 38.0, 0.0),
+        ])
+        extra_rows = pd.DataFrame([self._row("Extra", 5.0, -50.0)])
+
+        without_extra = compute_g_scores(projected, {}, {}, LEAGUE_CONFIG, pool_size=3)
+        with_extra = compute_g_scores(
+            projected, {}, {}, LEAGUE_CONFIG, pool_size=3, extra_rows=extra_rows,
+        )
+
+        norm_names = ["P0", "P1", "P2"]
+        a = without_extra.set_index("PLAYER_NAME").loc[norm_names, "TOTAL_VALUE"].sort_index()
+        b = with_extra.set_index("PLAYER_NAME").loc[norm_names, "TOTAL_VALUE"].sort_index()
+        pd.testing.assert_series_equal(a, b)
+
+    def test_extra_row_is_scored_against_the_fixed_norm_baseline(self) -> None:
+        projected = pd.DataFrame([
+            self._row("P0", 40.0, 20.0),
+            self._row("P1", 39.0, 10.0),
+            self._row("P2", 38.0, 0.0),
+        ])
+        extra_rows = pd.DataFrame([self._row("Extra", 5.0, 15.0)])
+
+        result = compute_g_scores(
+            projected, {}, {}, LEAGUE_CONFIG, pool_size=3, extra_rows=extra_rows,
+        )
+
+        self.assertIn("Extra", result["PLAYER_NAME"].values)
+        self.assertEqual(len(result), 4)
+
+        # Hand-computed expected PTS_G for "Extra" using ONLY the norm
+        # pool's own PTS mean/sigma (10.0 / 8.1649...) -- not a mean/sigma
+        # that includes Extra's own 15.0, which would be a different
+        # (lower) number.
+        kappa = compute_kappa(LEAGUE_CONFIG["roster_size"])
+        norm_pts = np.array([20.0, 10.0, 0.0])
+        mean, sigma = norm_pts.mean(), norm_pts.std()
+        tau = 1.0  # default fallback: player_tau/league_tau both {}
+        denom = np.sqrt(sigma ** 2 + kappa * tau ** 2)
+        expected_pts_g = np.clip((15.0 - mean) / denom, -3.5, 3.5) * LEAGUE_CONFIG["category_weights"]["PTS"]
+
+        extra_row = result[result["PLAYER_NAME"] == "Extra"].iloc[0]
+        self.assertAlmostEqual(extra_row["PTS_G"], expected_pts_g)
+
+    def test_extra_rows_none_is_unaffected(self) -> None:
+        projected = pd.DataFrame([
+            self._row("P0", 40.0, 20.0),
+            self._row("P1", 39.0, 10.0),
+            self._row("P2", 38.0, 0.0),
+        ])
+
+        implicit = compute_g_scores(projected, {}, {}, LEAGUE_CONFIG, pool_size=3)
+        explicit = compute_g_scores(projected, {}, {}, LEAGUE_CONFIG, pool_size=3, extra_rows=None)
+
+        pd.testing.assert_frame_equal(implicit, explicit)
 
 
 if __name__ == "__main__":

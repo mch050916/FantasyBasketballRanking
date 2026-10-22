@@ -18,15 +18,24 @@ Everything else is automatic.
 from pathlib import Path
 from datetime import datetime
 
+import pandas as pd
+
+import causes
+
 from benchmark_ingest import assess_benchmark_readiness, benchmark_snapshot_filename
 from config   import LEAGUE_CONFIG
 from data     import load_bbr_csv, filter_qualified, fetch_game_logs, \
                      fetch_tech_per_game, derive_stats_from_logs, \
                      build_non_actionable_suppression_report, fetch_draft_history, \
-                     fetch_current_teams, detect_team_changes
-from model    import project_stats, compute_tau, compute_g_scores
-from output   import format_rankings, save_rankings, format_rookie_tiers, save_rookie_tiers
+                     fetch_combine_stats, \
+                     fetch_current_teams, detect_team_changes, \
+                     fetch_injury_reports, summarize_season_injuries, reformat_lastfirst_name, \
+                     classify_injury_tier_with_carryover, INJURY_TIER_YEAR1_DISCOUNT
+from identity import canonical_player_key
+from model    import project_stats, compute_tau, compute_g_scores, compute_positional_value
+from output   import format_rankings, save_rankings
 from rookie_baseline import build_rookie_rows
+from rookie_baseline_fitted import FITTED_MODEL as ROOKIE_FITTED_MODEL
 from validate import (
     append_benchmark_history,
     build_breakout_availability_summary,
@@ -69,6 +78,100 @@ def derive_projection_season_label(most_recent_completed_season: str) -> tuple[s
 PROJECTION_SEASON_SLUG, PROJECTION_SEASON_LABEL = derive_projection_season_label(
     LEAGUE_CONFIG["game_log_seasons"][0]
 )
+
+
+def derive_pool_size(config: dict, qualified_pool: pd.DataFrame,
+                     rosters_file: str = "rosters.csv", buffer: int = 30) -> int:
+    # Deliberately unwired -- no caller in main(). Widening the pool to this
+    # size regressed MAE on the ADR-0001 validation gate; kept as plumbing
+    # for a future, better-scoped attempt. Do not re-wire without reading
+    # the 2026-10-21 pool-size-widening final whole-branch review.
+    # Superseded for the real fix by build_extra_rows (below) + compute_g_scores'
+    # extra_rows param -- scores real rostered players outside the pool without
+    # widening the normalization baseline this function's approach required.
+    """
+    Real-roster-aware pool size for compute_g_scores' nlargest truncation.
+
+    At minimum num_teams*roster_size (today's flat ceiling). When
+    `rosters_file` exists, grown to cover the deepest real rostered
+    player's MIN rank in `qualified_pool` (the post-project_stats,
+    pre-G-score population -- the exact population compute_g_scores itself
+    ranks by MIN before truncating) plus `buffer` extra slots for in-season
+    waiver-wire depth. Falls back to the flat floor pre-draft, or on a
+    fresh checkout with no rosters.csv yet -- zero behavior change until a
+    real roster exists.
+
+    A rostered name that doesn't match anything in `qualified_pool` is
+    silently skipped here -- it's not this function's job to raise on an
+    unresolved name (resolve_roster_players, called elsewhere in the
+    pipeline, already does that clearly).
+    """
+    floor = config["num_teams"] * config["roster_size"]
+
+    rosters_path = Path(rosters_file)
+    if not rosters_path.exists():
+        return floor
+
+    from rosters import load_rosters
+    rostered_keys = {
+        canonical_player_key(name)
+        for players in load_rosters(rosters_file).values()
+        for name in players
+    }
+
+    ranked = qualified_pool.sort_values("MIN", ascending=False).reset_index(drop=True)
+    key_to_rank = {
+        canonical_player_key(name): i + 1 for i, name in enumerate(ranked["PLAYER_NAME"])
+    }
+
+    deepest_rank = max(
+        (key_to_rank[key] for key in rostered_keys if key in key_to_rank),
+        default=0,
+    )
+
+    return max(floor, deepest_rank + buffer)
+
+
+def build_extra_rows(projected: pd.DataFrame, pool_size: int,
+                     rosters_file: str = "rosters.csv") -> pd.DataFrame:
+    """
+    Real rostered players outside compute_g_scores' normalization pool.
+
+    Returns rows from `projected` (same schema) for every rostered player
+    whose canonical name doesn't appear in the pool_size-truncated,
+    MIN-ranked population compute_g_scores would otherwise limit itself to
+    -- the exact population compute_g_scores' `extra_rows` parameter exists
+    for: real drafted players scored against the pool's fixed normalization
+    baseline instead of silently excluded (see model.py's docstring and
+    the 2026-10-21 pool-size-widening final whole-branch review for why
+    THIS is the narrow fix, not widening pool_size itself). Empty (same
+    columns, zero rows) when `rosters_file` doesn't exist (pre-draft) or
+    every rostered player is already inside the pool -- zero behavior
+    change in either case.
+
+    A rostered name that doesn't match anything in `projected` is silently
+    skipped here, same convention as derive_pool_size -- it's not this
+    function's job to raise on an unresolved name (resolve_roster_players,
+    called elsewhere in the pipeline, already does that clearly).
+    """
+    rosters_path = Path(rosters_file)
+    if not rosters_path.exists():
+        return projected.iloc[0:0]
+
+    from rosters import load_rosters
+    rostered_keys = {
+        canonical_player_key(name)
+        for players in load_rosters(rosters_file).values()
+        for name in players
+    }
+
+    pool = projected.dropna(subset=["PTS"]).nlargest(pool_size, "MIN")
+    pool_keys = {canonical_player_key(name) for name in pool["PLAYER_NAME"]}
+    missing_keys = rostered_keys - pool_keys
+
+    name_keys = projected["PLAYER_NAME"].apply(canonical_player_key)
+    return projected[name_keys.isin(missing_keys)].drop_duplicates(subset="PLAYER_NAME")
+
 
 OUTPUT_FILE     = f"durant_rankings_{PROJECTION_SEASON_SLUG}.csv"
 ROOKIE_OUTPUT_FILE = f"durant_rankings_rookies_{PROJECTION_SEASON_SLUG}.csv"
@@ -408,11 +511,19 @@ def main() -> None:
     season_player_sets: list[set[str]] = []
     season_raw_gp: list[dict[str, int]] = []
     season_raw_team: list[dict[str, str]] = []
+    position_by_player: dict[str, str] = {}
     for path in BBR_FILES:
         raw_df = load_bbr_csv(path)
         season_player_sets.append(set(raw_df["PLAYER_NAME"]))
         season_raw_gp.append(dict(zip(raw_df["PLAYER_NAME"], raw_df["GP"])))
         season_raw_team.append(dict(zip(raw_df["PLAYER_NAME"], raw_df["BBR_TEAM"])))
+        # Newest season's position wins when a player appears in more than
+        # one (setdefault, processed newest-first) -- position rarely
+        # changes, but this also covers the issue #11 case where a player
+        # is entirely absent from the newest BBR file (no position to read
+        # there at all) by falling back to their last season with one.
+        for name, position in zip(raw_df["PLAYER_NAME"], raw_df["POSITION"]):
+            position_by_player.setdefault(name, position)
         df = filter_qualified(raw_df, config)
         season_dfs.append(df)
         print(f"   {path}: {len(df)} qualified players")
@@ -482,6 +593,80 @@ def main() -> None:
     for cat, tau in sorted(league_tau.items()):
         print(f"     {cat:<6} {tau:.3f}")
 
+    # ── Recent severe injuries — fetched here, before projection, because
+    # a confirmed injury-type match now feeds a real discount into
+    # project_stats below (not just a display flag). Real NBA injury-report
+    # data (body part + mechanism) for the pool's most recent loaded season
+    # -- addresses the healthy-worker survivorship bias flagged around
+    # GitHub issue #11: GP_FACTOR can see THAT a season was thin, never WHY.
+    # Best-effort: needs a local Java runtime for nbainjuries' PDF parsing,
+    # which may not be installed everywhere this pipeline runs.
+    try:
+        injury_reports = fetch_injury_reports(
+            seasons=config["game_log_seasons"],
+            cache_file=config["injury_reports_cache"],
+        )
+        all_season_injuries = summarize_season_injuries(injury_reports)
+        season_injuries = all_season_injuries.get(config["game_log_seasons"][0], {})
+        severe_injury_by_key = {
+            canonical_player_key(reformat_lastfirst_name(name)): info["severe_reasons"]
+            for name, info in season_injuries.items()
+            if info["had_severe_injury"]
+        }
+        # One season back only -- a real diagnosis report (e.g. "ACL tear")
+        # sometimes only appears in the season the injury actually happened
+        # in, with the current season's own reports genericizing an ongoing
+        # absence as just "Surgery" (see classify_injury_tier_with_carryover
+        # in data.py). Used only to recover a tier when the current season's
+        # text alone doesn't name one, gated on matching body-part location.
+        prior_season_injuries = (
+            all_season_injuries.get(config["game_log_seasons"][1], {})
+            if len(config["game_log_seasons"]) > 1 else {}
+        )
+        prior_severe_by_key = {
+            canonical_player_key(reformat_lastfirst_name(name)): info["severe_reasons"]
+            for name, info in prior_season_injuries.items()
+            if info["had_severe_injury"]
+        }
+        # For causes.py's per-season cause attribution (all 3 loaded
+        # seasons, not just current+prior -- the data was already fetched
+        # above for all 3, this just reads the rest of what's there).
+        severe_reasons_by_season = {
+            season: {
+                canonical_player_key(reformat_lastfirst_name(name)): info["severe_reasons"]
+                for name, info in all_season_injuries.get(season, {}).items()
+                if info["had_severe_injury"]
+            }
+            for season in config["game_log_seasons"]
+        }
+    except Exception as e:
+        print(f"   [warn] Injury-report fetch skipped: {e.__class__.__name__}: {e}")
+        severe_injury_by_key = {}
+        prior_severe_by_key = {}
+        severe_reasons_by_season = {}
+
+    # Only ACL/Achilles/meniscus carry a real NBA-outcome-study-backed
+    # discount (see data.py's INJURY_TIER_YEAR1_DISCOUNT for the full
+    # citations and reasoning) -- every other severe-injury match stays
+    # flagged on the board but doesn't move the projection, since no
+    # NBA-specific study was found to ground a number for it.
+    injury_tier_by_key = {
+        key: classify_injury_tier_with_carryover(reasons, prior_severe_by_key.get(key, []))
+        for key, reasons in severe_injury_by_key.items()
+    }
+    injury_discount_by_key = {
+        key: INJURY_TIER_YEAR1_DISCOUNT[tier]
+        for key, tier in injury_tier_by_key.items()
+        if tier is not None
+    }
+
+    player_cause_profile = causes.build_player_cause_profile(
+        seasons=config["game_log_seasons"],
+        gp_by_season=dict(zip(config["game_log_seasons"], season_raw_gp)),
+        team_by_season=dict(zip(config["game_log_seasons"], season_raw_team)),
+        severe_reasons_by_season=severe_reasons_by_season,
+    )
+
     # ── 5. Project stats and compute G-scores ────────────────────────────
     print("\n[5/5] Projecting stats and computing G-scores...")
 
@@ -490,6 +675,8 @@ def main() -> None:
         seasons=config["game_log_seasons"],
         raw_player_sets=season_player_sets,
         raw_gp_by_season=season_raw_gp,
+        injury_discount_by_player=injury_discount_by_key,
+        player_cause_profile=player_cause_profile,
     )
     projected = projected.dropna(subset=["PTS"])
     print(f"   {len(projected)} players with projections")
@@ -498,9 +685,28 @@ def main() -> None:
         draft_years=config["draft_years"],
         cache_file=config["draft_history_cache"],
     )
-    rookie_rows = build_rookie_rows(draft_history, existing_players=set(projected["PLAYER_NAME"]))
+    combine_stats = fetch_combine_stats(cache_file=config["combine_stats_cache"])
+    rookie_rows = build_rookie_rows(
+        draft_history, combine_stats, ROOKIE_FITTED_MODEL,
+        existing_players=set(projected["PLAYER_NAME"]),
+    )
 
-    rankings = compute_g_scores(projected, player_tau, league_tau, config)
+    # extra_rows: real rostered players outside the top pool_size (today's
+    # flat num_teams*roster_size) get a real TOTAL_VALUE scored against the
+    # pool's fixed normalization baseline, without widening that baseline
+    # itself -- see compute_g_scores' docstring and the 2026-10-21
+    # pool-size-widening final whole-branch review for why pool_size stays
+    # untouched here (widening it directly failed the ADR-0001 gate).
+    flat_pool_size = config["num_teams"] * config["roster_size"]
+    extra_rows = build_extra_rows(projected, flat_pool_size)
+    rankings = compute_g_scores(projected, player_tau, league_tau, config, extra_rows=extra_rows)
+
+    # Positional scarcity — supplementary metric only, doesn't touch
+    # TOTAL_VALUE/RANK. Every pool player has a position here: position_by_player
+    # is built above from all 3 raw BBR seasons (setdefault, newest wins),
+    # the same source every pool player's row ultimately comes from.
+    rankings["POSITION"] = rankings["PLAYER_NAME"].map(position_by_player)
+    rankings = compute_positional_value(rankings, config)
 
     # ── Team changes — diagnostic flag only, no projection adjustment ──────
     # Whether a trade/signing helps or hurts a player's output is a much
@@ -516,6 +722,16 @@ def main() -> None:
         current_team_by_player=current_teams,
     )
     rankings["TEAM_CHANGED"] = rankings["PLAYER_NAME"].map(team_changes).fillna("")
+
+    rankings["RECENT_SEVERE_INJURY"] = rankings["PLAYER_NAME"].apply(
+        lambda name: "; ".join(severe_injury_by_key.get(canonical_player_key(name), []))
+    )
+
+    rankings["CAUSE_PROFILE_SUMMARY"] = rankings["PLAYER_NAME"].apply(
+        lambda name: causes.summarize_cause_profile(
+            player_cause_profile.get(name, {}), config["game_log_seasons"],
+        )
+    )
 
     # ── Output ───────────────────────────────────────────────────────────
     pool_size = config["num_teams"] * config["roster_size"]
@@ -558,17 +774,18 @@ def main() -> None:
     # forcing them through that cutoff, rank them against each other using
     # the same G-score machinery, scored against their own population's
     # distribution, and save as a separate file. This is a speculative,
-    # lower-confidence list: rookies are projected from a historical
-    # draft-slot production baseline (see rookie_baseline.py), not real
-    # in-season data. Displayed as tiers, not a RANK 1-N: rookies sharing a
-    # draft-slot bucket share identical projected stats by construction, so
-    # a numeric rank would assert an ordering precision that doesn't exist.
+    # lower-confidence list: rookies are projected from a two-stage pick-
+    # curve + combine-residual regression (see rookie_baseline.py), not
+    # real in-season data. Individually ranked, not tiered -- the model
+    # now gives each rookie a genuinely distinct prediction (see
+    # docs/superpowers/specs/2026-10-04-rookie-baseline-combine-regression-design.md),
+    # unlike the old discrete draft-slot buckets this replaced.
     if not rookie_rows.empty:
         rookie_rankings = compute_g_scores(rookie_rows, {}, league_tau, config)
         print(f"\n\nROOKIE WATCH LIST — {len(rookie_rankings)} incoming rookies, ranked separately")
-        print("(speculative: historical draft-slot production baselines, not real in-season data)")
-        print(format_rookie_tiers(rookie_rankings))
-        save_rookie_tiers(rookie_rankings, ROOKIE_OUTPUT_FILE)
+        print("(speculative: pick-curve + combine-residual regression, not real in-season data)")
+        print(format_rankings(rookie_rankings, config, top_n=len(rookie_rankings)))
+        save_rankings(rookie_rankings, ROOKIE_OUTPUT_FILE)
 
     # ── Validation ───────────────────────────────────────────────────────
     validation_results: list[dict[str, object]] = []

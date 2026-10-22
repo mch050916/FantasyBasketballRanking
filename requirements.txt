@@ -4,3 +4,11 @@ scipy>=1.10.0
 nba_api>=1.4.0
 tabulate>=0.9.0
 requests>=2.28.0
+# nbainjuries fetches real NBA injury-type data (body part + mechanism) for
+# the healthy-worker survivorship-bias correction -- see data.py's
+# fetch_injury_reports. Needs a local Java runtime (JRE/JDK 8+), used
+# internally by tabula-py to parse the NBA's PDF injury reports. Not needed
+# to run the rest of the pipeline; only scripts that call fetch_injury_reports
+# touch this.
+nbainjuries>=0.1.0
+certifi>=2024.0.0

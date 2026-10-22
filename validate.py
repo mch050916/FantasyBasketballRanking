@@ -58,6 +58,10 @@ PREDICTED_CONTEXT_COLUMNS = [
     "TREND_ROLE_BOOST",
     "TREND_SHIFT",
     "TREND_COMPOSITE_SCORE",
+    "AGE",
+    "TEAM_CHANGED",
+    "RECENT_SEVERE_INJURY",
+    "CAUSE_PROFILE_SUMMARY",
 ]
 
 MISS_CONTEXT_COLUMNS = [
@@ -69,6 +73,7 @@ MISS_CONTEXT_COLUMNS = [
     "TD",
     "TECH",
     "TOTAL_VALUE",
+    "CAUSE_PROFILE_SUMMARY",
 ]
 
 MISS_OUTPUT_COLUMNS = [
@@ -316,8 +321,16 @@ def classify_miss_bucket(row: pd.Series) -> str:
     reb = pd.to_numeric(pd.Series([row.get("REB")]), errors="coerce").iloc[0]
     blk = pd.to_numeric(pd.Series([row.get("BLK")]), errors="coerce").iloc[0]
     pts = pd.to_numeric(pd.Series([row.get("PTS")]), errors="coerce").iloc[0]
+    # From causes.py (main.py's CAUSE_PROFILE_SUMMARY column), e.g.
+    # "2024-25: injury_confirmed" -- "" when no cause is confirmed, the
+    # same fail-closed default every branch below already uses.
+    cause_summary = str(row.get("CAUSE_PROFILE_SUMMARY", "") or "")
 
     if delta <= -15 and pd.notna(gp_factor) and gp_factor < 0.78:
+        if "injury_confirmed" in cause_summary:
+            return "availability miss (injury confirmed)"
+        if "team_change" in cause_summary:
+            return "availability miss (team change)"
         return "availability miss"
     if abs(delta) >= 15 and (
         (pd.notna(dd) and dd >= 0.35)

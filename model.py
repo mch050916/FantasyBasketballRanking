@@ -6,6 +6,7 @@ Contains the core statistical engine:
   - project_stats: weighted per-game projections across seasons
   - compute_tau: weekly variance per player per category
   - compute_g_scores: the DURANT formula itself
+  - compute_positional_value: TOTAL_VALUE minus positional replacement level
 
 The DURANT formula for each category:
     G = (player_stat - league_mean) / sqrt(sigma^2 + kappa * tau^2)
@@ -24,8 +25,12 @@ Key modelling decisions:
       not games-played-driven variance.
 """
 
+from collections import Counter
+
 import pandas as pd
 import numpy as np
+
+from identity import canonical_player_key
 
 
 TREND_SIGNAL_WEIGHTS = {
@@ -312,16 +317,55 @@ def calibrate_category_values(raw: np.ndarray,
 
 # ── GP adjustment ─────────────────────────────────────────────────────────────
 
+MIN_REMAINING_SEASONS_AFTER_EXCLUSION = 2
+
 def compute_gp_factor(player_season_stats: dict[str, pd.Series],
                        available_seasons: list[str],
                        weights: list[float],
-                       full_season_games: int = 82) -> float:
+                       full_season_games: int = 82,
+                       season_causes: dict[str, str] | None = None) -> float:
     """
     Compute a games-played availability factor for a player.
 
     Converts per-game projections into draft-day expected value by accounting
     for how often a player historically suits up. Injury-prone players
     discount themselves through their own data — no names hardcoded.
+
+    `season_causes` (optional, keyed by season, from causes.py's
+    build_player_cause_profile) excludes a season labeled
+    "injury_confirmed" from this blend entirely -- that season is already
+    discounted once via project_stats' separate injury_factor, so folding
+    it into this "repeat availability risk" blend too would double-count
+    the same real-world event (GitHub issue #10). The exclusion applies
+    regardless of whether the excluded season happens to be above or
+    below the remaining blend's average -- it's removed because its
+    cause is already priced in elsewhere, not because of whether it was
+    a good or bad season on its own, so this can legitimately raise OR
+    lower the resulting factor (confirmed against real data: raises it
+    for most confirmed-injury players, but lowers it for a few whose
+    confirmed-injury season was actually their most available one, e.g.
+    Jerami Grant). Every other label ("team_change", "unexplained",
+    "full_season", or no entry at all) behaves exactly as if
+    season_causes were never passed -- zero behavior change for any
+    player without a confirmed injury cause.
+
+    The exclusion is suppressed entirely when it would leave fewer than
+    MIN_REMAINING_SEASONS_AFTER_EXCLUSION *real* seasons in the blend --
+    a player left with only one (or zero) non-excluded real seasons
+    would get full, unguarded credit for that single season with no
+    sample-size discount at all, overstating confidence. "Real"
+    specifically means a season causes.py actually labeled (present as a
+    key in season_causes) -- a synthetic GP=0 entry from
+    _missing_season_gp for a season the player has no BBR row for at all
+    is never a key in season_causes (causes.py only labels seasons it
+    has real GP/team data for), so it must not count toward "remaining"
+    real seasons either; counting it would let this exact pathology
+    recur for a player with one real season plus one synthetic one
+    (found via a whole-branch review: Saddiq Bey's case). Originally
+    found via the ADR-0001 validation gate (Task 7): Kevin Porter Jr.'s
+    confirmed-injury season was excluded leaving just one other real
+    season behind it, which overshot his real outcome before this guard
+    existed.
 
     Examples with typical historical GPs:
       Kawhi Leonard  (~45 GP/season avg) → factor ~0.55
@@ -332,8 +376,19 @@ def compute_gp_factor(player_season_stats: dict[str, pd.Series],
     Capped at [0.50, 1.0] — even the most injury-prone players
     get some credit, and no one can exceed a full season.
     """
+    apply_injury_exclusion = bool(season_causes)
+    if apply_injury_exclusion:
+        remaining = sum(
+            1 for season in available_seasons
+            if season in season_causes and season_causes.get(season) != "injury_confirmed"
+        )
+        if remaining < MIN_REMAINING_SEASONS_AFTER_EXCLUSION:
+            apply_injury_exclusion = False
+
     gp_vals, gp_wts = [], []
     for season, w in zip(available_seasons, weights):
+        if apply_injury_exclusion and season_causes.get(season) == "injury_confirmed":
+            continue
         gp = player_season_stats[season].get("GP", np.nan)
         # >= 0, not > 0 -- a confirmed-zero season (see _missing_season_gp
         # below) is deliberately passed in here as a real GP=0 data point,
@@ -502,7 +557,9 @@ def project_stats(season_dfs: list[pd.DataFrame],
                   tech_per_game: dict[str, float],
                   seasons: list[str] | None = None,
                   raw_player_sets: list[set[str]] | None = None,
-                  raw_gp_by_season: list[dict[str, int]] | None = None) -> pd.DataFrame:
+                  raw_gp_by_season: list[dict[str, int]] | None = None,
+                  injury_discount_by_player: dict[str, float] | None = None,
+                  player_cause_profile: dict[str, dict[str, str]] | None = None) -> pd.DataFrame:
     """
     Compute GP-adjusted, trend-aware per-game projections for each player.
 
@@ -518,6 +575,21 @@ def project_stats(season_dfs: list[pd.DataFrame],
 
     Percentage categories (FG%) are not GP-adjusted — they're ratios
     independent of games played.
+
+    `injury_discount_by_player` (optional, keyed by canonical_player_key --
+    see identity.py) is a third multiplier, alongside gp_factor and
+    decline_factor_by_cat[cat], for a player entering their first season
+    back from a confirmed severe injury with an NBA-outcome-study-backed
+    discount (data.py's INJURY_TIER_YEAR1_DISCOUNT -- currently ACL,
+    Achilles, meniscus only). Applied to counting stats and DD/TD/TECH,
+    same scope as decline_factor -- not FG%, same reasoning as GP_FACTOR
+    skipping it (a ratio, not a per-game count).
+
+    `player_cause_profile` (optional, keyed by raw player name, from
+    causes.py's build_player_cause_profile) feeds compute_gp_factor's
+    season_causes argument below -- excludes any season that
+    player_cause_profile labels "injury_confirmed" from the GP blend, so
+    it isn't discounted twice alongside injury_discount_by_player.
 
     `raw_player_sets`/`raw_gp_by_season` (optional, aligned by index with
     `seasons`/`season_dfs`) carry each season's *pre-qualification-filter*
@@ -648,6 +720,7 @@ def project_stats(season_dfs: list[pd.DataFrame],
             player_season_stats=gp_season_stats,
             available_seasons=gp_seasons,
             weights=gp_weights,
+            season_causes=player_cause_profile.get(player) if player_cause_profile else None,
         )
 
         # Step 2b: shrink each season's blend weight toward zero for how
@@ -686,6 +759,14 @@ def project_stats(season_dfs: list[pd.DataFrame],
             for cat in set(counting_cats) | {"DD", "TD", "TECH"}
         }
 
+        # Confirmed severe-injury "year 1 back" discount -- see
+        # project_stats's docstring and data.py's INJURY_TIER_YEAR1_DISCOUNT.
+        # 1.0 (no-op) for the vast majority of players who have no
+        # discount-eligible injury on record.
+        injury_factor = 1.0
+        if injury_discount_by_player:
+            injury_factor = injury_discount_by_player.get(canonical_player_key(player), 1.0)
+
         # A player with no game-log entry in ANY fetched season (never
         # matched by the NBA-API fetch at all, not just missing the newest
         # one) has no `derived_stats` entry -- DD/TD then hard-default to
@@ -710,6 +791,7 @@ def project_stats(season_dfs: list[pd.DataFrame],
             "GP_FACTOR": round(gp_factor, 3),
             "AGE": projection_age,
             "DECLINE_FACTOR": round(decline_factor, 3),
+            "INJURY_DISCOUNT_FACTOR": round(injury_factor, 3),
             "DATA_AVAILABILITY_NOTE": data_availability_note,
             "TREND_ROLE_SCORE": round(float(trend_profile["role_score"]), 3),
             "TREND_ROLE_BOOST": round(float(trend_profile["role_boost"]), 3),
@@ -742,7 +824,7 @@ def project_stats(season_dfs: list[pd.DataFrame],
             # headline number is lower than their rate alone would suggest,
             # instead of GP_FACTOR/DECLINE_FACTOR's effect being invisible.
             row[f"{cat}_RATE"] = projected
-            row[cat] = projected * gp_factor * decline_factor_by_cat[cat]
+            row[cat] = projected * gp_factor * decline_factor_by_cat[cat] * injury_factor
 
         # ── FG% — volume-weighted, no GP adjustment ──────────────────────
         row["FG%"] = compute_weighted_fg_pct(
@@ -755,12 +837,12 @@ def project_stats(season_dfs: list[pd.DataFrame],
         # ── DD and TD — GP-adjusted ──────────────────────────────────────
         row["DD_RATE"] = player_derived.get("DD", 0.0)
         row["TD_RATE"] = player_derived.get("TD", 0.0)
-        row["DD"] = row["DD_RATE"] * gp_factor * decline_factor_by_cat["DD"]
-        row["TD"] = row["TD_RATE"] * gp_factor * decline_factor_by_cat["TD"]
+        row["DD"] = row["DD_RATE"] * gp_factor * decline_factor_by_cat["DD"] * injury_factor
+        row["TD"] = row["TD_RATE"] * gp_factor * decline_factor_by_cat["TD"] * injury_factor
 
         # ── TECH — GP-adjusted ───────────────────────────────────────────
         row["TECH_RATE"] = tech_per_game.get(player, 0.05)
-        row["TECH"] = row["TECH_RATE"] * gp_factor * decline_factor_by_cat["TECH"]
+        row["TECH"] = row["TECH_RATE"] * gp_factor * decline_factor_by_cat["TECH"] * injury_factor
 
         # ── GP and MIN — raw, for filtering and display ──────────────────
         row["GP"]  = player_season_stats[first].get("GP", np.nan)
@@ -875,7 +957,9 @@ def compute_tau(game_logs: dict[str, dict[str, pd.DataFrame]],
 def compute_g_scores(projected: pd.DataFrame,
                      player_tau: dict[str, dict[str, float]],
                      league_tau: dict[str, float],
-                     config: dict) -> pd.DataFrame:
+                     config: dict,
+                     pool_size: int | None = None,
+                     extra_rows: pd.DataFrame | None = None) -> pd.DataFrame:
     """
     Apply the DURANT formula to produce per-category G-scores and total value.
 
@@ -888,25 +972,47 @@ def compute_g_scores(projected: pd.DataFrame,
       5. FG%: multiply by (player_FGA / league_avg_FGA) — volume weighting
       6. Clip to ±3.5 — prevents one outlier compressing everyone else
       7. Multiply by category weight
+
+    `pool_size` overrides config["num_teams"] * config["roster_size"] for
+    the pre-normalization nlargest(..., "MIN") truncation -- None (default)
+    reproduces that config-derived value exactly. Widening this changes
+    league_mean/league_sigma for every category (computed over the whole
+    truncated pool), which shifts every player's G-score, not just the
+    newly-included tail -- see docs/adr/0001-aggregate-acceptance-criterion.md.
+    (This is exactly what a 2026-10-21 attempt tried and reverted: it failed
+    the real validation gate because the ripple hurt rank-distance accuracy
+    pool-wide. `extra_rows` below is the narrower fix that grew out of it.)
+
+    `extra_rows` (same schema as `projected`) adds players to the OUTPUT
+    without adding them to the NORMALIZATION population: league_mean/
+    league_sigma/league_avg_fga are computed from the pool_size-truncated
+    rows only (today's exact behavior, unaffected by extra_rows' content),
+    but every extra row still gets a real G-score/TOTAL_VALUE against that
+    fixed baseline and appears in the returned, ranked output. None
+    (default) reproduces today's exact behavior with no extra rows.
     """
     kappa   = compute_kappa(config["roster_size"])
     cats    = config["categories"]
     weights = config["category_weights"]
 
-    pool_size = config["num_teams"] * config["roster_size"]
-    df = projected.dropna(subset=["PTS"]).copy()
-    df = df.nlargest(pool_size, "MIN").reset_index(drop=True)
+    if pool_size is None:
+        pool_size = config["num_teams"] * config["roster_size"]
 
-    league_avg_fga = df["FGA"].median()
+    norm_df = projected.dropna(subset=["PTS"]).copy()
+    norm_df = norm_df.nlargest(pool_size, "MIN").reset_index(drop=True)
+
+    if extra_rows is not None and not extra_rows.empty:
+        df = pd.concat([norm_df, extra_rows], ignore_index=True)
+    else:
+        df = norm_df
+
+    league_avg_fga = norm_df["FGA"].median()
     total_g        = np.zeros(len(df))
 
     for cat, meta in cats.items():
         if cat not in df.columns:
             print(f"  [warn] {cat} missing from projections, skipping")
             continue
-
-        raw = df[cat].fillna(0.0).values.astype(float)
-        raw = calibrate_category_values(raw, cat, config)
 
         # No skew transform here: compute_tau (model.py) computes tau from
         # raw, untransformed per-game weekly averages, so mean/sigma must
@@ -921,12 +1027,21 @@ def compute_g_scores(projected: pd.DataFrame,
         # published G-score-family method (the formula this function
         # implements) transforms a stat before standardizing either --
         # skew is left to the variance term, not a separate nonlinear step.
-        league_mean  = raw.mean()
-        league_sigma = raw.std()
+        norm_raw = calibrate_category_values(
+            norm_df[cat].fillna(0.0).values.astype(float), cat, config)
+        league_mean  = norm_raw.mean()
+        league_sigma = norm_raw.std()
 
         if league_sigma < 1e-8:
             df[f"{cat}_G"] = 0.0
             continue
+
+        # Calibration is elementwise/stateless (config-driven constants, no
+        # fitting to the array), so recalibrating df's full column here
+        # reproduces norm_raw exactly for the norm_df-derived rows --
+        # avoids a second, divergent code path for "norm row" vs "extra row".
+        scored_raw = calibrate_category_values(
+            df[cat].fillna(0.0).values.astype(float), cat, config)
 
         g_scores = []
         for i, row in df.iterrows():
@@ -934,7 +1049,7 @@ def compute_g_scores(projected: pd.DataFrame,
             tau    = player_tau.get(player, {}).get(cat, league_tau.get(cat, 1.0))
 
             denom = np.sqrt(league_sigma ** 2 + kappa * tau ** 2)
-            g     = (raw[df.index.get_loc(i)] - league_mean) / denom
+            g     = (scored_raw[df.index.get_loc(i)] - league_mean) / denom
 
             if meta["direction"] == "low":
                 g = -g
@@ -953,4 +1068,58 @@ def compute_g_scores(projected: pd.DataFrame,
     df = df.sort_values("TOTAL_VALUE", ascending=False).reset_index(drop=True)
     df["RANK"] = df.index + 1
 
+    return df
+
+
+# Each strict position's flex-slot outlet (PG/SG share "G", SF/PF share "F").
+# C has no flex slot in this league's roster_slots -- a real scarcity
+# constraint, not an omission.
+POSITION_FLEX = {
+    "PG": "G",
+    "SG": "G",
+    "SF": "F",
+    "PF": "F",
+}
+
+
+def compute_positional_value(df: pd.DataFrame, config: dict) -> pd.DataFrame:
+    """
+    Add POSITIONAL_VALUE: TOTAL_VALUE minus the replacement level at the
+    player's position -- a supplementary draft-day metric, not a change to
+    TOTAL_VALUE/RANK (no ADR-0001 validation gate applies).
+
+    `config["roster_slots"]` is the literal slot list for ONE team (e.g.
+    ["PG","SG","G","SF","PF","F","C","Util","Util","Util"]); multiplied by
+    `config["num_teams"]` for total league-wide demand per slot label.
+
+    One greedy pass over players in TOTAL_VALUE order (best first): each
+    player fills the most specific open slot they're eligible for -- their
+    own position, then its flex slot (POSITION_FLEX), then "Util" -- so
+    flex/Util capacity stays available as long as possible for whichever
+    position actually needs it, rather than being claimed by whichever
+    position happens to be processed first. A player who finds no open
+    eligible slot doesn't start. Replacement level for a position is the
+    lowest TOTAL_VALUE among players of that position who did start; a
+    position with no flex outlet (C) benches its overflow sooner than one
+    with a flex slot, which is exactly the scarcity this metric exists to
+    surface.
+    """
+    slot_counts = Counter(config["roster_slots"])
+    for label in slot_counts:
+        slot_counts[label] *= config["num_teams"]
+
+    replacement_value: dict[str, float] = {}
+    for _, row in df.sort_values("TOTAL_VALUE", ascending=False).iterrows():
+        position = row["POSITION"]
+        for slot in (position, POSITION_FLEX.get(position), "Util"):
+            if slot and slot_counts.get(slot, 0) > 0:
+                slot_counts[slot] -= 1
+                replacement_value[position] = row["TOTAL_VALUE"]
+                break
+
+    df = df.copy()
+    df["POSITIONAL_VALUE"] = df.apply(
+        lambda row: row["TOTAL_VALUE"] - replacement_value.get(row["POSITION"], row["TOTAL_VALUE"]),
+        axis=1,
+    )
     return df

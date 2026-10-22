@@ -163,8 +163,8 @@
     </div>
     <div class="stats">
       <div class="stat"><b>14</b><span>scored categories</span></div>
-      <div class="stat"><b>100%</b><span>offline, no server</span></div>
-      <div class="stat"><b>3</b><span>CLI companions</span></div>
+      <div class="stat"><b>100%</b><span>offline draft board</span></div>
+      <div class="stat"><b>5</b><span>CLI companions</span></div>
     </div>
   </div>
   <div class="heroVisual">
@@ -196,6 +196,7 @@
       <div class="cardName">Punt Planner</div>
       <div class="cardDesc">Ranks which categories a roster is already losing most, and re-ranks
         the full player pool with one category's weight zeroed.</div>
+      <a class="cardGo" href="tools/run.html?tool=punt_planner">Open tool &rarr;</a>
       <code class="cardCmd">python scripts/punt_planner.py --team "YourTeam"</code>
     </div>
     <div class="card">
@@ -203,6 +204,7 @@
       <div class="cardName">Trade Finder</div>
       <div class="cardDesc">Searches every 1-for-1 swap in the league for trades that improve
         both sides' expected categories won per week.</div>
+      <a class="cardGo" href="tools/run.html?tool=find_trades">Open tool &rarr;</a>
       <code class="cardCmd">python scripts/find_trades.py --team "YourTeam"</code>
     </div>
     <div class="card">
@@ -210,14 +212,32 @@
       <div class="cardName">Buy Low / Sell High</div>
       <div class="cardDesc">Diffs real in-season per-game performance against each player's
         preseason projection, weighted the same way the model values categories.</div>
+      <a class="cardGo" href="tools/run.html?tool=buy_low_sell_high">Open tool &rarr;</a>
       <code class="cardCmd">python scripts/buy_low_sell_high.py</code>
+    </div>
+    <div class="card">
+      <div class="cardHead"><span class="cardNum">05</span></div>
+      <div class="cardName">Trade Analyzer</div>
+      <div class="cardDesc">Full per-category before/after breakdown for one proposed trade —
+        expected categories won per week, both sides, against the league field.</div>
+      <a class="cardGo" href="tools/run.html?tool=analyze_trade">Open tool &rarr;</a>
+      <code class="cardCmd">python scripts/analyze_trade.py --team "You" --partner "Them" \
+  --give "Player A,Player B" --get "Player C"</code>
+    </div>
+    <div class="card">
+      <div class="cardHead"><span class="cardNum">06</span></div>
+      <div class="cardName">Schedule Strength</div>
+      <div class="cardDesc">Real games-per-team for any fantasy week — who to stream, who to
+        sit, straight from the live NBA schedule.</div>
+      <a class="cardGo" href="tools/run.html?tool=schedule_strength">Open tool &rarr;</a>
+      <code class="cardCmd">python scripts/schedule_strength.py --team "YourTeam"</code>
     </div>
   </div>
 </div>
 
 <footer class="wrap">
   <span class="footWordmark">DURANT</span>
-  <span class="footMeta">2026-27 season &middot; all CLI tools need rosters.csv (copy rosters_example.csv) and run from the project root with .venv active</span>
+  <span class="footMeta">2026-27 season &middot; in-season tools need rosters.csv (copy rosters_example.csv) &middot; run <code>python scripts/serve_dashboard.py</code> once to use them from this page instead of the CLI</span>
 </footer>
 
 <script>
