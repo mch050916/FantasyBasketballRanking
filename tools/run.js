@@ -9,6 +9,21 @@
   // instead of parsing aligned text. Filtered out of the visible console.
   var DASHBOARD_RESULT_PREFIX = "__DASHBOARD_RESULT__";
 
+  // Backend chatter (cache loads, NBA API fetch/backfill progress, per-player
+  // [skip] lines -- see data.py's cache helpers) vs. the tool's actual result
+  // (rankings, trade lists, schedule tables -- each script's own print()
+  // calls). Tucked into the collapsed "Backend log" disclosure instead of
+  // drowning the result a person actually asked for.
+  var NOISE_PATTERNS = [
+    /^\[skip\]/, /from cache:?/, /cached (for|to)/, /^Rebuilding .*cache/,
+    /^Fetching /, /^No cache found/, /^This only runs once/,
+    /^Cache missing .*backfilling/, /^Season schedule fetched:/,
+  ];
+  function isNoiseLine(line) {
+    var trimmed = line.trim();
+    return trimmed !== "" && NOISE_PATTERNS.some(function (re) { return re.test(trimmed); });
+  }
+
   var ESCAPE_MAP = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
   function esc(value) {
     return String(value).replace(/[&<>"]/g, function (c) { return ESCAPE_MAP[c]; });
@@ -185,12 +200,22 @@
         state.lines[state.lines.length - 1] += ch;
       }
     }
-    var output = document.getElementById("output");
-    var visible = state.lines.filter(function (line) {
+    var shown = state.lines.filter(function (line) {
       return line.indexOf(DASHBOARD_RESULT_PREFIX) !== 0;
     });
-    output.textContent = visible.join("\n");
+    var resultLines = shown.filter(function (line) { return !isNoiseLine(line); });
+    var logLines = shown.filter(isNoiseLine);
+
+    var output = document.getElementById("output");
+    output.textContent = resultLines.join("\n");
     output.scrollTop = output.scrollHeight;
+
+    var log = document.getElementById("log");
+    var logBody = document.getElementById("log-body");
+    log.className = logLines.length ? "show" : "";
+    document.getElementById("log-summary").textContent =
+      "Backend log (" + logLines.length + (logLines.length === 1 ? " line)" : " lines)");
+    logBody.textContent = logLines.join("\n");
   }
 
   function sideHTML(label, side) {
@@ -250,6 +275,10 @@
   async function runTool(tool, fields) {
     var output = document.getElementById("output");
     output.textContent = "";
+    var log = document.getElementById("log");
+    log.className = "";
+    log.open = false;
+    document.getElementById("log-body").textContent = "";
     renderVerdict(null);
     var state = { lines: [""] };
     setStatus("running", "Running…");
