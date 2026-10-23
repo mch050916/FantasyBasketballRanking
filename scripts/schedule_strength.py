@@ -14,6 +14,8 @@ Usage:
 """
 
 import argparse
+import json
+import os
 import sys
 from datetime import date
 from pathlib import Path
@@ -24,6 +26,29 @@ from config import LEAGUE_CONFIG                                                
 from data   import fetch_current_teams, fetch_season_schedule, games_per_team_for_week  # noqa: E402
 from main   import derive_projection_season_label                                     # noqa: E402
 from rosters import load_rosters                                                      # noqa: E402
+
+# Set by dashboard_server.py's subprocess env only -- plain CLI usage never
+# sees this extra line. Lets the web dashboard render a structured card
+# instead of parsing the printed report's aligned text.
+DASHBOARD_RESULT_PREFIX = "__DASHBOARD_RESULT__"
+
+
+def summarize_schedule_strength_result(week_of: str, season: str, counts,
+                                       roster: dict | None = None) -> dict:
+    """
+    Pure JSON-summary builder for the web dashboard's schedule-strength card.
+    roster, if given: {"team": str, "players": [{"name", "nbaTeam", "games"}, ...]}.
+    """
+    summary = {
+        "kind": "schedule_strength",
+        "weekOf": week_of,
+        "season": season,
+        "teams": [{"team": team, "games": int(n)}
+                  for team, n in counts.sort_values(ascending=False).items()],
+    }
+    if roster is not None:
+        summary["roster"] = roster
+    return summary
 
 
 def main() -> None:
@@ -51,6 +76,7 @@ def main() -> None:
     for team, n in counts.sort_values(ascending=False).items():
         print(f"  {team:<4} {n}")
 
+    roster_summary = None
     if args.team:
         rosters = load_rosters(args.rosters)
         if args.team not in rosters:
@@ -58,10 +84,17 @@ def main() -> None:
 
         current_teams = fetch_current_teams(season=season, cache_file=LEAGUE_CONFIG["current_teams_cache"])
         print(f"\n{args.team}'s roster this week:\n")
+        roster_players = []
         for player in sorted(rosters[args.team]):
             team = current_teams.get(player)
             games = counts.get(team, 0) if team else 0
             print(f"  {player:<28} {team or '?':<4} {games} games")
+            roster_players.append({"name": player, "nbaTeam": team, "games": int(games)})
+        roster_summary = {"team": args.team, "players": roster_players}
+
+    if os.environ.get("DASHBOARD_JSON_SUMMARY"):
+        summary = summarize_schedule_strength_result(week_of, season, counts, roster_summary)
+        print(DASHBOARD_RESULT_PREFIX + json.dumps(summary))
 
 
 if __name__ == "__main__":

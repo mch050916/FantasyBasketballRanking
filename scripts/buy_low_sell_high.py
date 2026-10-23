@@ -13,6 +13,8 @@ Usage:
 """
 
 import argparse
+import json
+import os
 import sys
 from pathlib import Path
 
@@ -29,6 +31,27 @@ RATE_COLUMNS = {
     "PTS": "PTS", "REB": "REB", "AST": "AST", "ST": "ST", "BLK": "BLK",
     "TO": "TO", "FTM": "FTM", "3PTM": "3PTM", "DD": "DD", "TD": "TD",
 }
+
+# Set by dashboard_server.py's subprocess env only -- plain CLI usage never
+# sees this extra line. Lets the web dashboard render a structured card
+# instead of parsing the printed report's aligned text.
+DASHBOARD_RESULT_PREFIX = "__DASHBOARD_RESULT__"
+
+
+def summarize_buy_low_sell_high_result(season: str, min_games: int, rows: list,
+                                       top: int, degraded: bool) -> dict:
+    """Pure JSON-summary builder for the web dashboard's buy-low/sell-high card."""
+    sell_high = [{"name": n, "score": s, "gp": gp} for n, gp, s in rows[:top]]
+    buy_low = [{"name": n, "score": s, "gp": gp} for n, gp, s in rows[-top:][::-1]] if rows else []
+    return {
+        "kind": "buy_low_sell_high",
+        "season": season,
+        "minGames": min_games,
+        "count": len(rows),
+        "degraded": degraded,
+        "sellHigh": sell_high,
+        "buyLow": buy_low,
+    }
 
 
 def actual_per_game(logs: pd.DataFrame) -> dict[str, float] | None:
@@ -122,8 +145,13 @@ def main() -> None:
         if score is not None:
             rows.append((name, actual["GP"], score))
 
+    degraded = bool(health and health.get("degraded"))
     if not rows:
         print(f"No players with >= {args.min_games} logged games in {args.season} yet.")
+        if os.environ.get("DASHBOARD_JSON_SUMMARY"):
+            summary = summarize_buy_low_sell_high_result(args.season, args.min_games, rows,
+                                                          args.top, degraded)
+            print(DASHBOARD_RESULT_PREFIX + json.dumps(summary))
         return
 
     rows.sort(key=lambda r: r[2], reverse=True)
@@ -136,6 +164,11 @@ def main() -> None:
     print(f"\nBUY LOW (top {args.top}, underperforming projection):")
     for name, gp, score in rows[-args.top:][::-1]:
         print(f"  {name:<28} {score:+.3f}   ({gp} GP)")
+
+    if os.environ.get("DASHBOARD_JSON_SUMMARY"):
+        summary = summarize_buy_low_sell_high_result(args.season, args.min_games, rows,
+                                                      args.top, degraded)
+        print(DASHBOARD_RESULT_PREFIX + json.dumps(summary))
 
 
 if __name__ == "__main__":

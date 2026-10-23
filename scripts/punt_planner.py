@@ -14,6 +14,8 @@ Usage:
 """
 
 import argparse
+import json
+import os
 import sys
 from pathlib import Path
 
@@ -26,6 +28,42 @@ from data import fetch_game_logs, fetch_tech_per_game                 # noqa: E4
 from model import compute_tau                                          # noqa: E402
 from rosters import load_projections, load_rosters, resolve_roster_players  # noqa: E402
 from trade import build_week_bank, evaluate_roster_vs_field, pad_to_roster_size  # noqa: E402
+
+# Set by dashboard_server.py's subprocess env only -- plain CLI usage never
+# sees this extra line. Lets the web dashboard render a structured card
+# instead of parsing the printed report's aligned text.
+DASHBOARD_RESULT_PREFIX = "__DASHBOARD_RESULT__"
+
+
+def summarize_punt_result(team: str, expected: float, shares: dict, ranked: list,
+                          punt: str, top_players: list) -> dict:
+    """
+    Pure JSON-summary builder for the web dashboard's punt-planner card.
+
+    top_players: list of (name, punt_value, was_value, mine) tuples, already
+    sorted/limited to the requested --show-players count -- mirrors exactly
+    what main()'s printed report shows, just structured instead of aligned text.
+    """
+    n = len(shares)
+    remaining = expected - shares[punt]
+    return {
+        "kind": "punt_planner",
+        "team": team,
+        "expected": expected,
+        "n": n,
+        "categories": [{"category": c, "share": shares[c], "isPunt": c == punt} for c in ranked],
+        "punt": punt,
+        "remaining": {
+            "expected": remaining,
+            "n": n - 1,
+            "avgRemaining": remaining / (n - 1),
+            "avgToday": expected / n,
+        },
+        "players": [
+            {"name": name, "value": value, "was": was, "mine": mine}
+            for name, value, was, mine in top_players
+        ],
+    }
 
 
 def category_shares(rates: dict) -> dict[str, float]:
@@ -120,10 +158,18 @@ def main() -> None:
           f"(* = on {args.team}'s roster):")
     repriced = projections.assign(PUNT_VALUE=repriced_total_value(projections, punt, 0.0))
     top = repriced.sort_values("PUNT_VALUE", ascending=False).head(args.show_players)
+    top_players = []
     for _, row in top.iterrows():
-        mark = "*" if row["PLAYER_NAME"] in rosters[args.team] else " "
+        mine = row["PLAYER_NAME"] in rosters[args.team]
+        mark = "*" if mine else " "
         print(f"  {mark} {row['PLAYER_NAME']:<28} {row['PUNT_VALUE']:6.2f}  "
               f"(was {row['TOTAL_VALUE']:6.2f})")
+        top_players.append((row["PLAYER_NAME"], float(row["PUNT_VALUE"]),
+                            float(row["TOTAL_VALUE"]), mine))
+
+    if os.environ.get("DASHBOARD_JSON_SUMMARY"):
+        summary = summarize_punt_result(args.team, expected, shares, ranked, punt, top_players)
+        print(DASHBOARD_RESULT_PREFIX + json.dumps(summary))
 
 
 if __name__ == "__main__":

@@ -316,6 +316,7 @@ def main() -> None:
 
     if os.environ.get("DASHBOARD_JSON_SUMMARY"):
         print(DASHBOARD_RESULT_PREFIX + json.dumps({
+            "kind": "analyze_trade",
             "team": args.team, "partner": args.partner,
             "give": give, "get": get, **summary,
         }))

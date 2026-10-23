@@ -3,17 +3,15 @@
 
   var CATEGORIES = ["FGM", "FG%", "FTM", "3PTM", "PTS", "REB", "AST", "ST", "BLK", "TO", "PF", "TECH", "DD", "TD"];
 
-  // Must match dashboard_server.py's DASHBOARD_RESULT_PREFIX exactly -- the
-  // one line a tool (currently only analyze_trade.py) can print, in
-  // addition to its normal human-readable report, for a structured verdict
-  // instead of parsing aligned text. Filtered out of the visible console.
+  // Must match each script's own DASHBOARD_RESULT_PREFIX exactly -- the one
+  // line every tool prints, in addition to its normal human-readable report,
+  // holding a structured summary a renderX() function turns into a themed
+  // card. Nothing from the raw stream reaches the screen on a normal run.
   var DASHBOARD_RESULT_PREFIX = "__DASHBOARD_RESULT__";
 
   // Backend chatter (cache loads, NBA API fetch/backfill progress, per-player
-  // [skip] lines -- see data.py's cache helpers) vs. the tool's actual result
-  // (rankings, trade lists, schedule tables -- each script's own print()
-  // calls). Tucked into the collapsed "Backend log" disclosure instead of
-  // drowning the result a person actually asked for.
+  // [skip] lines -- see data.py's cache helpers), filtered out of the
+  // error-fallback text so an actual failure message isn't buried under it.
   var NOISE_PATTERNS = [
     /^\[skip\]/, /from cache:?/, /cached (for|to)/, /^Rebuilding .*cache/,
     /^Fetching /, /^No cache found/, /^This only runs once/,
@@ -186,10 +184,13 @@
 
   // \r redraws the current (last) line in place, same as a real terminal --
   // the server sends raw bytes with no line interpretation of its own (see
-  // dashboard_server.py), so this is the one place that logic lives. A
-  // completed line starting with DASHBOARD_RESULT_PREFIX is structured data
-  // for renderVerdict, not something a person reading the console should see.
-  function appendToConsole(state, text) {
+  // dashboard_server.py). Nothing from this buffer reaches the screen on a
+  // normal run -- every tool now prints a DASHBOARD_RESULT_PREFIX JSON line
+  // that a renderX() function turns into a themed card. The raw lines are
+  // kept only as the fallback shown on an actual failure (bad input, a
+  // crash) -- never as a visible "log," which the person asking for this
+  // page explicitly did not want on the frontend at all.
+  function bufferLines(state, text) {
     for (var i = 0; i < text.length; i++) {
       var ch = text[i];
       if (ch === "\r") {
@@ -200,22 +201,10 @@
         state.lines[state.lines.length - 1] += ch;
       }
     }
-    var shown = state.lines.filter(function (line) {
-      return line.indexOf(DASHBOARD_RESULT_PREFIX) !== 0;
-    });
-    var resultLines = shown.filter(function (line) { return !isNoiseLine(line); });
-    var logLines = shown.filter(isNoiseLine);
+  }
 
-    var output = document.getElementById("output");
-    output.textContent = resultLines.join("\n");
-    output.scrollTop = output.scrollHeight;
-
-    var log = document.getElementById("log");
-    var logBody = document.getElementById("log-body");
-    log.className = logLines.length ? "show" : "";
-    document.getElementById("log-summary").textContent =
-      "Backend log (" + logLines.length + (logLines.length === 1 ? " line)" : " lines)");
-    logBody.textContent = logLines.join("\n");
+  function tip(text) {
+    return '<span class="tip" tabindex="0" data-tip="' + esc(text) + '">?</span>';
   }
 
   function sideHTML(label, side) {
@@ -242,14 +231,7 @@
   // -0.01 to +0.02 range for a single 1-for-1 swap).
   var VERDICT_THRESHOLD = 0.05;
 
-  function renderVerdict(data) {
-    var card = document.getElementById("verdict");
-    if (!data) {
-      card.className = "card verdict";
-      card.innerHTML = "";
-      return;
-    }
-
+  function analyzeTradeCardHTML(data) {
     var mine = data.teams[data.team];
     var theirs = data.teams[data.partner];
     var verdictClass = mine.delta >= VERDICT_THRESHOLD ? "favor"
@@ -259,27 +241,166 @@
     var giveText = (data.give && data.give.length) ? data.give.join(", ") : "nothing";
     var getText = (data.get && data.get.length) ? data.get.join(", ") : "nothing";
 
-    card.className = "card verdict show";
-    card.innerHTML =
-      '<div class="verdictHead">'
+    return '<div class="verdictHead">'
         + '<span class="verdictBadge ' + verdictClass + '">' + verdictLabel + "</span>"
         + '<span class="verdictSummary">' + esc(data.team) + " gives " + esc(giveText)
-          + " &rarr; receives " + esc(getText) + "</span>"
+          + " &rarr; receives " + esc(getText)
+          + tip("Favors you / Unfavorable kicks in at a ±" + VERDICT_THRESHOLD
+            + " swing in expected categories won per week; smaller swings show as Roughly even.")
+          + "</span>"
       + "</div>"
       + '<div class="verdictTeams">' + sideHTML(data.team, mine) + sideHTML(data.partner, theirs) + "</div>"
       + '<table class="verdictTable"><thead><tr><th>Category</th><th class="num">Before</th>'
-        + '<th class="num">After</th><th class="num">&Delta;</th></tr></thead><tbody>'
+        + '<th class="num">After</th><th class="num">&Delta;' + tip("Change in win share for this "
+          + "category if the trade happens -- a tie counts as half a win, same as the headline number.")
+          + "</th></tr></thead><tbody>"
         + mine.categories.map(categoryRowHTML).join("") + "</tbody></table>";
   }
 
+  function puntPlannerCardHTML(data) {
+    var catRows = data.categories.map(function (c) {
+      return "<tr><td>" + esc(c.category)
+        + (c.isPunt ? ' <span class="miniBadge punt">PUNT</span>' : "")
+        + '</td><td class="num">' + c.share.toFixed(3) + "</td></tr>";
+    }).join("");
+    var playerRows = data.players.map(function (p) {
+      return "<tr><td" + (p.mine ? ' class="playerMine"' : "") + ">" + esc(p.name) + "</td>"
+        + '<td class="num">' + p.value.toFixed(2) + "</td>"
+        + '<td class="num" style="color:var(--ink-faint);">' + p.was.toFixed(2) + "</td></tr>";
+    }).join("");
+
+    return '<div class="verdictHead"><span class="verdictBadge even">Punting ' + esc(data.punt) + "</span>"
+        + '<span class="verdictSummary">' + esc(data.team) + " — expected categories won per week"
+          + tip("How many of the league's scored categories this roster is projected to win in a "
+            + "typical head-to-head week, simulated against the field.") + "</span></div>"
+      + '<div class="verdictTeams oneCol"><div class="verdictTeam">'
+        + '<span class="verdictTeamName">Expected / week</span>'
+        + '<span class="verdictTeamLine">' + data.expected.toFixed(2) + " / " + data.n + "</span>"
+        + "</div></div>"
+      + '<p class="sectionLabel">Category breakdown, worst to best'
+        + tip("Win rate against the league field, counting a tie as half a win. Lowest share first "
+          + "-- your strongest punt candidates.") + "</p>"
+      + '<table class="verdictTable"><thead><tr><th>Category</th><th class="num">Share</th></tr></thead>'
+        + "<tbody>" + catRows + "</tbody></table>"
+      + '<div class="verdictTeams oneCol" style="margin-top:16px;"><div class="verdictTeam">'
+        + '<span class="verdictTeamName">Conceding ' + esc(data.punt) + " outright</span>"
+        + '<span class="verdictTeamLine">' + data.remaining.expected.toFixed(2) + " / " + data.remaining.n
+          + ' remaining categories <span class="sub">(avg ' + data.remaining.avgRemaining.toFixed(3)
+          + "/cat, vs " + data.remaining.avgToday.toFixed(3) + "/cat today)</span></span></div></div>"
+      + '<p class="sectionLabel">Top players re-ranked with ' + esc(data.punt) + " weighted to 0"
+        + tip("Player value recomputed with the punted category's weight zeroed out -- who looks "
+          + "good once you've given up on that category. Your own roster is highlighted.") + "</p>"
+      + '<table class="verdictTable"><thead><tr><th>Player</th><th class="num">Val</th>'
+        + '<th class="num">Was</th></tr></thead><tbody>' + playerRows + "</tbody></table>";
+  }
+
+  function findTradesCardHTML(data) {
+    if (!data.trades.length) {
+      return '<div class="verdictHead"><span class="verdictBadge even">No hits</span>'
+          + '<span class="verdictSummary">Screened ' + data.screened + " value-fair swaps, none improved "
+            + "both sides at this threshold.</span></div>"
+        + '<p class="resultEmpty">Try a larger max value gap, or search the whole league instead '
+          + "of one team.</p>";
+    }
+    var rows = data.trades.map(function (t) {
+      return '<div class="tradeHit"><div class="tradeHitLine">' + esc(t.teamA) + " gives " + esc(t.give)
+          + " &harr; " + esc(t.teamB) + " gives " + esc(t.get) + "</div>"
+        + '<div class="tradeHitDeltas"><span>' + esc(t.teamA) + " <b>+" + t.deltaA.toFixed(3) + "</b> cats/wk</span>"
+          + "<span>" + esc(t.teamB) + " <b>+" + t.deltaB.toFixed(3) + "</b> cats/wk</span></div></div>";
+    }).join("");
+
+    return '<div class="verdictHead"><span class="verdictBadge favor">' + data.trades.length
+        + " mutually-improving</span>"
+        + '<span class="verdictSummary">Screened ' + data.screened + " value-fair swaps (gap &le; "
+          + data.maxValueGap + ", " + data.simWeeks + " weeks/opponent)"
+          + tip("\"Value-fair\" means both players are within the max value gap in overall ranked "
+            + "value -- not a judgment on whether the trade is good. cats/wk is the change in expected "
+            + "categories won per week for that team if the trade happens.") + "</span></div>"
+      + rows
+      + '<p class="resultEmpty" style="margin-top:12px;">Screened at ' + data.simWeeks + " weeks/opponent "
+        + "for speed -- confirm any of these with Trade Analyzer's full precision before proposing it.</p>";
+  }
+
+  function buyLowSellHighCardHTML(data) {
+    function rows(list) {
+      return list.map(function (p) {
+        return "<tr><td>" + esc(p.name) + '</td><td class="num">' + (p.score >= 0 ? "+" : "")
+          + p.score.toFixed(3) + '</td><td class="num" style="color:var(--ink-faint);">' + p.gp + " GP</td></tr>";
+      }).join("");
+    }
+    if (!data.count) {
+      return '<div class="verdictHead"><span class="verdictBadge even">No data yet</span>'
+        + '<span class="verdictSummary">No players with &ge; ' + data.minGames + " games in "
+          + esc(data.season) + " yet.</span></div>";
+    }
+    var scoreTip = tip("Weighted average deviation from this player's preseason projection, in the "
+      + "categories the model values most. Positive = outperforming (sell high), negative = "
+      + "underperforming (buy low).");
+    return '<div class="verdictHead"><span class="verdictBadge even">' + data.count + " players</span>"
+        + '<span class="verdictSummary">&ge; ' + data.minGames + " games in " + esc(data.season)
+          + (data.degraded ? ' <span class="miniBadge" style="color:var(--weakness);'
+            + 'border-color:var(--weakness);">DEGRADED FETCH</span>' : "") + "</span></div>"
+      + '<div class="verdictTeams"><div class="verdictTeam">'
+        + '<span class="verdictTeamName">Sell high' + scoreTip + "</span>"
+        + '<table class="verdictTable"><tbody>' + rows(data.sellHigh) + "</tbody></table></div>"
+        + '<div class="verdictTeam"><span class="verdictTeamName">Buy low' + scoreTip + "</span>"
+        + '<table class="verdictTable"><tbody>' + rows(data.buyLow) + "</tbody></table></div></div>";
+  }
+
+  function scheduleStrengthCardHTML(data) {
+    var teamRows = data.teams.map(function (t) {
+      return "<tr><td>" + esc(t.team) + '</td><td class="num">' + t.games + "</td></tr>";
+    }).join("");
+    var html = '<div class="verdictHead"><span class="verdictBadge even">' + esc(data.season) + "</span>"
+        + '<span class="verdictSummary">Games per team — week of ' + esc(data.weekOf)
+          + tip("More games this week means more raw counting-stat opportunity for that team's "
+            + "players -- a real streaming/start-sit signal a full-season ranking can't capture.")
+          + "</span></div>"
+      + '<table class="verdictTable"><thead><tr><th>Team</th><th class="num">Games</th></tr></thead>'
+        + "<tbody>" + teamRows + "</tbody></table>";
+    if (data.roster) {
+      var rosterRows = data.roster.players.map(function (p) {
+        return "<tr><td>" + esc(p.name) + '</td><td class="num">' + esc(p.nbaTeam || "?")
+          + '</td><td class="num">' + p.games + "</td></tr>";
+      }).join("");
+      html += '<p class="sectionLabel">' + esc(data.roster.team) + "'s roster this week</p>"
+        + '<table class="verdictTable"><thead><tr><th>Player</th><th class="num">Team</th>'
+          + '<th class="num">Games</th></tr></thead><tbody>' + rosterRows + "</tbody></table>";
+    }
+    return html;
+  }
+
+  var CARD_RENDERERS = {
+    analyze_trade: analyzeTradeCardHTML,
+    punt_planner: puntPlannerCardHTML,
+    find_trades: findTradesCardHTML,
+    buy_low_sell_high: buyLowSellHighCardHTML,
+    schedule_strength: scheduleStrengthCardHTML,
+  };
+
+  function renderResult(data) {
+    var result = document.getElementById("result");
+    var renderer = data && CARD_RENDERERS[data.kind];
+    result.innerHTML = renderer ? renderer(data) : "";
+  }
+
+  function renderLoading() {
+    document.getElementById("result").innerHTML =
+      '<div class="resultLoading"><span class="dot"></span>Running…</div>';
+  }
+
+  // Only reached on an actual failure (bad input, a crash, or a malformed/
+  // missing result line) -- the noise filter keeps a wall of per-player
+  // [skip] lines from swamping whatever real error message is in there.
+  function renderError(rawText) {
+    var lines = rawText.split("\n").filter(function (line) { return !isNoiseLine(line); });
+    var text = lines.join("\n").replace(/\[exit code: \d+\]\s*$/, "").trim();
+    document.getElementById("result").innerHTML =
+      '<p class="resultError">' + esc(text || "Something went wrong.") + "</p>";
+  }
+
   async function runTool(tool, fields) {
-    var output = document.getElementById("output");
-    output.textContent = "";
-    var log = document.getElementById("log");
-    log.className = "";
-    log.open = false;
-    document.getElementById("log-body").textContent = "";
-    renderVerdict(null);
+    renderLoading();
     var state = { lines: [""] };
     setStatus("running", "Running…");
 
@@ -290,7 +411,7 @@
     });
 
     if (!res.ok) {
-      output.textContent = await res.text();
+      renderError(await res.text());
       setStatus(res.status === 409 ? "running" : "error",
         res.status === 409 ? "Busy — try again shortly" : "Failed to start");
       return;
@@ -299,32 +420,39 @@
     var reader = res.body.getReader();
     var decoder = new TextDecoder();
     while (true) {
-      var result = await reader.read();
-      if (result.done) break;
-      appendToConsole(state, decoder.decode(result.value, { stream: true }));
+      var chunk = await reader.read();
+      if (chunk.done) break;
+      bufferLines(state, decoder.decode(chunk.value, { stream: true }));
     }
 
     var resultLine = state.lines.find(function (line) {
       return line.indexOf(DASHBOARD_RESULT_PREFIX) === 0;
     });
+    var fullText = state.lines.join("\n");
+    var exitMatch = fullText.match(/\[exit code: (\d+)\]\s*$/);
+    var ok = exitMatch && exitMatch[1] === "0";
+
+    var parsed = null;
     if (resultLine) {
       try {
-        renderVerdict(JSON.parse(resultLine.slice(DASHBOARD_RESULT_PREFIX.length)));
+        parsed = JSON.parse(resultLine.slice(DASHBOARD_RESULT_PREFIX.length));
       } catch (e) {
-        // Malformed/truncated result line -- leave the verdict card hidden
-        // rather than show something misleading; the raw report is still
-        // fully visible in the console either way.
+        parsed = null;
       }
     }
 
-    var fullText = state.lines.join("\n");
-    var exitMatch = fullText.match(/\[exit code: (\d+)\]\s*$/);
-    if (exitMatch && exitMatch[1] === "0") {
+    if (ok && parsed) {
+      renderResult(parsed);
       setStatus("done", "Done");
-    } else if (exitMatch) {
-      setStatus("error", "Exited with code " + exitMatch[1]);
-    } else {
+    } else if (ok) {
+      // Exited clean but printed no structured result -- shouldn't happen
+      // for a known tool, but show what it actually said rather than a
+      // silently empty card.
+      renderError(fullText);
       setStatus("done", "Finished");
+    } else {
+      renderError(fullText);
+      setStatus("error", exitMatch ? "Exited with code " + exitMatch[1] : "Failed");
     }
   }
 
@@ -353,9 +481,8 @@
       });
     }).catch(function (err) {
       document.getElementById("toolForm").innerHTML = "";
-      document.getElementById("output").textContent =
-        "Could not load team/player data: " + err.message +
-        "\n\nIs the server running? Start it with: python scripts/serve_dashboard.py";
+      renderError("Could not load team/player data: " + err.message +
+        "\n\nIs the server running? Start it with: python scripts/serve_dashboard.py");
     });
   });
 })();

@@ -18,6 +18,8 @@ Usage:
 
 import argparse
 import itertools
+import json
+import os
 import sys
 from pathlib import Path
 
@@ -31,6 +33,29 @@ from model import compute_tau                                          # noqa: E
 from rosters import (load_projections, load_rosters,                   # noqa: E402
                      player_value_percentiles, resolve_roster_players)
 from trade import build_week_bank, evaluate_trade                      # noqa: E402
+
+# Set by dashboard_server.py's subprocess env only -- plain CLI usage never
+# sees this extra line. Lets the web dashboard render a structured card
+# instead of parsing the printed report's aligned text.
+DASHBOARD_RESULT_PREFIX = "__DASHBOARD_RESULT__"
+
+
+def summarize_find_trades_result(screened: int, max_value_gap: float, sim_weeks: int,
+                                 hits: list, top: int) -> dict:
+    """Pure JSON-summary builder for the web dashboard's trade-finder card."""
+    return {
+        "kind": "find_trades",
+        "screened": screened,
+        "maxValueGap": max_value_gap,
+        "simWeeks": sim_weeks,
+        "totalHits": len(hits),
+        "top": top,
+        "trades": [
+            {"teamA": a, "teamB": b, "give": give, "get": get,
+             "deltaA": delta_a, "deltaB": delta_b}
+            for _, a, b, give, get, delta_a, delta_b in hits[:top]
+        ],
+    }
 
 
 def candidate_pairs(rosters: dict, team: str | None, max_value_gap: float,
@@ -104,6 +129,10 @@ def main() -> None:
     hits.sort(reverse=True)
     if not hits:
         print("No mutually-improving 1-for-1 swap found at this value-gap threshold.")
+        if os.environ.get("DASHBOARD_JSON_SUMMARY"):
+            summary = summarize_find_trades_result(
+                len(pairs), args.max_value_gap, args.sim_weeks, hits, args.top)
+            print(DASHBOARD_RESULT_PREFIX + json.dumps(summary))
         return
 
     print(f"Top {min(args.top, len(hits))} of {len(hits)} mutually-improving trade(s):\n")
@@ -114,6 +143,11 @@ def main() -> None:
     print(f"\nScreened at {args.sim_weeks} weeks/opponent for speed -- confirm any of "
           f"these with analyze_trade.py's full {TRADE_CONFIG['weeks_per_opponent']} "
           f"weeks before proposing it.")
+
+    if os.environ.get("DASHBOARD_JSON_SUMMARY"):
+        summary = summarize_find_trades_result(
+            len(pairs), args.max_value_gap, args.sim_weeks, hits, args.top)
+        print(DASHBOARD_RESULT_PREFIX + json.dumps(summary))
 
 
 if __name__ == "__main__":
