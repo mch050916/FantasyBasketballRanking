@@ -432,6 +432,47 @@ def category_win_rates(a_totals: np.ndarray,
     return rates
 
 
+def matchup_win_rates(a_totals: np.ndarray,
+                      b_totals: np.ndarray,
+                      categories: dict) -> dict[str, float]:
+    """
+    P(A wins the week) / P(tie) / P(A loses), from per-draw category tallies.
+
+    NOT the same as averaging category_win_rates' per-category marginals,
+    which lose the within-week correlation needed to know who wins the week
+    overall -- a team can "win" more categories on average while still
+    losing most actual weeks if its wins and losses don't co-occur the same
+    way the opponent's do. Reuses the exact same per-category comparison
+    logic category_win_rates already uses (including _fg_pct), just tallies
+    categories won per simulated draw (row) instead of averaging per
+    category.
+    """
+    a_cat_wins = np.zeros(a_totals.shape[0])
+    b_cat_wins = np.zeros(a_totals.shape[0])
+
+    for cat, meta in categories.items():
+        if cat == "FG%":
+            a, b = _fg_pct(a_totals), _fg_pct(b_totals)
+        elif cat in BANK_COLUMNS:
+            i = BANK_COLUMNS.index(cat)
+            a, b = a_totals[:, i], b_totals[:, i]
+        else:
+            continue
+
+        if meta["direction"] == "high":
+            a_cat_wins += (a > b)
+            b_cat_wins += (a < b)
+        else:
+            a_cat_wins += (a < b)
+            b_cat_wins += (a > b)
+
+    return {
+        "win": float((a_cat_wins > b_cat_wins).mean()),
+        "tie": float((a_cat_wins == b_cat_wins).mean()),
+        "loss": float((a_cat_wins < b_cat_wins).mean()),
+    }
+
+
 def expected_categories_won(rates: dict[str, dict[str, float]]) -> float:
     """
     E[categories won] = sum P(win) + 0.5 * sum P(tie).

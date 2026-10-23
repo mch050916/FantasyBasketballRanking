@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from config import LEAGUE_CONFIG, TRADE_CONFIG
-from trade import BANK_COLUMNS, add_missed_weeks, apply_trade, build_week_bank, pooled_donor_bank, quantize_bank_counts, category_win_rates, evaluate_roster_vs_field, evaluate_trade, expected_categories_won, games_per_week_pool, pad_to_roster_size, player_rng, scale_bank_to_projection, simulate_team_totals, summarize_trade_result, synthesize_bank, trim_to_roster_size
+from trade import BANK_COLUMNS, add_missed_weeks, apply_trade, build_week_bank, pooled_donor_bank, quantize_bank_counts, category_win_rates, evaluate_roster_vs_field, evaluate_trade, expected_categories_won, games_per_week_pool, matchup_win_rates, pad_to_roster_size, player_rng, scale_bank_to_projection, simulate_team_totals, summarize_trade_result, synthesize_bank, trim_to_roster_size
 
 
 def make_log(dates: list[str], **stats) -> pd.DataFrame:
@@ -426,6 +426,50 @@ class CategoryWinRatesTests(unittest.TestCase):
                                    self._totals(5, FGM=1.0, FGA=2.0),
                                    LEAGUE_CONFIG["categories"])
         self.assertEqual(rates["FG%"]["loss"], 1.0)
+
+
+class MatchupWinRatesTests(unittest.TestCase):
+    def _totals(self, n: int, **stats) -> np.ndarray:
+        out = np.zeros((n, len(BANK_COLUMNS)))
+        for col, value in stats.items():
+            out[:, BANK_COLUMNS.index(col)] = value
+        return out
+
+    def test_probabilities_sum_to_one(self) -> None:
+        a = self._totals(100, PTS=50.0, REB=10.0)
+        b = self._totals(100, PTS=40.0, REB=15.0)
+        rates = matchup_win_rates(a, b, LEAGUE_CONFIG["categories"])
+        self.assertAlmostEqual(rates["win"] + rates["tie"] + rates["loss"], 1.0, places=9)
+
+    def test_a_team_that_wins_every_category_wins_the_matchup(self) -> None:
+        a = self._totals(50, PTS=100.0, REB=50.0, AST=20.0)
+        b = self._totals(50, PTS=10.0, REB=5.0, AST=2.0)
+        rates = matchup_win_rates(a, b, LEAGUE_CONFIG["categories"])
+        self.assertEqual(rates["win"], 1.0)
+        self.assertEqual(rates["loss"], 0.0)
+
+    def test_identical_totals_tie_the_matchup(self) -> None:
+        a = self._totals(20, PTS=50.0, REB=10.0)
+        b = self._totals(20, PTS=50.0, REB=10.0)
+        rates = matchup_win_rates(a, b, LEAGUE_CONFIG["categories"])
+        self.assertEqual(rates["tie"], 1.0)
+
+    def test_symmetry_between_a_vs_b_and_b_vs_a(self) -> None:
+        a = self._totals(100, PTS=60.0, TO=5.0)
+        b = self._totals(100, PTS=55.0, TO=8.0)
+        forward = matchup_win_rates(a, b, LEAGUE_CONFIG["categories"])
+        backward = matchup_win_rates(b, a, LEAGUE_CONFIG["categories"])
+        self.assertAlmostEqual(forward["win"], backward["loss"], places=9)
+        self.assertAlmostEqual(forward["loss"], backward["win"], places=9)
+        self.assertAlmostEqual(forward["tie"], backward["tie"], places=9)
+
+    def test_a_narrow_category_edge_can_lose_the_whole_matchup(self) -> None:
+        # A wins only PTS; B wins REB, AST, TO (lower-is-better) -- A should
+        # lose the week on category count even though it "won" first.
+        a = self._totals(10, PTS=100.0, REB=5.0, AST=2.0, TO=20.0)
+        b = self._totals(10, PTS=90.0, REB=15.0, AST=10.0, TO=5.0)
+        rates = matchup_win_rates(a, b, LEAGUE_CONFIG["categories"])
+        self.assertEqual(rates["loss"], 1.0)
 
 
 class ExpectedCategoriesWonTests(unittest.TestCase):
