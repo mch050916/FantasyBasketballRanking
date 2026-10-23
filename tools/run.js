@@ -35,7 +35,8 @@
       description: "Ranks which categories a roster is already losing most, and re-ranks the full player pool with one category's weight zeroed.",
       fields: [
         { name: "team", label: "Team", type: "team-select", required: true },
-        { name: "punt", label: "Category to punt (optional)", type: "category-select" },
+        { name: "punt", label: "Category to punt (optional, comma-separated for multi-punt)",
+          type: "category-text" },
         { name: "show_players", label: "Players to show", type: "number", value: 15 },
       ],
     },
@@ -89,10 +90,12 @@
         + meta.teams.map(function (t) { return '<option value="' + esc(t) + '">' + esc(t) + "</option>"; }).join("");
       return '<select id="' + id + '" name="' + field.name + '">' + opts + "</select>";
     }
-    if (field.type === "category-select") {
-      var copts = '<option value="">(worst category)</option>'
-        + CATEGORIES.map(function (c) { return '<option value="' + c + '">' + c + "</option>"; }).join("");
-      return '<select id="' + id + '" name="' + field.name + '">' + copts + "</select>";
+    if (field.type === "category-text") {
+      var catListId = id + "_list";
+      var catOpts = CATEGORIES.map(function (c) { return '<option value="' + c + '">'; }).join("");
+      return '<input id="' + id + '" name="' + field.name + '" type="text" list="' + catListId + '"'
+        + ' placeholder="e.g. FG%, or FG%,AST for a multi-punt">'
+        + '<datalist id="' + catListId + '">' + catOpts + "</datalist>";
     }
     if (field.type === "player-text") {
       var listId = id + "_list";
@@ -258,6 +261,7 @@
   }
 
   function puntPlannerCardHTML(data) {
+    var puntLabel = data.punt.join(" + ");
     var catRows = data.categories.map(function (c) {
       return "<tr><td>" + esc(c.category)
         + (c.isPunt ? ' <span class="miniBadge punt">PUNT</span>' : "")
@@ -269,7 +273,7 @@
         + '<td class="num" style="color:var(--ink-faint);">' + p.was.toFixed(2) + "</td></tr>";
     }).join("");
 
-    return '<div class="verdictHead"><span class="verdictBadge even">Punting ' + esc(data.punt) + "</span>"
+    return '<div class="verdictHead"><span class="verdictBadge even">Punting ' + esc(puntLabel) + "</span>"
         + '<span class="verdictSummary">' + esc(data.team) + " — expected categories won per week"
           + tip("How many of the league's scored categories this roster is projected to win in a "
             + "typical head-to-head week, simulated against the field.") + "</span></div>"
@@ -279,17 +283,18 @@
         + "</div></div>"
       + '<p class="sectionLabel">Category breakdown, worst to best'
         + tip("Win rate against the league field, counting a tie as half a win. Lowest share first "
-          + "-- your strongest punt candidates.") + "</p>"
+          + "-- your strongest punt candidates. Punt more than one at once (comma-separated above) "
+          + "for a multi-punt build.") + "</p>"
       + '<table class="verdictTable"><thead><tr><th>Category</th><th class="num">Share</th></tr></thead>'
         + "<tbody>" + catRows + "</tbody></table>"
       + '<div class="verdictTeams oneCol" style="margin-top:16px;"><div class="verdictTeam">'
-        + '<span class="verdictTeamName">Conceding ' + esc(data.punt) + " outright</span>"
+        + '<span class="verdictTeamName">Conceding ' + esc(puntLabel) + " outright</span>"
         + '<span class="verdictTeamLine">' + data.remaining.expected.toFixed(2) + " / " + data.remaining.n
           + ' remaining categories <span class="sub">(avg ' + data.remaining.avgRemaining.toFixed(3)
           + "/cat, vs " + data.remaining.avgToday.toFixed(3) + "/cat today)</span></span></div></div>"
-      + '<p class="sectionLabel">Top players re-ranked with ' + esc(data.punt) + " weighted to 0"
-        + tip("Player value recomputed with the punted category's weight zeroed out -- who looks "
-          + "good once you've given up on that category. Your own roster is highlighted.") + "</p>"
+      + '<p class="sectionLabel">Top players re-ranked with ' + esc(puntLabel) + " weighted to 0"
+        + tip("Player value recomputed with every punted category's weight zeroed out together -- "
+          + "who looks good once you've given up on them. Your own roster is highlighted.") + "</p>"
       + '<table class="verdictTable"><thead><tr><th>Player</th><th class="num">Val</th>'
         + '<th class="num">Was</th></tr></thead><tbody>' + playerRows + "</tbody></table>";
   }

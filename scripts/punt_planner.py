@@ -11,6 +11,7 @@ the punt build and where your own players land.
 Usage:
     python scripts/punt_planner.py --team "Chester"
     python scripts/punt_planner.py --team "Chester" --punt "FG%"
+    python scripts/punt_planner.py --team "Chester" --punt "FG%,AST"
 """
 
 import argparse
@@ -36,27 +37,33 @@ DASHBOARD_RESULT_PREFIX = "__DASHBOARD_RESULT__"
 
 
 def summarize_punt_result(team: str, expected: float, shares: dict, ranked: list,
-                          punt: str, top_players: list) -> dict:
+                          punts: list, top_players: list) -> dict:
     """
     Pure JSON-summary builder for the web dashboard's punt-planner card.
 
+    punts: one or more categories conceded together (multi-punt), in the
+    order the user listed them -- "isPunt" and the remaining-categories math
+    both just check membership, so punting two categories is summing two
+    shares instead of one, not a different model.
     top_players: list of (name, punt_value, was_value, mine) tuples, already
     sorted/limited to the requested --show-players count -- mirrors exactly
     what main()'s printed report shows, just structured instead of aligned text.
     """
     n = len(shares)
-    remaining = expected - shares[punt]
+    punt_set = set(punts)
+    remaining = expected - sum(shares[c] for c in punts)
+    remaining_n = n - len(punts)
     return {
         "kind": "punt_planner",
         "team": team,
         "expected": expected,
         "n": n,
-        "categories": [{"category": c, "share": shares[c], "isPunt": c == punt} for c in ranked],
-        "punt": punt,
+        "categories": [{"category": c, "share": shares[c], "isPunt": c in punt_set} for c in ranked],
+        "punt": punts,
         "remaining": {
             "expected": remaining,
-            "n": n - 1,
-            "avgRemaining": remaining / (n - 1),
+            "n": remaining_n,
+            "avgRemaining": remaining / remaining_n,
             "avgToday": expected / n,
         },
         "players": [
@@ -71,9 +78,10 @@ def category_shares(rates: dict) -> dict[str, float]:
     return {cat: r["win"] + 0.5 * r["tie"] for cat, r in rates.items()}
 
 
-def repriced_total_value(projections, cat, new_weight):
+def repriced_total_value(projections, cats, new_weight):
     """
-    TOTAL_VALUE recomputed with one category's weight swapped out.
+    TOTAL_VALUE recomputed with one or more categories' weight swapped out
+    (multi-punt: every category in `cats` gets `new_weight`, together).
 
     Every category's stored {cat}_G column is already `g * old_weight`
     (model.py's compute_g_scores) -- dividing it back out and multiplying by
@@ -81,6 +89,7 @@ def repriced_total_value(projections, cat, new_weight):
     weight change, without redoing Box-Cox/tau/G-score math that doesn't
     depend on category_weights at all.
     """
+    cats = set(cats) if not isinstance(cats, str) else {cats}
     weights = LEAGUE_CONFIG["category_weights"]
     total = 0.0
     for c in LEAGUE_CONFIG["categories"]:
@@ -88,7 +97,7 @@ def repriced_total_value(projections, cat, new_weight):
         if col not in projections.columns:
             continue
         old_weight = weights.get(c, 1.0) or 1.0
-        w = new_weight if c == cat else weights.get(c, 1.0)
+        w = new_weight if c in cats else weights.get(c, 1.0)
         total = total + projections[col] / old_weight * w
     return total
 
@@ -100,7 +109,8 @@ def main() -> None:
     parser.add_argument("--rookies", default="durant_rankings_rookies_2026_27.csv")
     parser.add_argument("--team", required=True)
     parser.add_argument("--punt", default=None,
-                        help="Category to analyze (default: the worst-performing one)")
+                        help="Category (or comma-separated categories, for a multi-punt build) "
+                             "to analyze -- default: the worst-performing one")
     parser.add_argument("--show-players", type=int, default=15,
                         help="How many top players to show under the punt weighting")
     args = parser.parse_args()
@@ -138,25 +148,31 @@ def main() -> None:
 
     shares = category_shares(rates)
     ranked = sorted(shares, key=shares.get)
-    punt = args.punt or ranked[0]
-    if punt not in shares:
-        sys.exit(f"'{punt}' is not a scored category: {sorted(shares)}")
+    punts = [c.strip() for c in args.punt.split(",")] if args.punt else [ranked[0]]
+    for punt in punts:
+        if punt not in shares:
+            sys.exit(f"'{punt}' is not a scored category: {sorted(shares)}")
+    if len(punts) >= len(shares):
+        sys.exit(f"Can't punt every scored category ({len(punts)} of {len(shares)}) -- "
+                 f"there'd be nothing left to rank players on")
+    punt_label = "+".join(punts)
 
     n = len(shares)
     print(f"\n{args.team} — expected categories won per week: {expected:.2f} / {n}, "
           f"vs league field\n")
     print("Categories ranked worst to best (punt candidates first):")
     for cat in ranked:
-        marker = " <-- punt" if cat == punt else ""
+        marker = " <-- punt" if cat in punts else ""
         print(f"  {cat:<6} {shares[cat]:5.3f}{marker}")
 
-    remaining = expected - shares[punt]
-    print(f"\nConceding {punt} outright: {remaining:.2f} / {n - 1} remaining categories "
-          f"(avg {remaining / (n - 1):.3f}/cat, vs {expected / n:.3f}/cat today)")
+    remaining = expected - sum(shares[c] for c in punts)
+    remaining_n = n - len(punts)
+    print(f"\nConceding {punt_label} outright: {remaining:.2f} / {remaining_n} remaining categories "
+          f"(avg {remaining / remaining_n:.3f}/cat, vs {expected / n:.3f}/cat today)")
 
-    print(f"\nTop {args.show_players} players re-ranked with {punt} weighted to 0 "
+    print(f"\nTop {args.show_players} players re-ranked with {punt_label} weighted to 0 "
           f"(* = on {args.team}'s roster):")
-    repriced = projections.assign(PUNT_VALUE=repriced_total_value(projections, punt, 0.0))
+    repriced = projections.assign(PUNT_VALUE=repriced_total_value(projections, punts, 0.0))
     top = repriced.sort_values("PUNT_VALUE", ascending=False).head(args.show_players)
     top_players = []
     for _, row in top.iterrows():
@@ -168,7 +184,7 @@ def main() -> None:
                             float(row["TOTAL_VALUE"]), mine))
 
     if os.environ.get("DASHBOARD_JSON_SUMMARY"):
-        summary = summarize_punt_result(args.team, expected, shares, ranked, punt, top_players)
+        summary = summarize_punt_result(args.team, expected, shares, ranked, punts, top_players)
         print(DASHBOARD_RESULT_PREFIX + json.dumps(summary))
 
 

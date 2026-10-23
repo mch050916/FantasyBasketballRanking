@@ -14,11 +14,12 @@ import schedule_strength    # noqa: E402
 
 
 class SummarizePuntResultTests(unittest.TestCase):
-    def test_marks_the_punt_category_and_sorts_categories_as_given(self) -> None:
+    def test_marks_the_punt_categories_and_sorts_categories_as_given(self) -> None:
         shares = {"PTS": 0.6, "DD": 0.24, "REB": 0.3}
         ranked = ["DD", "REB", "PTS"]
         top_players = [("Shai", 6.27, 6.21, True), ("Jokic", 7.42, 8.60, False)]
-        summary = punt_planner.summarize_punt_result("AR15", 6.44, shares, ranked, "DD", top_players)
+        summary = punt_planner.summarize_punt_result(
+            "AR15", 6.44, shares, ranked, ["DD"], top_players)
 
         self.assertEqual(summary["kind"], "punt_planner")
         self.assertEqual(summary["team"], "AR15")
@@ -26,21 +27,68 @@ class SummarizePuntResultTests(unittest.TestCase):
         self.assertEqual([c["category"] for c in summary["categories"]], ranked)
         self.assertTrue(summary["categories"][0]["isPunt"])
         self.assertFalse(summary["categories"][1]["isPunt"])
-        self.assertEqual(summary["punt"], "DD")
+        self.assertEqual(summary["punt"], ["DD"])
+
+    def test_a_multi_punt_marks_every_punted_category(self) -> None:
+        shares = {"PTS": 0.6, "DD": 0.24, "REB": 0.3}
+        ranked = ["DD", "REB", "PTS"]
+        summary = punt_planner.summarize_punt_result(
+            "AR15", 6.44, shares, ranked, ["DD", "REB"], [])
+        self.assertTrue(summary["categories"][0]["isPunt"])
+        self.assertTrue(summary["categories"][1]["isPunt"])
+        self.assertFalse(summary["categories"][2]["isPunt"])
+        self.assertEqual(summary["punt"], ["DD", "REB"])
 
     def test_remaining_expected_excludes_the_punted_category(self) -> None:
         shares = {"PTS": 0.6, "DD": 0.24}
         summary = punt_planner.summarize_punt_result(
-            "AR15", 0.84, shares, ["DD", "PTS"], "DD", [])
+            "AR15", 0.84, shares, ["DD", "PTS"], ["DD"], [])
+        self.assertAlmostEqual(summary["remaining"]["expected"], 0.60, places=6)
+        self.assertEqual(summary["remaining"]["n"], 1)
+
+    def test_remaining_expected_sums_every_punted_category(self) -> None:
+        shares = {"PTS": 0.6, "DD": 0.24, "REB": 0.16}
+        summary = punt_planner.summarize_punt_result(
+            "AR15", 1.0, shares, ["DD", "REB", "PTS"], ["DD", "REB"], [])
         self.assertAlmostEqual(summary["remaining"]["expected"], 0.60, places=6)
         self.assertEqual(summary["remaining"]["n"], 1)
 
     def test_player_rows_carry_the_mine_flag(self) -> None:
         top_players = [("Shai", 6.27, 6.21, True), ("Jokic", 7.42, 8.60, False)]
         summary = punt_planner.summarize_punt_result(
-            "AR15", 1.0, {"PTS": 0.6, "DD": 0.4}, ["DD", "PTS"], "DD", top_players)
+            "AR15", 1.0, {"PTS": 0.6, "DD": 0.4}, ["DD", "PTS"], ["DD"], top_players)
         self.assertEqual(summary["players"][0], {"name": "Shai", "value": 6.27, "was": 6.21, "mine": True})
         self.assertFalse(summary["players"][1]["mine"])
+
+
+class RepricedTotalValueTests(unittest.TestCase):
+    """repriced_total_value is pure math over {cat}_G columns -- no I/O, no model rerun."""
+
+    def _projections(self) -> pd.DataFrame:
+        from config import LEAGUE_CONFIG
+        cols = {f"{c}_G": [1.0, 2.0] for c in LEAGUE_CONFIG["categories"]}
+        return pd.DataFrame(cols)
+
+    def test_zeroing_one_category_drops_only_that_columns_contribution(self) -> None:
+        df = self._projections()
+        full_total = punt_planner.repriced_total_value(df, [], 1.0)  # no-op: same weights as stored
+        single = punt_planner.repriced_total_value(df, ["PTS"], 0.0)
+        # The only category weighted to 0 is PTS -- every other column's own
+        # stored value survives unchanged (old_weight cancels against itself).
+        self.assertLess(single.iloc[0], full_total.iloc[0])
+
+    def test_multi_punt_zeroes_every_listed_category_together(self) -> None:
+        df = self._projections()
+        single = punt_planner.repriced_total_value(df, ["PTS"], 0.0)
+        multi = punt_planner.repriced_total_value(df, ["PTS", "AST"], 0.0)
+        # Punting a second category can only remove more value, never add it back.
+        self.assertLess(multi.iloc[0], single.iloc[0])
+
+    def test_a_bare_string_is_treated_as_one_category_not_split_into_characters(self) -> None:
+        df = self._projections()
+        via_string = punt_planner.repriced_total_value(df, "PTS", 0.0)
+        via_list = punt_planner.repriced_total_value(df, ["PTS"], 0.0)
+        self.assertAlmostEqual(via_string.iloc[0], via_list.iloc[0], places=9)
 
 
 class SummarizeFindTradesResultTests(unittest.TestCase):
