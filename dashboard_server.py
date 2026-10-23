@@ -95,6 +95,8 @@ def build_projected_standings_argv(fields: dict) -> list[str]:
     argv = ["scripts/projected_standings.py"]
     if fields.get("through_week") not in (None, ""):
         argv += ["--through-week", str(fields["through_week"])]
+    if fields.get("actual_record"):
+        argv += ["--actual-record", str(fields["actual_record"])]
     if fields.get("team"):
         argv += ["--team", str(fields["team"])]
     return argv

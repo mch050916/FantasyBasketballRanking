@@ -129,6 +129,11 @@ def main() -> None:
     if args.through_week > schedule["WEEK"].max():
         sys.exit(f"--through-week {args.through_week} is beyond the schedule's last "
                  f"week ({schedule['WEEK'].max()}) -- nothing left to project")
+    if args.through_week > 0 and args.actual_record is None:
+        sys.exit(f"--through-week {args.through_week} requires --actual-record "
+                 f"(real results for weeks 1-{args.through_week}) -- without it, every "
+                 f"team would start from 0-0-0 and the projected record would be short "
+                 f"by {args.through_week} weeks' worth of games")
 
     cat_names = list(LEAGUE_CONFIG["categories"].keys())
     roster_players = sorted({p for players in rosters.values() for p in players})

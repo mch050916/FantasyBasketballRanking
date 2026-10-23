@@ -2,9 +2,9 @@
 scripts/serve_dashboard.py — Local web dashboard for the in-season tools
 ============================================================================
 Starts a local server so every in-season tool (punt planner, trade finder,
-trade analyzer, buy low/sell high, schedule strength) is a form on a page
-instead of a typed command -- one-time startup, then everything after that
-is clicking. See dashboard_server.py for the actual request handling and
+trade analyzer, buy low/sell high, schedule strength, projected standings)
+is a form on a page instead of a typed command -- one-time startup, then
+everything after that is clicking. See dashboard_server.py for the actual request handling and
 docs/superpowers/specs/2026-10-21-dashboard-web-tools-design.md for the
 full design.
 

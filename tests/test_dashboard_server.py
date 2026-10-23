@@ -158,6 +158,17 @@ class BuildProjectedStandingsArgvTests(unittest.TestCase):
         argv = build_projected_standings_argv({"through_week": ""})
         self.assertEqual(argv, ["scripts/projected_standings.py"])
 
+    def test_actual_record_included_when_present_omitted_when_blank(self) -> None:
+        argv = build_projected_standings_argv(
+            {"through_week": 3, "actual_record": "actual_record.csv"})
+        self.assertEqual(
+            argv,
+            ["scripts/projected_standings.py", "--through-week", "3",
+             "--actual-record", "actual_record.csv"],
+        )
+        argv = build_projected_standings_argv({"through_week": 3, "actual_record": ""})
+        self.assertEqual(argv, ["scripts/projected_standings.py", "--through-week", "3"])
+
 
 class ArgvBuildersRegistryTests(unittest.TestCase):
     def test_registry_has_all_six_tools(self) -> None:

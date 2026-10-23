@@ -82,6 +82,7 @@
       description: "Projects each team's final win-loss-tie record and league rank from the real weekly schedule, blending real results already played with simulated results for the weeks ahead.",
       fields: [
         { name: "through_week", label: "Through week (0 = no weeks completed yet)", type: "number", value: 0 },
+        { name: "actual_record", label: "Actual record CSV path (required if through week > 0)", type: "text", placeholder: "actual_record.csv" },
         { name: "team", label: "Your team (optional, highlights your row)", type: "team-select", required: false },
       ],
     },

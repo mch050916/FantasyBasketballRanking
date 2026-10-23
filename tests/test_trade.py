@@ -471,6 +471,34 @@ class MatchupWinRatesTests(unittest.TestCase):
         rates = matchup_win_rates(a, b, LEAGUE_CONFIG["categories"])
         self.assertEqual(rates["loss"], 1.0)
 
+    def _alternating_totals(self, n: int, even: dict, odd: dict) -> np.ndarray:
+        out = np.zeros((n, len(BANK_COLUMNS)))
+        for col, value in even.items():
+            out[0::2, BANK_COLUMNS.index(col)] = value
+        for col, value in odd.items():
+            out[1::2, BANK_COLUMNS.index(col)] = value
+        return out
+
+    def test_per_row_correlation_beats_a_column_mean_comparison(self) -> None:
+        # A wins 2 of 3 categories on even rows, loses 2 of 3 on odd rows --
+        # the TRUE whole-matchup result alternates win/loss with zero ties.
+        # But A's column MEAN beats B's constant value in all three
+        # categories (its highs and lows average out above B's level), so a
+        # buggy implementation that compared season-long column means
+        # instead of tallying categories won per simulated draw would
+        # wrongly report a 100% win rate. This is the test that actually
+        # distinguishes matchup_win_rates from a correlation-blind average.
+        a = self._alternating_totals(
+            100,
+            even={"PTS": 100.0, "REB": 100.0, "AST": 10.0},
+            odd={"PTS": 10.0, "REB": 10.0, "AST": 100.0},
+        )
+        b = self._totals(100, PTS=50.0, REB=50.0, AST=50.0)
+        rates = matchup_win_rates(a, b, LEAGUE_CONFIG["categories"])
+        self.assertAlmostEqual(rates["win"], 0.5, places=9)
+        self.assertAlmostEqual(rates["loss"], 0.5, places=9)
+        self.assertEqual(rates["tie"], 0.0)
+
 
 class ExpectedCategoriesWonTests(unittest.TestCase):
     def test_counts_a_tie_as_half_a_win(self) -> None:
