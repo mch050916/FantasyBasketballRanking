@@ -10,6 +10,7 @@ from dashboard_server import (
     build_buy_low_sell_high_argv,
     build_find_trades_argv,
     build_meta,
+    build_projected_standings_argv,
     build_punt_planner_argv,
     build_schedule_strength_argv,
 )
@@ -140,11 +141,30 @@ class BuildScheduleStrengthArgvTests(unittest.TestCase):
         )
 
 
+class BuildProjectedStandingsArgvTests(unittest.TestCase):
+    def test_no_fields_uses_every_default(self) -> None:
+        argv = build_projected_standings_argv({})
+        self.assertEqual(argv, ["scripts/projected_standings.py"])
+
+    def test_through_week_and_team(self) -> None:
+        argv = build_projected_standings_argv({"through_week": 3, "team": "AR15s And Saboners"})
+        self.assertEqual(
+            argv,
+            ["scripts/projected_standings.py", "--through-week", "3",
+             "--team", "AR15s And Saboners"],
+        )
+
+    def test_blank_through_week_is_omitted(self) -> None:
+        argv = build_projected_standings_argv({"through_week": ""})
+        self.assertEqual(argv, ["scripts/projected_standings.py"])
+
+
 class ArgvBuildersRegistryTests(unittest.TestCase):
-    def test_registry_has_all_five_tools(self) -> None:
+    def test_registry_has_all_six_tools(self) -> None:
         self.assertEqual(
             set(ARGV_BUILDERS.keys()),
-            {"punt_planner", "find_trades", "analyze_trade", "buy_low_sell_high", "schedule_strength"},
+            {"punt_planner", "find_trades", "analyze_trade", "buy_low_sell_high",
+             "schedule_strength", "projected_standings"},
         )
 
     def test_registry_dispatches_correctly(self) -> None:

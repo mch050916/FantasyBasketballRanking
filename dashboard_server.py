@@ -91,12 +91,22 @@ def build_schedule_strength_argv(fields: dict) -> list[str]:
     return argv
 
 
+def build_projected_standings_argv(fields: dict) -> list[str]:
+    argv = ["scripts/projected_standings.py"]
+    if fields.get("through_week") not in (None, ""):
+        argv += ["--through-week", str(fields["through_week"])]
+    if fields.get("team"):
+        argv += ["--team", str(fields["team"])]
+    return argv
+
+
 ARGV_BUILDERS = {
     "punt_planner": build_punt_planner_argv,
     "find_trades": build_find_trades_argv,
     "analyze_trade": build_analyze_trade_argv,
     "buy_low_sell_high": build_buy_low_sell_high_argv,
     "schedule_strength": build_schedule_strength_argv,
+    "projected_standings": build_projected_standings_argv,
 }
 
 
