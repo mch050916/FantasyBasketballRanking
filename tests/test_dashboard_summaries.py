@@ -1,4 +1,5 @@
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -9,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 import buy_low_sell_high   # noqa: E402
 import find_trades          # noqa: E402
+import projected_standings  # noqa: E402
 import punt_planner         # noqa: E402
 import schedule_strength    # noqa: E402
 
@@ -146,6 +148,78 @@ class SummarizeScheduleStrengthResultTests(unittest.TestCase):
         summary = schedule_strength.summarize_schedule_strength_result(
             "2026-10-23", "2026-27", pd.Series({"OKC": 3}), roster)
         self.assertEqual(summary["roster"], roster)
+
+
+class LoadActualRecordTests(unittest.TestCase):
+    def test_no_path_defaults_every_team_to_zero(self) -> None:
+        record = projected_standings.load_actual_record(None, ["AR15", "Hei's Team"])
+        self.assertEqual(record, {"AR15": (0.0, 0.0, 0.0), "Hei's Team": (0.0, 0.0, 0.0)})
+
+    def test_a_team_missing_from_the_file_still_defaults_to_zero(self) -> None:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+            f.write("TEAM,WINS,LOSSES,TIES\nAR15,3,1,0\n")
+            path = f.name
+        try:
+            record = projected_standings.load_actual_record(path, ["AR15", "Hei's Team"])
+            self.assertEqual(record["AR15"], (3.0, 1.0, 0.0))
+            self.assertEqual(record["Hei's Team"], (0.0, 0.0, 0.0))
+        finally:
+            Path(path).unlink()
+
+    def test_a_team_in_the_file_but_not_in_the_league_raises(self) -> None:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+            f.write("TEAM,WINS,LOSSES,TIES\nNot A Real Team,3,1,0\n")
+            path = f.name
+        try:
+            with self.assertRaises(ValueError):
+                projected_standings.load_actual_record(path, ["AR15"])
+        finally:
+            Path(path).unlink()
+
+
+class RemainingMatchupCountsTests(unittest.TestCase):
+    def _schedule(self, rows: list[tuple[int, str, str]]) -> pd.DataFrame:
+        return pd.DataFrame(rows, columns=["WEEK", "TEAM_A", "TEAM_B"])
+
+    def test_counts_how_many_times_a_pair_recurs(self) -> None:
+        schedule = self._schedule([(1, "A", "B"), (10, "A", "B"), (19, "A", "B")])
+        counts = projected_standings.remaining_matchup_counts(schedule, through_week=0)
+        self.assertEqual(counts[frozenset({"A", "B"})], 3)
+
+    def test_weeks_at_or_before_through_week_are_excluded(self) -> None:
+        schedule = self._schedule([(1, "A", "B"), (2, "A", "B"), (3, "A", "B")])
+        counts = projected_standings.remaining_matchup_counts(schedule, through_week=2)
+        self.assertEqual(counts[frozenset({"A", "B"})], 1)
+
+    def test_pair_order_in_the_schedule_does_not_create_separate_keys(self) -> None:
+        schedule = self._schedule([(1, "A", "B"), (2, "B", "A")])
+        counts = projected_standings.remaining_matchup_counts(schedule, through_week=0)
+        self.assertEqual(len(counts), 1)
+        self.assertEqual(counts[frozenset({"A", "B"})], 2)
+
+
+class SummarizeStandingsResultTests(unittest.TestCase):
+    def test_ranks_by_wins_plus_half_ties_descending(self) -> None:
+        records = {
+            "A": (10.0, 5.0, 1.0),   # 10.5
+            "B": (12.0, 4.0, 0.0),   # 12.0
+            "C": (9.0, 6.0, 2.0),    # 10.0
+        }
+        summary = projected_standings.summarize_standings_result(0, None, records)
+        self.assertEqual([t["team"] for t in summary["teams"]], ["B", "A", "C"])
+        self.assertEqual([t["rank"] for t in summary["teams"]], [1, 2, 3])
+
+    def test_marks_the_highlighted_team(self) -> None:
+        records = {"A": (10.0, 5.0, 0.0), "B": (8.0, 7.0, 0.0)}
+        summary = projected_standings.summarize_standings_result(0, "B", records)
+        mine = {t["team"]: t["mine"] for t in summary["teams"]}
+        self.assertTrue(mine["B"])
+        self.assertFalse(mine["A"])
+
+    def test_kind_and_through_week_are_carried_through(self) -> None:
+        summary = projected_standings.summarize_standings_result(3, None, {"A": (1.0, 0.0, 0.0)})
+        self.assertEqual(summary["kind"], "projected_standings")
+        self.assertEqual(summary["throughWeek"], 3)
 
 
 if __name__ == "__main__":
