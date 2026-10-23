@@ -27,6 +27,8 @@ diagnostics/baselines/
 # Real league rosters for the trade analyzer — league-specific, churns
 # weekly. rosters_example.csv stays tracked.
 rosters.csv
+fantasy_schedule.csv
+actual_record.csv
 
 # Autonomous-session decision log — kept locally only, not in the repo.
 CLAUDE.md
