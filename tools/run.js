@@ -77,6 +77,14 @@
         { name: "team", label: "Team (optional)", type: "team-select" },
       ],
     },
+    projected_standings: {
+      label: "Projected Standings", endpoint: "projected_standings",
+      description: "Projects each team's final win-loss-tie record and league rank from the real weekly schedule, blending real results already played with simulated results for the weeks ahead.",
+      fields: [
+        { name: "through_week", label: "Through week (0 = no weeks completed yet)", type: "number", value: 0 },
+        { name: "team", label: "Your team (optional, highlights your row)", type: "team-select", required: false },
+      ],
+    },
   };
 
   function qs(name) {
@@ -375,12 +383,28 @@
     return html;
   }
 
+  function projectedStandingsCardHTML(data) {
+    var rows = data.teams.map(function (t) {
+      return "<tr" + (t.mine ? ' class="playerMine"' : "") + "><td>" + t.rank + ". " + esc(t.team) + "</td>"
+        + '<td class="num">' + t.wins.toFixed(1) + " - " + t.losses.toFixed(1) + " - " + t.ties.toFixed(1) + "</td></tr>";
+    }).join("");
+    return '<div class="verdictHead"><span class="verdictBadge even">Through week ' + data.throughWeek + "</span>"
+        + '<span class="verdictSummary">Projected final record'
+          + tip("Real record through week " + data.throughWeek + " (0-0-0 if no weeks are done yet), plus "
+            + "simulated results for every remaining scheduled matchup -- not a from-scratch full-season "
+            + "simulation, a blend of what's already happened and what's projected to happen.")
+          + "</span></div>"
+      + '<table class="verdictTable"><thead><tr><th>Team</th><th class="num">W - L - T</th></tr></thead>'
+        + "<tbody>" + rows + "</tbody></table>";
+  }
+
   var CARD_RENDERERS = {
     analyze_trade: analyzeTradeCardHTML,
     punt_planner: puntPlannerCardHTML,
     find_trades: findTradesCardHTML,
     buy_low_sell_high: buyLowSellHighCardHTML,
     schedule_strength: scheduleStrengthCardHTML,
+    projected_standings: projectedStandingsCardHTML,
   };
 
   function renderResult(data) {
