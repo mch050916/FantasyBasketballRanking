@@ -128,3 +128,27 @@ def resolve_roster_players(rosters: dict[str, list[str]],
                          + "\n".join(problems))
 
     return resolved
+
+
+def load_actual_record(path: str | Path | None,
+                       teams: list[str]) -> dict[str, tuple[float, float, float]]:
+    """
+    Real completed-week record per team, (wins, losses, ties), from a CSV of
+    TEAM,WINS,LOSSES,TIES.
+
+    A team absent from the file -- or every team, if path is None -- starts
+    at 0-0-0: real fantasy standings before any real record has been entered.
+    Shared by projected_standings.py and analyze_trade.py's league-rank
+    comparison, so it lives here (the I/O-boundary module) rather than in
+    either script, which would otherwise force one to import the other.
+    """
+    record = {team: (0.0, 0.0, 0.0) for team in teams}
+    if path is None:
+        return record
+    df = pd.read_csv(path)
+    unknown = set(df["TEAM"].astype(str)) - set(teams)
+    if unknown:
+        raise ValueError(f"{path} names team(s) not in the league rosters: {sorted(unknown)}")
+    for _, row in df.iterrows():
+        record[str(row["TEAM"])] = (float(row["WINS"]), float(row["LOSSES"]), float(row["TIES"]))
+    return record

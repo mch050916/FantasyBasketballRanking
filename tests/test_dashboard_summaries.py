@@ -1,5 +1,4 @@
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -148,33 +147,6 @@ class SummarizeScheduleStrengthResultTests(unittest.TestCase):
         summary = schedule_strength.summarize_schedule_strength_result(
             "2026-10-23", "2026-27", pd.Series({"OKC": 3}), roster)
         self.assertEqual(summary["roster"], roster)
-
-
-class LoadActualRecordTests(unittest.TestCase):
-    def test_no_path_defaults_every_team_to_zero(self) -> None:
-        record = projected_standings.load_actual_record(None, ["AR15", "Hei's Team"])
-        self.assertEqual(record, {"AR15": (0.0, 0.0, 0.0), "Hei's Team": (0.0, 0.0, 0.0)})
-
-    def test_a_team_missing_from_the_file_still_defaults_to_zero(self) -> None:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
-            f.write("TEAM,WINS,LOSSES,TIES\nAR15,3,1,0\n")
-            path = f.name
-        try:
-            record = projected_standings.load_actual_record(path, ["AR15", "Hei's Team"])
-            self.assertEqual(record["AR15"], (3.0, 1.0, 0.0))
-            self.assertEqual(record["Hei's Team"], (0.0, 0.0, 0.0))
-        finally:
-            Path(path).unlink()
-
-    def test_a_team_in_the_file_but_not_in_the_league_raises(self) -> None:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
-            f.write("TEAM,WINS,LOSSES,TIES\nNot A Real Team,3,1,0\n")
-            path = f.name
-        try:
-            with self.assertRaises(ValueError):
-                projected_standings.load_actual_record(path, ["AR15"])
-        finally:
-            Path(path).unlink()
 
 
 class RemainingMatchupCountsTests(unittest.TestCase):

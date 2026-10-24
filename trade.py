@@ -473,6 +473,60 @@ def matchup_win_rates(a_totals: np.ndarray,
     }
 
 
+def matchup_pair_counts(schedule: pd.DataFrame) -> dict[frozenset, int]:
+    """
+    Unique unordered team-pairs in `schedule` -> how many rows share that
+    pair. Deduping matters: rosters are static within one simulation run, so
+    the same pair recurring across multiple weeks has one answer, not
+    several -- simulate each unique pair once, not each schedule row.
+    """
+    counts: dict[frozenset, int] = {}
+    for _, row in schedule.iterrows():
+        pair = frozenset({row["TEAM_A"], row["TEAM_B"]})
+        counts[pair] = counts.get(pair, 0) + 1
+    return counts
+
+
+def rank_teams(records: dict[str, tuple[float, float, float]]) -> list[str]:
+    """Team names ordered by wins + 0.5*ties, descending -- the standard points-based sort."""
+    return sorted(records, key=lambda t: records[t][0] + 0.5 * records[t][2], reverse=True)
+
+
+def simulate_standings(rosters: dict[str, list[str]],
+                       banks: dict[str, np.ndarray],
+                       schedule: pd.DataFrame,
+                       actual_record: dict[str, tuple[float, float, float]],
+                       categories: dict,
+                       n_weeks: int,
+                       seed: int) -> dict[str, tuple[float, float, float]]:
+    """
+    Projected win-loss-tie record per team: each team's real actual_record
+    (0-0-0 default) plus simulated results for every matchup in `schedule`.
+
+    `schedule` is whatever the caller wants simulated -- already filtered to
+    remaining weeks, or the whole season, or a subset touching one trade's
+    two teams. This function just simulates whatever rows it's given.
+    """
+    wins = {t: actual_record.get(t, (0.0, 0.0, 0.0))[0] for t in rosters}
+    losses = {t: actual_record.get(t, (0.0, 0.0, 0.0))[1] for t in rosters}
+    ties = {t: actual_record.get(t, (0.0, 0.0, 0.0))[2] for t in rosters}
+
+    for pair, count in matchup_pair_counts(schedule).items():
+        a, b = sorted(pair)
+        a_totals = simulate_team_totals({p: banks[p] for p in rosters[a]}, n_weeks, seed)
+        b_totals = simulate_team_totals({p: banks[p] for p in rosters[b]}, n_weeks, seed)
+        rate = matchup_win_rates(a_totals, b_totals, categories)
+
+        wins[a] += count * rate["win"]
+        losses[a] += count * rate["loss"]
+        ties[a] += count * rate["tie"]
+        wins[b] += count * rate["loss"]
+        losses[b] += count * rate["win"]
+        ties[b] += count * rate["tie"]
+
+    return {t: (wins[t], losses[t], ties[t]) for t in rosters}
+
+
 def expected_categories_won(rates: dict[str, dict[str, float]]) -> float:
     """
     E[categories won] = sum P(win) + 0.5 * sum P(tie).
@@ -674,6 +728,47 @@ def evaluate_trade(rosters: dict[str, list[str]],
 
     return {"before": before, "after": after, "delta": delta,
             "roster_sizes_after": {n: len(p) for n, p in after_rosters.items()}}
+
+
+def evaluate_trade_standings(rosters: dict[str, list[str]],
+                             banks: dict[str, np.ndarray],
+                             team: str,
+                             partner: str,
+                             give: list[str],
+                             get: list[str],
+                             categories: dict,
+                             config: dict,
+                             trade_config: dict,
+                             replacement_bank: np.ndarray,
+                             schedule: pd.DataFrame,
+                             actual_record: dict[str, tuple[float, float, float]],
+                             weeks_per_matchup: int,
+                             player_values: dict[str, float] | None = None) -> dict:
+    """
+    Projected league standings (win-loss-tie per team) before and after a
+    two-team trade, built on the real schedule -- the standings analogue of
+    evaluate_trade, which only answers "expected categories won vs. the
+    field," not "where does this put me in the real race."
+
+    Mirrors evaluate_trade's trim/pad handling exactly, so an uneven trade
+    (e.g. 2-for-1) is treated the same way by both: trim_to_roster_size then
+    pad_to_roster_size, never padding a never-trimmed overlong roster.
+    """
+    seed = trade_config["seed"]
+    roster_size = max([config["roster_size"]] + [len(p) for p in rosters.values()])
+    after_rosters = apply_trade(rosters, team, partner, give, get)
+
+    def standings_for(source: dict[str, list[str]]) -> dict[str, tuple[float, float, float]]:
+        if player_values is not None:
+            source, source_banks = trim_to_roster_size(source, banks, roster_size, player_values)
+        else:
+            source_banks = banks
+        padded_rosters, padded_banks = pad_to_roster_size(
+            source, source_banks, roster_size, replacement_bank)
+        return simulate_standings(padded_rosters, padded_banks, schedule, actual_record,
+                                  categories, weeks_per_matchup, seed)
+
+    return {"before": standings_for(rosters), "after": standings_for(after_rosters)}
 
 
 def summarize_trade_result(result: dict, team: str, partner: str) -> dict:

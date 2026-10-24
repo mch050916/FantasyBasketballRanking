@@ -58,6 +58,8 @@
         { name: "partner", label: "Partner team", type: "team-select", required: true, excludeField: "team" },
         { name: "give", label: "Players you give (comma-separated)", type: "player-text", rosterFrom: "team" },
         { name: "get", label: "Players you get (comma-separated)", type: "player-text", rosterFrom: "partner" },
+        { name: "through_week", label: "Through week (optional, 0 = no weeks completed yet)", type: "number", value: 0 },
+        { name: "actual_record", label: "Actual record CSV path (required if through week > 0)", type: "text", placeholder: "actual_record.csv" },
       ],
     },
     buy_low_sell_high: {
@@ -243,6 +245,13 @@
   // -0.01 to +0.02 range for a single 1-for-1 swap).
   var VERDICT_THRESHOLD = 0.05;
 
+  function rankSideHTML(label, side, nTeams) {
+    var cls = side.rankAfter < side.rankBefore ? "up" : (side.rankAfter > side.rankBefore ? "down" : "flat");
+    return '<div class="verdictTeam"><span class="verdictTeamName">' + esc(label) + "</span>"
+      + '<span class="verdictTeamLine">' + side.rankBefore + " of " + nTeams + " &rarr; "
+      + '<b class="' + cls + '">' + side.rankAfter + " of " + nTeams + "</b></span></div>";
+  }
+
   function analyzeTradeCardHTML(data) {
     var mine = data.teams[data.team];
     var theirs = data.teams[data.partner];
@@ -262,6 +271,15 @@
           + "</span>"
       + "</div>"
       + '<div class="verdictTeams">' + sideHTML(data.team, mine) + sideHTML(data.partner, theirs) + "</div>"
+      + (data.rank ? '<p class="sectionLabel">League rank'
+          + tip("Projected final rank from the real schedule, before and after this trade -- a "
+            + "separate, schedule-driven comparison from the expected-categories-vs-field numbers "
+            + "above, which only measure performance against the league average, not the real race.")
+          + "</p>"
+        + '<div class="verdictTeams">'
+          + rankSideHTML(data.team, data.rank.teams[data.team], data.rank.nTeams)
+          + rankSideHTML(data.partner, data.rank.teams[data.partner], data.rank.nTeams)
+          + "</div>" : "")
       + '<table class="verdictTable"><thead><tr><th>Category</th><th class="num">Before</th>'
         + '<th class="num">After</th><th class="num">&Delta;' + tip("Change in win share for this "
           + "category if the trade happens -- a tie counts as half a win, same as the headline number.")

@@ -175,3 +175,39 @@ class DataQualityWarningTests(unittest.TestCase):
         proj = _projections([{"PLAYER_NAME": "Clean"}]).drop(columns=["DATA_AVAILABILITY_NOTE"],
                                                              errors="ignore")
         self.assertEqual(analyze_trade.warn_data_quality(proj, {"A": ["Clean"]}), [])
+
+
+class SummarizeRankChangeTests(unittest.TestCase):
+    def _standings(self, before: dict, after: dict) -> dict:
+        return {"before": before, "after": after}
+
+    def test_reports_rank_and_record_for_both_teams(self) -> None:
+        standings = self._standings(
+            before={"A": (10.0, 5.0, 1.0), "B": (12.0, 4.0, 0.0), "C": (9.0, 6.0, 2.0)},
+            after={"A": (12.0, 4.0, 0.0), "B": (10.0, 5.0, 1.0), "C": (9.0, 6.0, 2.0)},
+        )
+        summary = analyze_trade.summarize_rank_change(standings, "A", "B")
+        self.assertEqual(summary["nTeams"], 3)
+        # Before: B 1st, A 2nd, C 3rd. After: A 1st, B 2nd, C 3rd.
+        self.assertEqual(summary["teams"]["A"]["rankBefore"], 2)
+        self.assertEqual(summary["teams"]["A"]["rankAfter"], 1)
+        self.assertEqual(summary["teams"]["B"]["rankBefore"], 1)
+        self.assertEqual(summary["teams"]["B"]["rankAfter"], 2)
+
+    def test_records_are_carried_through_as_lists_for_json(self) -> None:
+        standings = self._standings(
+            before={"A": (10.0, 5.0, 1.0), "B": (12.0, 4.0, 0.0)},
+            after={"A": (11.0, 4.0, 1.0), "B": (11.0, 5.0, 0.0)},
+        )
+        summary = analyze_trade.summarize_rank_change(standings, "A", "B")
+        self.assertEqual(summary["teams"]["A"]["recordBefore"], [10.0, 5.0, 1.0])
+        self.assertEqual(summary["teams"]["A"]["recordAfter"], [11.0, 4.0, 1.0])
+
+    def test_a_team_unaffected_by_the_trade_keeps_the_same_rank(self) -> None:
+        standings = self._standings(
+            before={"A": (10.0, 5.0, 0.0), "B": (9.0, 6.0, 0.0), "C": (8.0, 7.0, 0.0)},
+            after={"A": (11.0, 4.0, 0.0), "B": (8.0, 7.0, 0.0), "C": (8.0, 7.0, 0.0)},
+        )
+        summary = analyze_trade.summarize_rank_change(standings, "A", "B")
+        self.assertEqual(summary["teams"]["A"]["rankBefore"], 1)
+        self.assertEqual(summary["teams"]["A"]["rankAfter"], 1)

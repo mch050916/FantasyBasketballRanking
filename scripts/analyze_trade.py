@@ -19,12 +19,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from config import LEAGUE_CONFIG, TRADE_CONFIG          # noqa: E402
 from data import fetch_game_logs, fetch_tech_per_game   # noqa: E402
 from model import compute_tau                            # noqa: E402
-from rosters import (load_projections, load_rosters,      # noqa: E402
-                     player_value_percentiles, resolve_roster_players)
+from rosters import (load_actual_record, load_projections,  # noqa: E402
+                     load_rosters, player_value_percentiles,
+                     resolve_roster_players)
 from trade import (BANK_COLUMNS, add_missed_weeks,        # noqa: E402
-                   build_week_bank, evaluate_trade,
+                   build_week_bank, evaluate_trade, evaluate_trade_standings,
                    games_per_week_pool, pooled_donor_bank,
-                   quantize_bank_counts, scale_bank_to_projection,
+                   quantize_bank_counts, rank_teams, scale_bank_to_projection,
                    summarize_trade_result, synthesize_bank)
 
 # Set by dashboard_server.py's subprocess env only -- plain CLI usage never
@@ -235,6 +236,29 @@ def warn_data_quality(projections, rosters: dict[str, list[str]]) -> list[str]:
     return flagged
 
 
+def summarize_rank_change(standings: dict, team: str, partner: str) -> dict:
+    """
+    Pure JSON-summary builder for the before/after league-rank comparison.
+
+    standings: {"before": {team: (w,l,t), ...}, "after": {...}} as returned
+    by trade.evaluate_trade_standings. Reports just `team` and `partner`'s
+    own rank shift, not the whole league table -- this is "where does this
+    trade put me," not a second standings tool.
+    """
+    before_order = rank_teams(standings["before"])
+    after_order = rank_teams(standings["after"])
+
+    def side(name: str) -> dict:
+        return {
+            "rankBefore": before_order.index(name) + 1,
+            "rankAfter": after_order.index(name) + 1,
+            "recordBefore": list(standings["before"][name]),
+            "recordAfter": list(standings["after"][name]),
+        }
+
+    return {"nTeams": len(before_order), "teams": {team: side(team), partner: side(partner)}}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Analyze a two-team fantasy trade")
     parser.add_argument("--rosters", default="rosters.csv")
@@ -244,6 +268,20 @@ def main() -> None:
     parser.add_argument("--partner", required=True)
     parser.add_argument("--give", default="")
     parser.add_argument("--get", default="")
+    parser.add_argument("--schedule", default="fantasy_schedule.csv",
+                        help="Real weekly schedule CSV, for the league-rank "
+                             "before/after comparison -- skipped (not an error) "
+                             "if this file doesn't exist")
+    parser.add_argument("--actual-record", default=None,
+                        help="CSV of TEAM,WINS,LOSSES,TIES for weeks already "
+                             "played (default: every team starts 0-0-0)")
+    parser.add_argument("--through-week", type=int, default=0,
+                        help="Last completed week -- weeks after this are "
+                             "simulated for the rank comparison (default: 0)")
+    parser.add_argument("--weeks-per-matchup", type=int,
+                        default=TRADE_CONFIG["weeks_per_opponent"],
+                        help="Simulated weeks per unique matchup for the rank "
+                             "comparison (lower = faster, noisier)")
     args = parser.parse_args()
 
     projections = load_projections(args.rankings, args.rookies)
@@ -314,12 +352,50 @@ def main() -> None:
     summary = summarize_trade_result(result, args.team, args.partner)
     print(format_report(summary, args.team, args.partner, give, get))
 
+    rank_info = None
+    if not Path(args.schedule).exists():
+        print(f"\n[note] no {args.schedule} found -- skipping the league-rank "
+              f"comparison (run scripts/projected_standings.py's schedule setup "
+              f"first to enable it)")
+    else:
+        schedule_df = pd.read_csv(args.schedule)
+        schedule_teams = set(schedule_df["TEAM_A"]) | set(schedule_df["TEAM_B"])
+        unknown = schedule_teams - set(rosters)
+        if unknown:
+            print(f"\n[note] {args.schedule} names team(s) not in the league "
+                  f"rosters ({sorted(unknown)}) -- skipping the league-rank comparison")
+        elif args.through_week > 0 and args.actual_record is None:
+            print(f"\n[note] --through-week {args.through_week} needs --actual-record "
+                  f"to give an honest rank comparison -- skipping it without one")
+        else:
+            try:
+                actual = load_actual_record(args.actual_record, sorted(rosters))
+            except ValueError as exc:
+                print(f"\n[note] skipping the league-rank comparison: {exc}")
+                actual = None
+            if actual is not None:
+                remaining_schedule = schedule_df[schedule_df["WEEK"] > args.through_week]
+                standings = evaluate_trade_standings(
+                    rosters, banks, args.team, args.partner, give, get,
+                    LEAGUE_CONFIG["categories"], LEAGUE_CONFIG, TRADE_CONFIG,
+                    replacement, remaining_schedule, actual, args.weeks_per_matchup,
+                    player_values)
+                rank_info = summarize_rank_change(standings, args.team, args.partner)
+                n = rank_info["nTeams"]
+                for name in (args.team, args.partner):
+                    side = rank_info["teams"][name]
+                    print(f"\n{name} — league rank: {side['rankBefore']} of {n} "
+                          f"-> {side['rankAfter']} of {n}")
+
     if os.environ.get("DASHBOARD_JSON_SUMMARY"):
-        print(DASHBOARD_RESULT_PREFIX + json.dumps({
+        payload = {
             "kind": "analyze_trade",
             "team": args.team, "partner": args.partner,
             "give": give, "get": get, **summary,
-        }))
+        }
+        if rank_info is not None:
+            payload["rank"] = rank_info
+        print(DASHBOARD_RESULT_PREFIX + json.dumps(payload))
 
 
 if __name__ == "__main__":

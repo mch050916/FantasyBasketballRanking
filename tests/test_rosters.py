@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from rosters import (load_projections, load_rosters, player_value_percentiles,
-                    resolve_roster_players)
+from rosters import (load_actual_record, load_projections, load_rosters,
+                    player_value_percentiles, resolve_roster_players)
 
 
 class RostersTestBase(unittest.TestCase):
@@ -127,3 +127,20 @@ class PlayerValuePercentilesTests(RostersTestBase):
         # population, not one artificially crushed by the other's scale).
         self.assertGreater(percentiles["WorstVet"], 0.0)
         self.assertGreater(percentiles["WorstRookie"], 0.0)
+
+
+class LoadActualRecordTests(RostersTestBase):
+    def test_no_path_defaults_every_team_to_zero(self) -> None:
+        record = load_actual_record(None, ["AR15", "Hei's Team"])
+        self.assertEqual(record, {"AR15": (0.0, 0.0, 0.0), "Hei's Team": (0.0, 0.0, 0.0)})
+
+    def test_a_team_missing_from_the_file_still_defaults_to_zero(self) -> None:
+        path = self.write_csv("TEAM,WINS,LOSSES,TIES\nAR15,3,1,0\n")
+        record = load_actual_record(path, ["AR15", "Hei's Team"])
+        self.assertEqual(record["AR15"], (3.0, 1.0, 0.0))
+        self.assertEqual(record["Hei's Team"], (0.0, 0.0, 0.0))
+
+    def test_a_team_in_the_file_but_not_in_the_league_raises(self) -> None:
+        path = self.write_csv("TEAM,WINS,LOSSES,TIES\nNot A Real Team,3,1,0\n")
+        with self.assertRaises(ValueError):
+            load_actual_record(path, ["AR15"])

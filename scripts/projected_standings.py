@@ -22,9 +22,10 @@ from analyze_trade import (build_all_banks, build_replacement_bank,  # noqa: E40
 from config import LEAGUE_CONFIG, TRADE_CONFIG                      # noqa: E402
 from data import fetch_game_logs, fetch_tech_per_game               # noqa: E402
 from model import compute_tau                                        # noqa: E402
-from rosters import load_projections, load_rosters, resolve_roster_players  # noqa: E402
-from trade import (build_week_bank, matchup_win_rates,                # noqa: E402
-                   pad_to_roster_size, simulate_team_totals)
+from rosters import (load_actual_record, load_projections, load_rosters,  # noqa: E402
+                     resolve_roster_players)
+from trade import (build_week_bank, matchup_pair_counts,              # noqa: E402
+                   pad_to_roster_size, rank_teams, simulate_standings)
 
 # Set by dashboard_server.py's subprocess env only -- plain CLI usage never
 # sees this extra line. Lets the web dashboard render a structured card
@@ -32,47 +33,21 @@ from trade import (build_week_bank, matchup_win_rates,                # noqa: E4
 DASHBOARD_RESULT_PREFIX = "__DASHBOARD_RESULT__"
 
 
-def load_actual_record(path: str | None, teams: list[str]) -> dict[str, tuple[float, float, float]]:
-    """
-    Real completed-week record per team, (wins, losses, ties).
-
-    A team absent from the file -- or every team, if path is None -- starts
-    at 0-0-0: real fantasy standings before any real record has been entered
-    (true for this season's week 1, still in progress as of this tool).
-    """
-    record = {team: (0.0, 0.0, 0.0) for team in teams}
-    if path is None:
-        return record
-    df = pd.read_csv(path)
-    unknown = set(df["TEAM"].astype(str)) - set(teams)
-    if unknown:
-        raise ValueError(f"{path} names team(s) not in the league rosters: {sorted(unknown)}")
-    for _, row in df.iterrows():
-        record[str(row["TEAM"])] = (float(row["WINS"]), float(row["LOSSES"]), float(row["TIES"]))
-    return record
-
-
 def remaining_matchup_counts(schedule: pd.DataFrame, through_week: int) -> dict[frozenset, int]:
     """
     Unique unordered team-pairs -> how many remaining (week > through_week)
-    matchups they share.
-
-    Deduping before simulating matters: rosters don't change mid-projection,
-    so the same pair recurring in week 3 and week 12 has the exact same win
-    probability -- simulate each unique pair once, not each schedule row.
+    matchups they share. Filters to remaining weeks, then delegates the
+    actual dedup to trade.matchup_pair_counts (shared with
+    analyze_trade.py's league-rank comparison, which doesn't have a
+    through_week to filter by -- it gets a pre-filtered schedule instead).
     """
-    counts: dict[frozenset, int] = {}
-    remaining = schedule[schedule["WEEK"] > through_week]
-    for _, row in remaining.iterrows():
-        pair = frozenset({row["TEAM_A"], row["TEAM_B"]})
-        counts[pair] = counts.get(pair, 0) + 1
-    return counts
+    return matchup_pair_counts(schedule[schedule["WEEK"] > through_week])
 
 
 def summarize_standings_result(through_week: int, highlight_team: str | None,
                                records: dict[str, tuple[float, float, float]]) -> dict:
     """Pure JSON-summary builder for the web dashboard's standings card."""
-    ranked = sorted(records, key=lambda t: records[t][0] + 0.5 * records[t][2], reverse=True)
+    ranked = rank_teams(records)
     return {
         "kind": "projected_standings",
         "throughWeek": through_week,
@@ -158,29 +133,11 @@ def main() -> None:
         actual = load_actual_record(args.actual_record, teams)
     except ValueError as exc:
         sys.exit(str(exc))
-    wins = {t: actual[t][0] for t in teams}
-    losses = {t: actual[t][1] for t in teams}
-    ties = {t: actual[t][2] for t in teams}
 
-    pair_counts = remaining_matchup_counts(schedule, args.through_week)
-    for pair, count in pair_counts.items():
-        a, b = sorted(pair)
-        a_totals = simulate_team_totals(
-            {p: padded_banks[p] for p in padded_rosters[a]},
-            args.weeks_per_matchup, TRADE_CONFIG["seed"])
-        b_totals = simulate_team_totals(
-            {p: padded_banks[p] for p in padded_rosters[b]},
-            args.weeks_per_matchup, TRADE_CONFIG["seed"])
-        rate = matchup_win_rates(a_totals, b_totals, LEAGUE_CONFIG["categories"])
-
-        wins[a] += count * rate["win"]
-        losses[a] += count * rate["loss"]
-        ties[a] += count * rate["tie"]
-        wins[b] += count * rate["loss"]
-        losses[b] += count * rate["win"]
-        ties[b] += count * rate["tie"]
-
-    records = {t: (wins[t], losses[t], ties[t]) for t in teams}
+    remaining_schedule = schedule[schedule["WEEK"] > args.through_week]
+    records = simulate_standings(padded_rosters, padded_banks, remaining_schedule, actual,
+                                 LEAGUE_CONFIG["categories"], args.weeks_per_matchup,
+                                 TRADE_CONFIG["seed"])
     summary = summarize_standings_result(args.through_week, args.team, records)
 
     print(f"\nProjected standings through week {args.through_week} "

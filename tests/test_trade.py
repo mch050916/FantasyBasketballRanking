@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from config import LEAGUE_CONFIG, TRADE_CONFIG
-from trade import BANK_COLUMNS, add_missed_weeks, apply_trade, build_week_bank, pooled_donor_bank, quantize_bank_counts, category_win_rates, evaluate_roster_vs_field, evaluate_trade, expected_categories_won, games_per_week_pool, matchup_win_rates, pad_to_roster_size, player_rng, scale_bank_to_projection, simulate_team_totals, summarize_trade_result, synthesize_bank, trim_to_roster_size
+from trade import BANK_COLUMNS, add_missed_weeks, apply_trade, build_week_bank, pooled_donor_bank, quantize_bank_counts, category_win_rates, evaluate_roster_vs_field, evaluate_trade, evaluate_trade_standings, expected_categories_won, games_per_week_pool, matchup_pair_counts, matchup_win_rates, pad_to_roster_size, player_rng, rank_teams, scale_bank_to_projection, simulate_standings, simulate_team_totals, summarize_trade_result, synthesize_bank, trim_to_roster_size
 
 
 def make_log(dates: list[str], **stats) -> pd.DataFrame:
@@ -500,6 +500,56 @@ class MatchupWinRatesTests(unittest.TestCase):
         self.assertEqual(rates["tie"], 0.0)
 
 
+class MatchupPairCountsTests(unittest.TestCase):
+    def _schedule(self, rows: list[tuple[int, str, str]]) -> pd.DataFrame:
+        return pd.DataFrame(rows, columns=["WEEK", "TEAM_A", "TEAM_B"])
+
+    def test_counts_how_many_times_a_pair_recurs(self) -> None:
+        schedule = self._schedule([(1, "A", "B"), (10, "A", "B"), (19, "A", "B")])
+        counts = matchup_pair_counts(schedule)
+        self.assertEqual(counts[frozenset({"A", "B"})], 3)
+
+    def test_pair_order_in_the_schedule_does_not_create_separate_keys(self) -> None:
+        schedule = self._schedule([(1, "A", "B"), (2, "B", "A")])
+        counts = matchup_pair_counts(schedule)
+        self.assertEqual(len(counts), 1)
+        self.assertEqual(counts[frozenset({"A", "B"})], 2)
+
+    def test_an_empty_schedule_has_no_pairs(self) -> None:
+        self.assertEqual(matchup_pair_counts(self._schedule([])), {})
+
+
+class RankTeamsTests(unittest.TestCase):
+    def test_ranks_by_wins_plus_half_ties_descending(self) -> None:
+        records = {"A": (10.0, 5.0, 1.0), "B": (12.0, 4.0, 0.0), "C": (9.0, 6.0, 2.0)}
+        self.assertEqual(rank_teams(records), ["B", "A", "C"])
+
+
+class SimulateStandingsTests(unittest.TestCase):
+    def _schedule(self, rows: list[tuple[int, str, str]]) -> pd.DataFrame:
+        return pd.DataFrame(rows, columns=["WEEK", "TEAM_A", "TEAM_B"])
+
+    def test_adds_simulated_results_onto_the_actual_record(self) -> None:
+        rosters = {"A": ["a1"], "B": ["b1"]}
+        banks = {"a1": constant_bank(PTS=200.0), "b1": constant_bank(PTS=10.0)}
+        schedule = self._schedule([(1, "A", "B")])
+        actual = {"A": (3.0, 1.0, 0.0), "B": (1.0, 3.0, 0.0)}
+        records = simulate_standings(rosters, banks, schedule, actual,
+                                     LEAGUE_CONFIG["categories"], 50, TRADE_CONFIG["seed"])
+        # A's bank dominates PTS every draw, so A wins the one scheduled
+        # matchup with probability 1.0 -- 3 real wins + 1 simulated win.
+        self.assertAlmostEqual(records["A"][0], 4.0, places=6)
+        self.assertAlmostEqual(records["B"][1], 4.0, places=6)
+
+    def test_an_empty_schedule_just_returns_the_actual_record(self) -> None:
+        rosters = {"A": ["a1"], "B": ["b1"]}
+        banks = {"a1": constant_bank(PTS=200.0), "b1": constant_bank(PTS=10.0)}
+        actual = {"A": (3.0, 1.0, 0.0), "B": (1.0, 3.0, 0.0)}
+        records = simulate_standings(rosters, banks, self._schedule([]), actual,
+                                     LEAGUE_CONFIG["categories"], 50, TRADE_CONFIG["seed"])
+        self.assertEqual(records["A"], (3.0, 1.0, 0.0))
+
+
 class ExpectedCategoriesWonTests(unittest.TestCase):
     def test_counts_a_tie_as_half_a_win(self) -> None:
         rates = {"PTS": {"win": 1.0, "tie": 0.0, "loss": 0.0},
@@ -625,6 +675,51 @@ class EvaluateTradeTests(unittest.TestCase):
         second = self._run(rosters, banks, ["a1"], ["b1"])
         self.assertEqual(first["delta"]["A"]["expected"],
                          second["delta"]["A"]["expected"])
+
+
+class EvaluateTradeStandingsTests(unittest.TestCase):
+    def _league(self) -> tuple[dict, dict]:
+        rosters = {"A": ["a1", "a2"], "B": ["b1", "b2"], "C": ["c1", "c2"]}
+        banks = {"a1": constant_bank(PTS=200.0, REB=10.0),
+                 "a2": constant_bank(PTS=100.0, REB=90.0),
+                 "b1": constant_bank(PTS=190.0, REB=20.0),
+                 "b2": constant_bank(PTS=110.0, REB=80.0),
+                 "c1": constant_bank(PTS=150.0, REB=50.0),
+                 "c2": constant_bank(PTS=150.0, REB=50.0)}
+        return rosters, banks
+
+    def _schedule(self, rows: list[tuple[int, str, str]]) -> pd.DataFrame:
+        return pd.DataFrame(rows, columns=["WEEK", "TEAM_A", "TEAM_B"])
+
+    def _run(self, rosters, banks, give, get, schedule, actual):
+        return evaluate_trade_standings(
+            rosters, banks, "A", "B", give, get, LEAGUE_CONFIG["categories"],
+            LEAGUE_CONFIG, {**TRADE_CONFIG, "weeks_per_opponent": 300},
+            replacement_bank=constant_bank(PTS=1.0, REB=1.0),
+            schedule=schedule, actual_record=actual, weeks_per_matchup=300)
+
+    def test_a_null_trade_leaves_standings_identical_before_and_after(self) -> None:
+        rosters, banks = self._league()
+        schedule = self._schedule([(1, "A", "B"), (1, "A", "C"), (1, "B", "C")])
+        actual = {t: (0.0, 0.0, 0.0) for t in rosters}
+        result = self._run(rosters, banks, [], [], schedule, actual)
+        self.assertEqual(result["before"], result["after"])
+
+    def test_reports_before_and_after_for_every_team(self) -> None:
+        rosters, banks = self._league()
+        schedule = self._schedule([(1, "A", "B"), (1, "A", "C"), (1, "B", "C")])
+        actual = {t: (0.0, 0.0, 0.0) for t in rosters}
+        result = self._run(rosters, banks, ["a1"], ["b1"], schedule, actual)
+        for section in ("before", "after"):
+            self.assertEqual(sorted(result[section]), ["A", "B", "C"])
+
+    def test_actual_record_carries_through_to_both_before_and_after(self) -> None:
+        rosters, banks = self._league()
+        schedule = self._schedule([])  # no remaining matchups -- pure pass-through
+        actual = {"A": (5.0, 2.0, 0.0), "B": (3.0, 4.0, 0.0), "C": (1.0, 6.0, 0.0)}
+        result = self._run(rosters, banks, ["a1"], ["b1"], schedule, actual)
+        self.assertEqual(result["before"]["C"], (1.0, 6.0, 0.0))
+        self.assertEqual(result["after"]["C"], (1.0, 6.0, 0.0))
 
 
 class PadToRosterSizeTests(unittest.TestCase):

@@ -68,6 +68,10 @@ def build_analyze_trade_argv(fields: dict) -> list[str]:
         argv += ["--give", str(fields["give"])]
     if fields.get("get"):
         argv += ["--get", str(fields["get"])]
+    if fields.get("through_week") not in (None, ""):
+        argv += ["--through-week", str(fields["through_week"])]
+    if fields.get("actual_record"):
+        argv += ["--actual-record", str(fields["actual_record"])]
     return argv
 
 

@@ -96,6 +96,25 @@ class BuildAnalyzeTradeArgvTests(unittest.TestCase):
                "--give", "Matas Buzelis", "--get", "Michael Porter Jr."],
         )
 
+    def test_with_through_week_and_actual_record(self) -> None:
+        argv = build_analyze_trade_argv({
+            "team": "AR15", "partner": "LA Losers",
+            "through_week": 3, "actual_record": "actual_record.csv",
+        })
+        self.assertEqual(
+            argv,
+            ["scripts/analyze_trade.py"] + FIXED_FLAGS
+            + ["--team", "AR15", "--partner", "LA Losers",
+               "--through-week", "3", "--actual-record", "actual_record.csv"],
+        )
+
+    def test_blank_through_week_and_actual_record_are_omitted(self) -> None:
+        argv = build_analyze_trade_argv({"team": "AR15", "partner": "LA Losers", "through_week": ""})
+        self.assertEqual(
+            argv,
+            ["scripts/analyze_trade.py"] + FIXED_FLAGS + ["--team", "AR15", "--partner", "LA Losers"],
+        )
+
     def test_missing_partner_raises(self) -> None:
         with self.assertRaises(ValueError):
             build_analyze_trade_argv({"team": "AR15"})
