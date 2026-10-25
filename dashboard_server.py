@@ -106,6 +106,21 @@ def build_projected_standings_argv(fields: dict) -> list[str]:
     return argv
 
 
+def build_championship_odds_argv(fields: dict) -> list[str]:
+    argv = ["scripts/championship_odds.py"]
+    if fields.get("through_week") not in (None, ""):
+        argv += ["--through-week", str(fields["through_week"])]
+    if fields.get("actual_record"):
+        argv += ["--actual-record", str(fields["actual_record"])]
+    if fields.get("weeks_per_matchup") not in (None, ""):
+        argv += ["--weeks-per-matchup", str(fields["weeks_per_matchup"])]
+    if fields.get("replications") not in (None, ""):
+        argv += ["--replications", str(fields["replications"])]
+    if fields.get("team"):
+        argv += ["--team", str(fields["team"])]
+    return argv
+
+
 ARGV_BUILDERS = {
     "punt_planner": build_punt_planner_argv,
     "find_trades": build_find_trades_argv,
@@ -113,6 +128,7 @@ ARGV_BUILDERS = {
     "buy_low_sell_high": build_buy_low_sell_high_argv,
     "schedule_strength": build_schedule_strength_argv,
     "projected_standings": build_projected_standings_argv,
+    "championship_odds": build_championship_odds_argv,
 }
 
 

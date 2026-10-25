@@ -8,6 +8,7 @@ from dashboard_server import (
     ARGV_BUILDERS,
     build_analyze_trade_argv,
     build_buy_low_sell_high_argv,
+    build_championship_odds_argv,
     build_find_trades_argv,
     build_meta,
     build_projected_standings_argv,
@@ -189,12 +190,44 @@ class BuildProjectedStandingsArgvTests(unittest.TestCase):
         self.assertEqual(argv, ["scripts/projected_standings.py", "--through-week", "3"])
 
 
+class BuildChampionshipOddsArgvTests(unittest.TestCase):
+    def test_no_fields_uses_every_default(self) -> None:
+        argv = build_championship_odds_argv({})
+        self.assertEqual(argv, ["scripts/championship_odds.py"])
+
+    def test_through_week_actual_record_and_team(self) -> None:
+        argv = build_championship_odds_argv(
+            {"through_week": 3, "actual_record": "actual_record.csv",
+             "team": "AR15s And Saboners"})
+        self.assertEqual(
+            argv,
+            ["scripts/championship_odds.py", "--through-week", "3",
+             "--actual-record", "actual_record.csv",
+             "--team", "AR15s And Saboners"],
+        )
+
+    def test_weeks_per_matchup_and_replications(self) -> None:
+        argv = build_championship_odds_argv(
+            {"weeks_per_matchup": 5000, "replications": 10000})
+        self.assertEqual(
+            argv,
+            ["scripts/championship_odds.py", "--weeks-per-matchup", "5000",
+             "--replications", "10000"],
+        )
+
+    def test_blank_fields_are_omitted(self) -> None:
+        argv = build_championship_odds_argv(
+            {"through_week": "", "actual_record": "", "weeks_per_matchup": "",
+             "replications": "", "team": ""})
+        self.assertEqual(argv, ["scripts/championship_odds.py"])
+
+
 class ArgvBuildersRegistryTests(unittest.TestCase):
-    def test_registry_has_all_six_tools(self) -> None:
+    def test_registry_has_all_seven_tools(self) -> None:
         self.assertEqual(
             set(ARGV_BUILDERS.keys()),
             {"punt_planner", "find_trades", "analyze_trade", "buy_low_sell_high",
-             "schedule_strength", "projected_standings"},
+             "schedule_strength", "projected_standings", "championship_odds"},
         )
 
     def test_registry_dispatches_correctly(self) -> None:
