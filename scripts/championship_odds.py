@@ -100,6 +100,8 @@ def main() -> None:
                  f"(real results for weeks 1-{args.through_week}) -- without it, every "
                  f"team would start from 0-0-0 and the title odds would be based on a "
                  f"season short by {args.through_week} weeks' worth of games")
+    if args.replications < 1:
+        sys.exit(f"--replications must be at least 1 (got {args.replications})")
 
     cat_names = list(LEAGUE_CONFIG["categories"].keys())
     roster_players = sorted({p for players in rosters.values() for p in players})

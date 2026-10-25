@@ -435,10 +435,12 @@
         + '<td class="num">' + t.averageRank.toFixed(2) + "</td></tr>";
     }).join("");
     return '<div class="verdictHead"><span class="verdictBadge even">Title odds</span>'
-      + tip("Each matchup's win probability is simulated once, then resampled "
+        + '<span class="verdictSummary">Odds of finishing 1st'
+          + tip("Each matchup's win probability is simulated once, then resampled "
             + "thousands of times to see how often each team comes out on top for "
             + "the season -- independent across weeks, the standard approach real "
-            + "playoff-odds calculators use.") + "</div>"
+            + "playoff-odds calculators use.")
+          + "</span></div>"
       + '<table class="verdictTable"><thead><tr><th>Team</th><th class="num">Title Odds</th>'
       + '<th class="num">Avg Rank</th></tr></thead><tbody>' + rows + "</tbody></table>";
   }

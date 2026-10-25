@@ -593,6 +593,25 @@ class SimulateSeasonReplicationsTests(unittest.TestCase):
         for team in ("A", "B", "C"):
             self.assertAlmostEqual(result[team]["titleOdds"], 1 / 3, delta=0.05)
 
+    def test_a_symmetric_four_team_league_splits_title_odds_equally(self) -> None:
+        # Regression test for a tie-breaking bias: ties for 1st used to be
+        # broken alphabetically (via a stable sort + enumerate), so a
+        # provably symmetric league produced a monotone alphabetical
+        # gradient in titleOdds instead of equal odds for every team. A
+        # single-week round-robin (3 games/team) keeps exact point ties
+        # frequent -- the same regime the real schedule hits ~15% of the
+        # time -- which is what makes the old bias large enough to fail
+        # this assertion outright (confirmed by reverting the fix).
+        teams = ["A", "B", "C", "D"]
+        pairs = [("A", "B"), ("A", "C"), ("A", "D"), ("B", "C"), ("B", "D"), ("C", "D")]
+        schedule = self._schedule([(1,) + pair for pair in pairs])
+        actual = {t: (0.0, 0.0, 0.0) for t in teams}
+        even_rate = {"win": 1 / 3, "tie": 1 / 3, "loss": 1 / 3}
+        pair_rates = {frozenset(pair): even_rate for pair in pairs}
+        result = simulate_season_replications(schedule, actual, pair_rates, 6000, seed=11)
+        for team in teams:
+            self.assertAlmostEqual(result[team]["titleOdds"], 1 / 4, delta=0.05)
+
     def test_average_rank_is_between_one_and_the_number_of_teams(self) -> None:
         schedule = self._schedule([(1, "A", "B"), (1, "A", "C"), (1, "B", "C")])
         actual = {"A": (0.0, 0.0, 0.0), "B": (0.0, 0.0, 0.0), "C": (0.0, 0.0, 0.0)}

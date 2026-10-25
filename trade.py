@@ -528,10 +528,10 @@ def simulate_standings(rosters: dict[str, list[str]],
 
 
 def simulate_season_replications(schedule: pd.DataFrame,
-                                  actual_record: dict[str, tuple[float, float, float]],
-                                  pair_rates: dict[frozenset, dict[str, float]],
-                                  n_replications: int,
-                                  seed: int) -> dict[str, dict]:
+                                 actual_record: dict[str, tuple[float, float, float]],
+                                 pair_rates: dict[frozenset, dict[str, float]],
+                                 n_replications: int,
+                                 seed: int) -> dict[str, dict]:
     """
     Monte Carlo full-season replication. For each of n_replications: draw one
     discrete win/tie/loss outcome per scheduled matchup from pair_rates (each
@@ -540,6 +540,15 @@ def simulate_season_replications(schedule: pd.DataFrame,
     plus the replicated results, rank by wins + 0.5*ties (this codebase's
     existing convention), and record whether each team finished 1st.
 
+    `actual_record` is authoritative for league membership: every key in it
+    is treated as a team, so the caller must supply a complete record for
+    every team in the league (the CLI's `load_actual_record` guarantees this).
+
+    Ties for 1st split title credit evenly among the tied leaders, and tied
+    teams at any rank share the average ("competition ranking") ordinal for
+    their block, since the real schedule's resample routinely produces exact
+    point ties.
+
     Returns {team: {"titleOdds": float, "averageRank": float}}.
     """
     teams = sorted(actual_record)
@@ -547,7 +556,7 @@ def simulate_season_replications(schedule: pd.DataFrame,
     # Expand pairs by occurrence count once -- same matchup repeats this
     # many times across the schedule, same semantics as simulate_standings.
     expanded = [(pair, pair_rates[pair]) for pair, count in pair_counts.items()
-               for _ in range(count)]
+                for _ in range(count)]
 
     title_count = {t: 0 for t in teams}
     rank_sum = {t: 0.0 for t in teams}
@@ -572,11 +581,23 @@ def simulate_season_replications(schedule: pd.DataFrame,
                 ties[a] += 1
                 ties[b] += 1
 
-        records = {t: (wins[t], losses[t], ties[t]) for t in teams}
-        ranked = rank_teams(records)
-        title_count[ranked[0]] += 1
-        for rank, team in enumerate(ranked, start=1):
-            rank_sum[team] += rank
+        points = {t: wins[t] + 0.5 * ties[t] for t in teams}
+
+        max_points = max(points.values())
+        leaders = [t for t in teams if points[t] == max_points]
+        for t in leaders:
+            title_count[t] += 1 / len(leaders)
+
+        # Competition ranking: group teams by equal points, each group shares
+        # the average ordinal of the positions it occupies.
+        ranked = sorted(teams, key=lambda t: points[t], reverse=True)
+        position = 1
+        while position <= len(ranked):
+            block = [t for t in ranked if points[t] == points[ranked[position - 1]]]
+            avg_rank = position + (len(block) - 1) / 2
+            for t in block:
+                rank_sum[t] += avg_rank
+            position += len(block)
 
     return {
         t: {"titleOdds": title_count[t] / n_replications,
