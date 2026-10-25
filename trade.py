@@ -527,6 +527,64 @@ def simulate_standings(rosters: dict[str, list[str]],
     return {t: (wins[t], losses[t], ties[t]) for t in rosters}
 
 
+def simulate_season_replications(schedule: pd.DataFrame,
+                                  actual_record: dict[str, tuple[float, float, float]],
+                                  pair_rates: dict[frozenset, dict[str, float]],
+                                  n_replications: int,
+                                  seed: int) -> dict[str, dict]:
+    """
+    Monte Carlo full-season replication. For each of n_replications: draw one
+    discrete win/tie/loss outcome per scheduled matchup from pair_rates (each
+    pair's probability computed once, outside this function -- not
+    re-simulated per replication), accumulate each team's real actual_record
+    plus the replicated results, rank by wins + 0.5*ties (this codebase's
+    existing convention), and record whether each team finished 1st.
+
+    Returns {team: {"titleOdds": float, "averageRank": float}}.
+    """
+    teams = sorted(actual_record)
+    pair_counts = matchup_pair_counts(schedule)
+    # Expand pairs by occurrence count once -- same matchup repeats this
+    # many times across the schedule, same semantics as simulate_standings.
+    expanded = [(pair, pair_rates[pair]) for pair, count in pair_counts.items()
+               for _ in range(count)]
+
+    title_count = {t: 0 for t in teams}
+    rank_sum = {t: 0.0 for t in teams}
+    rng = np.random.default_rng(seed)
+    outcomes = np.array(["win", "tie", "loss"])
+
+    for _ in range(n_replications):
+        wins = {t: actual_record[t][0] for t in teams}
+        losses = {t: actual_record[t][1] for t in teams}
+        ties = {t: actual_record[t][2] for t in teams}
+
+        for pair, rate in expanded:
+            a, b = sorted(pair)
+            draw = rng.choice(outcomes, p=[rate["win"], rate["tie"], rate["loss"]])
+            if draw == "win":
+                wins[a] += 1
+                losses[b] += 1
+            elif draw == "loss":
+                losses[a] += 1
+                wins[b] += 1
+            else:
+                ties[a] += 1
+                ties[b] += 1
+
+        records = {t: (wins[t], losses[t], ties[t]) for t in teams}
+        ranked = rank_teams(records)
+        title_count[ranked[0]] += 1
+        for rank, team in enumerate(ranked, start=1):
+            rank_sum[team] += rank
+
+    return {
+        t: {"titleOdds": title_count[t] / n_replications,
+            "averageRank": rank_sum[t] / n_replications}
+        for t in teams
+    }
+
+
 def expected_categories_won(rates: dict[str, dict[str, float]]) -> float:
     """
     E[categories won] = sum P(win) + 0.5 * sum P(tie).

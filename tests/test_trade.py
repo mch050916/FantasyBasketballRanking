@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from config import LEAGUE_CONFIG, TRADE_CONFIG
-from trade import BANK_COLUMNS, add_missed_weeks, apply_trade, build_week_bank, pooled_donor_bank, quantize_bank_counts, category_win_rates, evaluate_roster_vs_field, evaluate_trade, evaluate_trade_standings, expected_categories_won, games_per_week_pool, matchup_pair_counts, matchup_win_rates, pad_to_roster_size, player_rng, rank_teams, scale_bank_to_projection, simulate_standings, simulate_team_totals, summarize_trade_result, synthesize_bank, trim_to_roster_size
+from trade import BANK_COLUMNS, add_missed_weeks, apply_trade, build_week_bank, pooled_donor_bank, quantize_bank_counts, category_win_rates, evaluate_roster_vs_field, evaluate_trade, evaluate_trade_standings, expected_categories_won, games_per_week_pool, matchup_pair_counts, matchup_win_rates, pad_to_roster_size, player_rng, rank_teams, scale_bank_to_projection, simulate_season_replications, simulate_standings, simulate_team_totals, summarize_trade_result, synthesize_bank, trim_to_roster_size
 
 
 def make_log(dates: list[str], **stats) -> pd.DataFrame:
@@ -548,6 +548,84 @@ class SimulateStandingsTests(unittest.TestCase):
         records = simulate_standings(rosters, banks, self._schedule([]), actual,
                                      LEAGUE_CONFIG["categories"], 50, TRADE_CONFIG["seed"])
         self.assertEqual(records["A"], (3.0, 1.0, 0.0))
+
+
+class SimulateSeasonReplicationsTests(unittest.TestCase):
+    def _schedule(self, rows: list[tuple[int, str, str]]) -> pd.DataFrame:
+        return pd.DataFrame(rows, columns=["WEEK", "TEAM_A", "TEAM_B"])
+
+    def test_a_certain_winner_against_every_opponent_has_title_odds_of_one(self) -> None:
+        schedule = self._schedule([(1, "A", "B"), (1, "A", "C"), (1, "B", "C")])
+        actual = {"A": (0.0, 0.0, 0.0), "B": (0.0, 0.0, 0.0), "C": (0.0, 0.0, 0.0)}
+        pair_rates = {
+            frozenset({"A", "B"}): {"win": 1.0, "tie": 0.0, "loss": 0.0},
+            frozenset({"A", "C"}): {"win": 1.0, "tie": 0.0, "loss": 0.0},
+            frozenset({"B", "C"}): {"win": 0.5, "tie": 0.0, "loss": 0.5},
+        }
+        result = simulate_season_replications(schedule, actual, pair_rates, 100, seed=1)
+        self.assertAlmostEqual(result["A"]["titleOdds"], 1.0, places=6)
+        self.assertAlmostEqual(result["A"]["averageRank"], 1.0, places=6)
+
+    def test_title_odds_sum_to_one_across_the_league(self) -> None:
+        schedule = self._schedule([(1, "A", "B"), (1, "A", "C"), (1, "B", "C")])
+        actual = {"A": (0.0, 0.0, 0.0), "B": (0.0, 0.0, 0.0), "C": (0.0, 0.0, 0.0)}
+        pair_rates = {
+            frozenset({"A", "B"}): {"win": 0.5, "tie": 0.0, "loss": 0.5},
+            frozenset({"A", "C"}): {"win": 0.4, "tie": 0.0, "loss": 0.6},
+            frozenset({"B", "C"}): {"win": 0.5, "tie": 0.0, "loss": 0.5},
+        }
+        result = simulate_season_replications(schedule, actual, pair_rates, 500, seed=7)
+        total_odds = sum(r["titleOdds"] for r in result.values())
+        self.assertAlmostEqual(total_odds, 1.0, places=6)
+
+    def test_an_evenly_matched_three_way_league_splits_title_odds_roughly_equally(self) -> None:
+        schedule = self._schedule(
+            [(w, pair[0], pair[1]) for w in range(1, 21)
+             for pair in [("A", "B"), ("A", "C"), ("B", "C")]])
+        actual = {"A": (0.0, 0.0, 0.0), "B": (0.0, 0.0, 0.0), "C": (0.0, 0.0, 0.0)}
+        even_rate = {"win": 1 / 3, "tie": 1 / 3, "loss": 1 / 3}
+        pair_rates = {
+            frozenset({"A", "B"}): even_rate,
+            frozenset({"A", "C"}): even_rate,
+            frozenset({"B", "C"}): even_rate,
+        }
+        result = simulate_season_replications(schedule, actual, pair_rates, 3000, seed=42)
+        for team in ("A", "B", "C"):
+            self.assertAlmostEqual(result[team]["titleOdds"], 1 / 3, delta=0.05)
+
+    def test_average_rank_is_between_one_and_the_number_of_teams(self) -> None:
+        schedule = self._schedule([(1, "A", "B"), (1, "A", "C"), (1, "B", "C")])
+        actual = {"A": (0.0, 0.0, 0.0), "B": (0.0, 0.0, 0.0), "C": (0.0, 0.0, 0.0)}
+        pair_rates = {
+            frozenset({"A", "B"}): {"win": 0.6, "tie": 0.0, "loss": 0.4},
+            frozenset({"A", "C"}): {"win": 0.4, "tie": 0.0, "loss": 0.6},
+            frozenset({"B", "C"}): {"win": 0.5, "tie": 0.0, "loss": 0.5},
+        }
+        result = simulate_season_replications(schedule, actual, pair_rates, 200, seed=3)
+        for team in ("A", "B", "C"):
+            self.assertGreaterEqual(result[team]["averageRank"], 1.0)
+            self.assertLessEqual(result[team]["averageRank"], 3.0)
+
+    def test_is_deterministic_for_a_fixed_seed(self) -> None:
+        schedule = self._schedule([(1, "A", "B"), (1, "A", "C"), (1, "B", "C")])
+        actual = {"A": (0.0, 0.0, 0.0), "B": (0.0, 0.0, 0.0), "C": (0.0, 0.0, 0.0)}
+        pair_rates = {
+            frozenset({"A", "B"}): {"win": 0.6, "tie": 0.0, "loss": 0.4},
+            frozenset({"A", "C"}): {"win": 0.4, "tie": 0.0, "loss": 0.6},
+            frozenset({"B", "C"}): {"win": 0.5, "tie": 0.0, "loss": 0.5},
+        }
+        first = simulate_season_replications(schedule, actual, pair_rates, 200, seed=99)
+        second = simulate_season_replications(schedule, actual, pair_rates, 200, seed=99)
+        self.assertEqual(first, second)
+
+    def test_real_actual_record_carries_into_every_replication(self) -> None:
+        schedule = self._schedule([(1, "A", "B")])
+        actual = {"A": (10.0, 0.0, 0.0), "B": (0.0, 10.0, 0.0)}
+        pair_rates = {frozenset({"A", "B"}): {"win": 0.0, "tie": 0.0, "loss": 1.0}}
+        result = simulate_season_replications(schedule, actual, pair_rates, 50, seed=5)
+        # A starts 10-0, loses the one remaining matchup with certainty, still
+        # finishes ahead of B (which starts 0-10 and also loses) in every replication.
+        self.assertAlmostEqual(result["A"]["titleOdds"], 1.0, places=6)
 
 
 class ExpectedCategoriesWonTests(unittest.TestCase):
