@@ -88,6 +88,17 @@
         { name: "team", label: "Your team (optional, highlights your row)", type: "team-select", required: false },
       ],
     },
+    championship_odds: {
+      label: "Championship Odds", endpoint: "championship_odds",
+      description: "Monte Carlo odds of finishing 1st: each matchup's win probability is simulated once, then the whole season is resampled thousands of times to see how often each team comes out on top.",
+      fields: [
+        { name: "through_week", label: "Through week (0 = no weeks completed yet)", type: "number", value: 0 },
+        { name: "actual_record", label: "Actual record CSV path (required if through week > 0)", type: "text", placeholder: "actual_record.csv" },
+        { name: "weeks_per_matchup", label: "Weeks per matchup (pair probability precision)", type: "number", value: 10000 },
+        { name: "replications", label: "Season replications", type: "number", value: 5000 },
+        { name: "team", label: "Your team (optional, highlights your row)", type: "team-select", required: false },
+      ],
+    },
   };
 
   function qs(name) {
@@ -417,6 +428,21 @@
         + "<tbody>" + rows + "</tbody></table>";
   }
 
+  function championshipOddsCardHTML(data) {
+    var rows = data.teams.map(function (t) {
+      return "<tr" + (t.mine ? ' class="playerMine"' : "") + "><td>" + t.rank + ". " + esc(t.team) + "</td>"
+        + '<td class="num">' + (t.titleOdds * 100).toFixed(1) + "%</td>"
+        + '<td class="num">' + t.averageRank.toFixed(2) + "</td></tr>";
+    }).join("");
+    return '<div class="verdictHead"><span class="verdictBadge even">Title odds</span>'
+      + tip("Each matchup's win probability is simulated once, then resampled "
+            + "thousands of times to see how often each team comes out on top for "
+            + "the season -- independent across weeks, the standard approach real "
+            + "playoff-odds calculators use.") + "</div>"
+      + '<table class="verdictTable"><thead><tr><th>Team</th><th class="num">Title Odds</th>'
+      + '<th class="num">Avg Rank</th></tr></thead><tbody>' + rows + "</tbody></table>";
+  }
+
   var CARD_RENDERERS = {
     analyze_trade: analyzeTradeCardHTML,
     punt_planner: puntPlannerCardHTML,
@@ -424,6 +450,7 @@
     buy_low_sell_high: buyLowSellHighCardHTML,
     schedule_strength: scheduleStrengthCardHTML,
     projected_standings: projectedStandingsCardHTML,
+    championship_odds: championshipOddsCardHTML,
   };
 
   function renderResult(data) {
