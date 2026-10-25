@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 import buy_low_sell_high   # noqa: E402
+import championship_odds   # noqa: E402
 import find_trades          # noqa: E402
 import projected_standings  # noqa: E402
 import punt_planner         # noqa: E402
@@ -192,6 +193,35 @@ class SummarizeStandingsResultTests(unittest.TestCase):
         summary = projected_standings.summarize_standings_result(3, None, {"A": (1.0, 0.0, 0.0)})
         self.assertEqual(summary["kind"], "projected_standings")
         self.assertEqual(summary["throughWeek"], 3)
+
+
+class SummarizeChampionshipOddsResultTests(unittest.TestCase):
+    def test_ranks_by_title_odds_descending(self) -> None:
+        results = {
+            "A": {"titleOdds": 0.20, "averageRank": 2.5},
+            "B": {"titleOdds": 0.55, "averageRank": 1.3},
+            "C": {"titleOdds": 0.25, "averageRank": 2.2},
+        }
+        summary = championship_odds.summarize_championship_odds_result(None, results)
+        self.assertEqual([t["team"] for t in summary["teams"]], ["B", "C", "A"])
+        self.assertEqual([t["rank"] for t in summary["teams"]], [1, 2, 3])
+
+    def test_marks_the_highlighted_team(self) -> None:
+        results = {
+            "A": {"titleOdds": 0.6, "averageRank": 1.1},
+            "B": {"titleOdds": 0.4, "averageRank": 1.9},
+        }
+        summary = championship_odds.summarize_championship_odds_result("B", results)
+        mine = {t["team"]: t["mine"] for t in summary["teams"]}
+        self.assertTrue(mine["B"])
+        self.assertFalse(mine["A"])
+
+    def test_kind_and_fields_are_carried_through(self) -> None:
+        summary = championship_odds.summarize_championship_odds_result(
+            None, {"A": {"titleOdds": 1.0, "averageRank": 1.0}})
+        self.assertEqual(summary["kind"], "championship_odds")
+        self.assertEqual(summary["teams"][0]["titleOdds"], 1.0)
+        self.assertEqual(summary["teams"][0]["averageRank"], 1.0)
 
 
 if __name__ == "__main__":
