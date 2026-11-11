@@ -50,13 +50,10 @@ from validate import (
 )
 
 
-# ── Season data files — update this list each season ────────────────────────
-# Most recent season first. Must match game_log_seasons in config.py.
-BBR_FILES = [
-    "basketball_reference_2025_26_total_stats.csv",
-    "basketball_reference_2024_25_total_stats.csv",
-    "basketball_reference_2023_24_total_stats.csv",
-]
+# ── Season data files — update LEAGUE_CONFIG["bbr_files"] in config.py each
+# season; also read directly off config by data.expected_missing_game_log_pairs
+# (the in-season tools' fast "did this player exist that season" check).
+BBR_FILES = LEAGUE_CONFIG["bbr_files"]
 
 
 def derive_projection_season_label(most_recent_completed_season: str) -> tuple[str, str]:

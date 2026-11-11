@@ -144,6 +144,33 @@ def load_bbr_csv(path: str) -> pd.DataFrame:
     return df
 
 
+def expected_missing_game_log_pairs(player_names: list[str], seasons: list[str],
+                                    bbr_files: list[str]) -> set[tuple[str, str]]:
+    """
+    (player, season) pairs fetch_game_logs should skip without retrying --
+    the player's name doesn't appear in that season's local BBR export, so
+    they didn't play in the league that season (not yet drafted, or drafted
+    since). Cheap and network-free (BBR files are already on disk); the
+    same signal main.py already uses for its own fetch (see
+    expected_missing_pairs there), generalized here for every in-season
+    tool script since they don't otherwise load BBR data at all.
+
+    Without this, fetch_game_logs retries each such pair 3x with backoff
+    against the live NBA API for a game log that can never exist --
+    confirmed live: a cold projected_standings run spent 15+ minutes
+    retrying recent draftees (e.g. a 2024 or 2025 draftee's pre-draft
+    seasons) this way, every single run, since a failed lookup is never
+    cached.
+    """
+    wanted = set(player_names)
+    pairs: set[tuple[str, str]] = set()
+    for path, season in zip(bbr_files, seasons):
+        present = set(load_bbr_csv(path)["PLAYER_NAME"])
+        for name in wanted - present:
+            pairs.add((name, season))
+    return pairs
+
+
 def filter_qualified(df: pd.DataFrame, config: dict) -> pd.DataFrame:
     """Keep only players who meet minimum games and minutes thresholds."""
     mask = (df["GP"] >= config["min_games"]) & (df["MIN"] >= config["min_mpg"])

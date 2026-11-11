@@ -105,8 +105,19 @@ LEAGUE_CONFIG = {
 
     # ── NBA API fetch settings ─────────────────────────────────────────────
     # Seasons to pull game logs for (most recent first).
-    # Must match the BBR CSV files you have — see main.py.
+    # Must match bbr_files below, position for position.
     "game_log_seasons": ["2025-26", "2024-25", "2023-24"],
+
+    # Local season-totals exports, same order as game_log_seasons -- whether
+    # a player's name appears in a given file is the cheap, no-network signal
+    # for "did this player exist in the league that season" (see
+    # data.expected_missing_game_log_pairs). Update alongside game_log_seasons
+    # each season rollover.
+    "bbr_files": [
+        "basketball_reference_2025_26_total_stats.csv",
+        "basketball_reference_2024_25_total_stats.csv",
+        "basketball_reference_2023_24_total_stats.csv",
+    ],
 
     # Draft year(s) to check for incoming rookies with no prior NBA history.
     # Update each season to the upcoming/most recent draft class.

@@ -206,6 +206,19 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
     # Transfer-Encoding correctly, so this has no other effect.
     protocol_version = "HTTP/1.1"
 
+    # Without this, a stalled client (tab backgrounded, closed without a
+    # clean FIN, or just not reading) makes self.wfile.write() in
+    # _write_chunk block forever -- the handler thread never reaches
+    # process.wait()/lock.release(), so the subprocess sits as a zombie and
+    # every later run of that tool 409s "already running" until the server
+    # is restarted. Confirmed live: a projected_standings run got stuck this
+    # way with no socket error raised. 60s is generous for a single <=4KB
+    # chunk write to succeed under normal operation but still bounds the
+    # failure mode.
+    def setup(self):
+        super().setup()
+        self.connection.settimeout(60)
+
     def _host_is_local(self) -> bool:
         host = self.headers.get("Host", "").split(":")[0]
         return host in ("localhost", "127.0.0.1")

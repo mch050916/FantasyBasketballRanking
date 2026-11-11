@@ -21,6 +21,7 @@ from data import (
     build_non_actionable_suppression_report,
     classify_injury_tier_with_carryover,
     detect_team_changes,
+    expected_missing_game_log_pairs,
     games_per_team_for_week,
     load_bbr_csv,
     load_non_actionable_suppression_registry,
@@ -312,6 +313,24 @@ class DataTests(unittest.TestCase):
         self.assertEqual(len(result), 1)
         self.assertEqual(result.iloc[0]["BBR_TEAM"], "2TM")
         self.assertEqual(result.iloc[0]["GP"], 45)
+
+    def test_expected_missing_game_log_pairs_flags_players_absent_from_a_seasons_bbr_file(self) -> None:
+        row = {"Player": "Veteran Guy", "Team": "LAL", "Age": 25, "G": 20, "MP": 400,
+              "FG": 80, "FGA": 160, "FG%": 0.500, "3P": 10, "FT": 20,
+              "TRB": 60, "AST": 40, "STL": 10, "BLK": 5, "TOV": 20, "PF": 30, "PTS": 190}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            recent = Path(tmpdir) / "recent.csv"
+            older = Path(tmpdir) / "older.csv"
+            # "Rookie Guy" only appears in the recent file -- never played the
+            # older season, same as a player drafted since.
+            pd.DataFrame([row, {**row, "Player": "Rookie Guy"}]).to_csv(recent, index=False)
+            pd.DataFrame([row]).to_csv(older, index=False)
+
+            pairs = expected_missing_game_log_pairs(
+                ["Veteran Guy", "Rookie Guy"], ["2025-26", "2024-25"],
+                [str(recent), str(older)])
+
+        self.assertEqual(pairs, {("Rookie Guy", "2024-25")})
 
     def test_load_bbr_csv_carries_primary_position_through(self) -> None:
         # Needed for compute_positional_value (model.py) to know each

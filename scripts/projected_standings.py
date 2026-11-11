@@ -20,7 +20,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from analyze_trade import (build_all_banks, build_replacement_bank,  # noqa: E402
                            warn_league_shape)
 from config import LEAGUE_CONFIG, TRADE_CONFIG                      # noqa: E402
-from data import fetch_game_logs, fetch_tech_per_game               # noqa: E402
+from data import (fetch_game_logs, fetch_tech_per_game,              # noqa: E402
+                  expected_missing_game_log_pairs)
 from model import compute_tau                                        # noqa: E402
 from rosters import (load_actual_record, load_projections, load_rosters,  # noqa: E402
                      resolve_roster_players)
@@ -114,7 +115,9 @@ def main() -> None:
     roster_players = sorted({p for players in rosters.values() for p in players})
     game_logs, _ = fetch_game_logs(
         player_names=roster_players, seasons=LEAGUE_CONFIG["game_log_seasons"],
-        cache_file=LEAGUE_CONFIG["game_log_cache"], return_health=True)
+        cache_file=LEAGUE_CONFIG["game_log_cache"], return_health=True,
+        expected_missing_pairs=expected_missing_game_log_pairs(
+            roster_players, LEAGUE_CONFIG["game_log_seasons"], LEAGUE_CONFIG["bbr_files"]))
     _, league_tau = compute_tau(game_logs, cat_names, LEAGUE_CONFIG["season_weights"])
     tech_rates = fetch_tech_per_game(
         LEAGUE_CONFIG["game_log_seasons"], LEAGUE_CONFIG["tech_cache"],
