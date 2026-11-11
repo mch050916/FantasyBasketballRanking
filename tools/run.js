@@ -52,7 +52,7 @@
     },
     analyze_trade: {
       label: "Trade Analyzer", endpoint: "analyze_trade",
-      description: "Full per-category before/after breakdown for one proposed trade — expected categories won per week, both sides, against the league field. Type player names to pick from the real pool.",
+      description: "Full per-category before/after breakdown for one proposed trade: expected categories won per week, both sides, against the league field. Type player names to pick from the real pool.",
       fields: [
         { name: "team", label: "Your team", type: "team-select", required: true },
         { name: "partner", label: "Partner team", type: "team-select", required: true, excludeField: "team" },
@@ -73,7 +73,7 @@
     },
     schedule_strength: {
       label: "Schedule Strength", endpoint: "schedule_strength",
-      description: "Real games-per-team for any fantasy week — who to stream, who to sit, straight from the live NBA schedule.",
+      description: "Real games-per-team for any fantasy week: who to stream, who to sit, straight from the live NBA schedule.",
       fields: [
         { name: "week", label: "Week (any date in it, blank = today)", type: "date" },
         { name: "team", label: "Team (optional)", type: "team-select" },
@@ -312,7 +312,7 @@
     }).join("");
 
     return '<div class="verdictHead"><span class="verdictBadge even">Punting ' + esc(puntLabel) + "</span>"
-        + '<span class="verdictSummary">' + esc(data.team) + " — expected categories won per week"
+        + '<span class="verdictSummary">' + esc(data.team) + ": expected categories won per week"
           + tip("How many of the league's scored categories this roster is projected to win in a "
             + "typical head-to-head week, simulated against the field.") + "</span></div>"
       + '<div class="verdictTeams oneCol"><div class="verdictTeam">'
@@ -395,7 +395,7 @@
       return "<tr><td>" + esc(t.team) + '</td><td class="num">' + t.games + "</td></tr>";
     }).join("");
     var html = '<div class="verdictHead"><span class="verdictBadge even">' + esc(data.season) + "</span>"
-        + '<span class="verdictSummary">Games per team — week of ' + esc(data.weekOf)
+        + '<span class="verdictSummary">Games per team, week of ' + esc(data.weekOf)
           + tip("More games this week means more raw counting-stat opportunity for that team's "
             + "players -- a real streaming/start-sit signal a full-season ranking can't capture.")
           + "</span></div>"
@@ -490,7 +490,7 @@
     if (!res.ok) {
       renderError(await res.text());
       setStatus(res.status === 409 ? "running" : "error",
-        res.status === 409 ? "Busy — try again shortly" : "Failed to start");
+        res.status === 409 ? "Busy, try again shortly" : "Failed to start");
       return;
     }
 
@@ -542,7 +542,7 @@
     }
     document.getElementById("toolTitle").textContent = tool.label;
     document.getElementById("toolLede").textContent = tool.description || "";
-    document.title = "DURANT — " + tool.label;
+    document.title = "DURANT: " + tool.label;
 
     fetch("/api/meta").then(function (r) {
       if (!r.ok) throw new Error("Server returned " + r.status);

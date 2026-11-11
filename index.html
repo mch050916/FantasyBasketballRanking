@@ -3,248 +3,221 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="DURANT ranks every player in a 14-category head-to-head fantasy basketball league with a variance-penalized model, then helps a 10-team private league draft, punt and trade on top of it.">
 <title>DURANT</title>
+<link href="https://fonts.googleapis.com/css2?family=Prata&family=Manrope:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
-  :root{
-    --bg:#0b0c10; --flat:#15171c; --flat-hover:#1b1e24;
-    --border:rgba(255,255,255,.08); --border-strong:rgba(255,255,255,.16);
-    --ink:#eef0f4; --ink-dim:#a7acb8; --ink-faint:#838a97;
-    --ember:#ff7a33;
-  }
-  *{box-sizing:border-box;}
-  html{scroll-behavior:smooth;background:var(--bg);}
-  html,body{margin:0;padding:0;}
-  body{
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
-    color:var(--ink);-webkit-font-smoothing:antialiased;
-  }
-  ::selection{background:var(--ember);color:var(--bg);}
-  .wrap{max-width:1180px;margin:0 auto;padding:0 24px;}
+/* Hallmark · shape: Index-first, photo-led hero · genre: editorial · theme: Hedgerow (custom pick, gold accent override) · redesign: full
+ * hero: Poster (photo band behind the head, board plate below it) · nav: edge-aligned · footer: mast · imagery: photographs, library 1 (stand-in, user's own photo to follow) · signature: the live top-of-board table as a field-guide index · hedgerow: hedge
+ * axes: dark/high-contrast-serif/chromatic-green · posture: drenched · contrast: pass · fold: pass · v2.0.0 */
+/* Hallmark · dropped the Pudelek forest-trail credit link · swapped for a more fitting stand-in photo (a basketball in the hoop) at the user's request */
+@import url("./tokens.css");
+@import url("./base.css");
 
-  @keyframes fadeUp{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:translateY(0);}}
-  @keyframes float{0%,100%{transform:translateY(0);}50%{transform:translateY(-10px);}}
+nav{position:sticky;top:0;z-index:var(--z-sticky-nav);background:var(--color-paper);border-bottom:1px solid var(--color-rule);}
+.navRow{display:flex;align-items:center;gap:var(--space-2xl);height:64px;}
+.navWordmark{font-family:var(--font-display);font-weight:400;font-size:var(--text-md);display:flex;align-items:center;gap:var(--space-xs);}
+.navMark{width:16px;height:16px;border:1.5px solid var(--color-accent);border-radius:50%;flex:none;}
+.navLinks{display:flex;align-items:center;gap:var(--space-xl);flex:1;}
+.navLinks a{font-size:var(--text-sm);font-weight:500;color:var(--color-muted);text-decoration:none;}
+.navLinks a:hover{color:var(--color-ink);}
+.navStatus{font-size:var(--text-sm);color:var(--color-muted);border:1px solid var(--color-rule);border-radius:999px;padding:var(--space-2xs) var(--space-sm);white-space:nowrap;}
+.navStatus.live{color:var(--color-accent);border-color:var(--color-accent);}
 
-  /* ---- page backdrop: the arc motif, scaled up into the page's one
-     recurring textural device (still a single family, still restrained —
-     see DESIGN.md's One Owned Device rule) rather than a flat void ---- */
-  .backdrop{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none;}
-  .backdrop::before{content:"";position:absolute;top:-30%;right:-20%;width:1100px;height:1100px;
-    background:radial-gradient(circle, rgba(255,122,51,.14), transparent 62%);}
-  .ring{position:absolute;border:1.5px solid var(--ember);border-radius:50%;opacity:.12;}
-  .ring.r1{top:-340px;right:-360px;width:900px;height:900px;}
-  .ring.r2{top:-220px;right:-240px;width:640px;height:640px;opacity:.17;}
-  .ring.r3{top:-120px;right:-140px;width:420px;height:420px;opacity:.24;}
+.hero{position:relative;padding:var(--space-4xl) 0 var(--space-2xl);overflow:hidden;}
+.hero::before{content:"";position:absolute;inset:0;background-image:url("images/hero-basketball.jpg");background-size:cover;background-position:72% 28%;filter:saturate(0.85) contrast(1.1) brightness(0.68) hue-rotate(-6deg);}
+.hero::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg, color-mix(in oklab, var(--color-paper) 94%, transparent) 0%, color-mix(in oklab, var(--color-paper) 62%, transparent) 46%, color-mix(in oklab, var(--color-paper) 15%, transparent) 78%);}
+.hero > .container{position:relative;z-index:2;}
+.heroMeta{font-size:var(--text-sm);color:var(--color-muted);margin:0 0 var(--space-md);}
+h1.heroHead{font-size:var(--text-section);max-width:16ch;margin:0 0 var(--space-md);}
+.lede{color:var(--color-ink-2);max-width:56ch;margin:0 0 var(--space-lg);}
+.heroActions{display:flex;align-items:center;gap:var(--space-lg);margin-bottom:0;flex-wrap:wrap;}
+.btn{display:inline-flex;align-items:center;gap:var(--space-xs);font:700 var(--text-sm)/1 var(--font-body);padding:var(--space-md) var(--space-lg);border-radius:999px;border:1.5px solid var(--color-accent);color:inherit;text-decoration:none;transition:background-color var(--dur-short) var(--ease-out);}
+.btn--primary{background:var(--color-accent);color:var(--color-accent-ink);}
+.btn--primary:hover{background:var(--color-accent-2);border-color:var(--color-accent-2);}
+.btn--secondary{color:var(--color-accent);}
+.btn--secondary:hover{background:color-mix(in oklab, var(--color-accent) 12%, transparent);}
+.btn--primary:active{background:var(--color-accent-deep);border-color:var(--color-accent-deep);}
+.btn--secondary:active{background:color-mix(in oklab, var(--color-accent) 22%, transparent);}
+.cardGo:hover{color:var(--color-accent-2);}
+.cardGo:active{color:var(--color-accent-deep);}
 
-  /* ---- nav ---- */
-  nav{position:sticky;top:0;z-index:10;background:rgba(11,12,16,.75);backdrop-filter:blur(10px);
-    border-bottom:1px solid var(--border);}
-  .navRow{max-width:1180px;margin:0 auto;padding:14px 24px;display:flex;align-items:center;gap:32px;}
-  .navWordmark{font-weight:800;font-size:15px;letter-spacing:.01em;display:flex;align-items:center;gap:9px;}
-  .navMark{width:20px;height:20px;border:3px solid var(--ember);border-radius:50%;
-    border-right-color:transparent;border-bottom-color:transparent;transform:rotate(45deg);flex:none;}
-  .navLinks{display:flex;align-items:center;gap:22px;flex:1;}
-  .navLinks a{font-size:13px;font-weight:600;color:var(--ink-dim);text-decoration:none;
-    transition:color .15s ease;}
-  .navLinks a:hover{color:var(--ink);}
-  .navStatus{font-size:12px;color:var(--ink-faint);border:1px solid var(--border);border-radius:999px;
-    padding:4px 11px;white-space:nowrap;}
-  .navStatus.live{color:var(--ember);border-color:rgba(255,122,51,.4);}
+/* The board as a field-guide index: the live top-of-board list set right
+   under the hero, on the plain paper (no photo competing with the numbers). */
+.boardPlate{border-top:1.5px solid var(--color-accent);background:var(--color-paper);}
+.boardHead{display:flex;align-items:center;justify-content:space-between;padding:var(--space-md) 0;}
+.boardHeadLabel{font-size:var(--text-sm);font-weight:500;color:var(--color-muted);}
+.boardLive{display:flex;align-items:center;gap:var(--space-xs);font-size:var(--text-sm);color:var(--color-accent);}
+.boardLive .dot{width:6px;height:6px;background:var(--color-accent);border-radius:50%;}
+#previewRows table{width:100%;border-collapse:collapse;}
+#previewRows td{padding:var(--space-sm) 0;border-bottom:1px solid var(--color-rule);}
+#previewRows tr:last-child td{border-bottom:none;}
+.pRank{color:var(--color-muted);width:2ch;font-family:var(--font-body);}
+.pName{font-family:var(--font-display);font-size:var(--text-lg);}
+.pVal{text-align:right;font-family:var(--font-display);font-variant-numeric:tabular-nums;color:var(--color-accent-2);}
 
-  /* ---- hero ---- */
-  .hero{padding:88px 0 60px;position:relative;display:grid;grid-template-columns:1.15fr .85fr;
-    gap:32px;align-items:center;}
-  .eyebrow{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ember);
-    margin:0 0 16px;animation:fadeUp .5s ease both;}
-  h1{font-size:44px;line-height:1.1;font-weight:800;letter-spacing:-.02em;margin:0 0 20px;max-width:680px;
-    animation:fadeUp .5s ease .06s both;}
-  h1 em{font-style:normal;color:var(--ember);}
-  .lede{font-size:16.5px;line-height:1.6;color:var(--ink-dim);max-width:520px;margin:0 0 32px;
-    animation:fadeUp .5s ease .12s both;}
-  .heroActions{display:flex;align-items:center;gap:18px;margin-bottom:56px;flex-wrap:wrap;
-    animation:fadeUp .5s ease .18s both;}
-  .btnPrimary{display:inline-flex;align-items:center;gap:8px;background:var(--ember);color:#17120c;
-    font-weight:700;font-size:14.5px;padding:12px 22px;border-radius:9px;text-decoration:none;
-    transition:transform .15s ease, box-shadow .15s ease;}
-  .btnPrimary:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(0,0,0,.4);}
-  .btnGhost{font-size:14px;font-weight:600;color:var(--ink-dim);text-decoration:none;
-    transition:color .15s ease;}
-  .btnGhost:hover{color:var(--ink);}
-  .stats{display:flex;gap:40px;flex-wrap:wrap;animation:fadeUp .5s ease .24s both;}
-  .stat b{display:block;font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;}
-  .stat span{font-size:12.5px;color:var(--ink-faint);letter-spacing:.02em;}
+.figures{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--color-rule);}
+.figure{padding:var(--space-xl) var(--space-lg);border-left:1px solid var(--color-rule);}
+.figure:first-child{border-left:none;padding-left:0;}
+.figure b{display:block;font-family:var(--font-display);font-weight:400;font-size:var(--text-display-s);color:var(--color-ink);font-variant-numeric:tabular-nums;}
+.figure span{font-size:var(--text-sm);color:var(--color-muted);}
 
-  /* ---- hero preview card: fills the empty right gutter with a live taste
-     of the actual board instead of nothing ---- */
-  .heroVisual{animation:fadeUp .6s ease .2s both;}
-  .previewCard{background:var(--flat);border:1px solid var(--border);border-radius:14px;
-    border-top:3px solid var(--ember);padding:18px 18px 10px;box-shadow:0 20px 50px rgba(0,0,0,.4);
-    animation:float 5s ease-in-out infinite;animation-delay:1s;}
-  .previewHead{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
-  .previewLabel{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
-    color:var(--ink-faint);}
-  .previewLive{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--ink-faint);}
-  .previewLive .dot{width:6px;height:6px;border-radius:50%;background:var(--ember);}
-  .previewRow{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);}
-  .previewRow:last-child{border-bottom:none;}
-  .previewRank{font-size:12px;font-weight:700;color:var(--ink-faint);width:14px;
-    font-variant-numeric:tabular-nums;}
-  .previewName{flex:1;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;
-    white-space:nowrap;}
-  .previewVal{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink);
-    border-left:2px solid var(--ember);padding-left:7px;}
+.section{padding:var(--space-4xl) 0;border-top:1px solid var(--color-rule);}
+.sectionTitle{font-size:var(--text-section);max-width:24ch;margin:0 0 var(--space-2xl);}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--color-rule);color:var(--color-ink);border:1px solid var(--color-rule);}
+.card{background:var(--color-paper);color:var(--color-ink);padding:var(--space-lg);display:flex;flex-direction:column;gap:var(--space-sm);min-height:220px;}
+.cardNum{font-size:var(--text-sm);color:var(--color-muted);}
+.cardName{font-family:var(--font-display);font-weight:400;font-size:var(--text-lg);margin:0;}
+.cardDesc{font-size:var(--text-sm);color:var(--color-ink-2);line-height:1.55;flex:1;}
+.cardGo{font-size:var(--text-sm);font-weight:700;color:var(--color-accent);text-decoration:underline;text-underline-offset:0.2em;align-self:flex-start;}
+.cardHint{font-size:var(--text-xs);color:var(--color-muted);margin:0;}
+.cardHint code{font-family:var(--font-outlier);}
 
-  /* ---- toolkit section ---- */
-  .section{padding:60px 0;border-top:1px solid var(--border);}
-  .sectionEyebrow{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
-    color:var(--ember);margin:0 0 10px;}
-  .sectionTitle{font-size:26px;font-weight:800;letter-spacing:-.01em;margin:0 0 36px;max-width:480px;}
-  .cards{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--border);
-    border:1px solid var(--border);border-radius:14px;overflow:hidden;}
-  .card{background:var(--flat);padding:26px 26px 24px;border-left:3px solid transparent;
-    transition:background .18s ease, border-color .18s ease, transform .18s ease;
-    opacity:0;animation:fadeUp .5s ease both;}
-  .card:nth-child(1){animation-delay:.05s;}
-  .card:nth-child(2){animation-delay:.11s;}
-  .card:nth-child(3){animation-delay:.17s;}
-  .card:nth-child(4){animation-delay:.23s;}
-  .card:hover{background:var(--flat-hover);border-left-color:var(--ember);transform:translateY(-3px);}
-  .cardHead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:10px;}
-  .cardNum{font-size:12px;font-weight:800;color:var(--ink-faint);letter-spacing:.04em;}
-  .cardName{font-weight:700;font-size:16px;margin:0 0 8px;}
-  .cardDesc{font-size:13.5px;color:var(--ink-dim);line-height:1.6;margin:0 0 16px;min-height:42px;}
-  .cardGo{display:inline-flex;align-items:center;gap:6px;font-weight:600;font-size:13.5px;color:var(--ember);
-    text-decoration:none;}
-  .cardGo:hover{text-decoration:underline;}
-  .cardHint{font-size:12px;color:var(--ink-faint);line-height:1.5;margin:10px 0 0;}
-  .cardHint code{font-family:ui-monospace,"SF Mono",Menlo,monospace;color:var(--ink-dim);}
+.closeBand{background:var(--color-ink);color:var(--color-paper);padding:var(--space-2xl) 0;}
+.closeBand .container{display:flex;align-items:center;justify-content:space-between;gap:var(--space-lg);flex-wrap:wrap;}
+.closeBand h2{font-size:var(--text-title);margin:0;max-width:30ch;color:var(--color-paper);}
+.closeBand .btn--primary{background:var(--color-paper);color:var(--color-ink);border-color:var(--color-paper);}
+.closeBand .btn--primary:hover{background:var(--color-accent-deep);color:var(--color-ink);border-color:var(--color-accent-deep);}
 
-  footer{border-top:1px solid var(--border);padding:28px 0 40px;display:flex;justify-content:space-between;
-    align-items:center;flex-wrap:wrap;gap:10px;}
-  .footWordmark{font-weight:800;font-size:13px;color:var(--ink-dim);}
-  .footMeta{font-size:12.5px;color:var(--ink-faint);}
+footer{border-top:1px solid var(--color-rule);padding:var(--space-2xl) 0;}
+.footWordmark{font-family:var(--font-display);font-weight:400;font-size:var(--text-lg);display:block;margin-bottom:var(--space-md);}
+.footMeta{font-size:var(--text-sm);color:var(--color-muted);display:block;max-width:70ch;}
+.footMeta + .footMeta{margin-top:var(--space-2xs);}
+.footMeta a{color:inherit;}
 
-  @media (max-width:860px){
-    .hero{grid-template-columns:1fr;}
-    .heroVisual{max-width:380px;}
-  }
-  @media (max-width:720px){
-    h1{font-size:32px;}
-    .cards{grid-template-columns:1fr;}
-    .navLinks{display:none;}
-  }
+@media (max-width:60rem){
+  .figures{grid-template-columns:1fr;}
+  .figure{border-left:none;border-top:1px solid var(--color-rule);padding-left:0;}
+  .figure:first-child{border-top:none;}
+  .cards{grid-template-columns:repeat(2,1fr);}
+}
+@media (max-width:40rem){
+  .cards{grid-template-columns:1fr;}
+  .navLinks{display:none;}
+}
 </style>
 </head>
 <body>
-<div class="backdrop"><span class="ring r1"></span><span class="ring r2"></span><span class="ring r3"></span></div>
 
 <nav>
-  <div class="navRow">
+  <div class="container navRow">
     <div class="navWordmark"><span class="navMark"></span>DURANT</div>
     <div class="navLinks">
       <a href="#toolkit">Toolkit</a>
-      <a href="draft_board_2026_27.html">Draft Board</a>
+      <a href="draft_board_2026_27.html">Draft board</a>
     </div>
     <span class="navStatus" id="navStatus">no draft in progress</span>
   </div>
 </nav>
 
-<div class="wrap hero">
-  <div>
-    <div class="eyebrow">Fantasy basketball &middot; 14-category H2H</div>
-    <h1>Draft on variance,<br>not just <em>averages</em>.</h1>
+<div class="hero">
+  <div class="container">
+    <p class="heroMeta">Fantasy basketball, 14-category head-to-head.</p>
+    <h1 class="heroHead">Draft on variance, not just averages</h1>
     <p class="lede">DURANT ranks every player with a variance-penalized model built for
-      head-to-head category leagues — then helps you draft, punt, and trade on top of it.</p>
+      head-to-head category leagues, then helps you draft, punt and trade on top of it.</p>
     <div class="heroActions">
-      <a class="btnPrimary" href="draft_board_2026_27.html">Open Draft Board &rarr;</a>
-      <a class="btnGhost" href="#toolkit">See the toolkit &darr;</a>
-    </div>
-    <div class="stats">
-      <div class="stat"><b>14</b><span>scored categories</span></div>
-      <div class="stat"><b>100%</b><span>offline draft board</span></div>
-      <div class="stat"><b>5</b><span>CLI companions</span></div>
-    </div>
-  </div>
-  <div class="heroVisual">
-    <div class="previewCard">
-      <div class="previewHead">
-        <span class="previewLabel">Top of the board</span>
-        <span class="previewLive"><span class="dot"></span>live</span>
-      </div>
-      <div id="previewRows"></div>
+      <a class="btn btn--primary" href="draft_board_2026_27.html">Open draft board</a>
+      <a class="btn btn--secondary" href="#toolkit">See the toolkit</a>
     </div>
   </div>
 </div>
 
-<div class="wrap section" id="toolkit">
-  <div class="sectionEyebrow">Toolkit</div>
-  <div class="sectionTitle">Everything for draft day, and the season after.</div>
+<div class="container boardPlate">
+  <div class="boardHead">
+    <span class="boardHeadLabel">Top of the board</span>
+    <span class="boardLive"><span class="dot"></span>live</span>
+  </div>
+  <div id="previewRows"></div>
+</div>
+
+<div class="container figures">
+  <div class="figure"><b>14</b><span>scored categories</span></div>
+  <div class="figure"><b>10</b><span>teams in the league</span></div>
+  <div class="figure"><b>8</b><span>tools on this dashboard</span></div>
+</div>
+
+<div class="container section" id="toolkit">
+  <h2 class="sectionTitle">Everything for draft day, and the season after.</h2>
   <div class="cards">
     <div class="card">
-      <div class="cardHead"><span class="cardNum">01</span></div>
-      <div class="cardName">Draft Board</div>
-      <div class="cardDesc">Live draft-day board — search, filter, sort, mark picks, and track your
-        own team's category needs in real time. Works fully offline.</div>
-      <a class="cardGo" href="draft_board_2026_27.html">Open board &rarr;</a>
-      <p class="cardHint">Regenerate after any pipeline rerun: <code>python scripts/build_draft_board.py</code>
-        &middot; live-sync from a Yahoo draft: see README &rarr; "Draft board"</p>
+      <span class="cardNum">01</span>
+      <h3 class="cardName">Draft board</h3>
+      <p class="cardDesc">Live draft-day board: search, filter, sort, mark picks, and track your
+        own team’s category needs in real time. Works fully offline.</p>
+      <a class="cardGo" href="draft_board_2026_27.html">Open board</a>
+      <p class="cardHint">Regenerate after any pipeline rerun with <code>python scripts/build_draft_board.py</code>.
+        A live sync from a Yahoo draft is in the README, under “Draft board”.</p>
     </div>
     <div class="card">
-      <div class="cardHead"><span class="cardNum">02</span></div>
-      <div class="cardName">Punt Planner</div>
-      <div class="cardDesc">Ranks which categories a roster is already losing most, and re-ranks
-        the full player pool with one category's weight zeroed.</div>
-      <a class="cardGo" href="tools/run.html?tool=punt_planner">Open tool &rarr;</a>
+      <span class="cardNum">02</span>
+      <h3 class="cardName">Punt planner</h3>
+      <p class="cardDesc">Ranks which categories a roster is already losing most, and re-ranks
+        the full player pool with one category’s weight zeroed.</p>
+      <a class="cardGo" href="tools/run.html?tool=punt_planner">Open tool</a>
     </div>
     <div class="card">
-      <div class="cardHead"><span class="cardNum">03</span></div>
-      <div class="cardName">Trade Finder</div>
-      <div class="cardDesc">Searches every 1-for-1 swap in the league for trades that improve
-        both sides' expected categories won per week.</div>
-      <a class="cardGo" href="tools/run.html?tool=find_trades">Open tool &rarr;</a>
+      <span class="cardNum">03</span>
+      <h3 class="cardName">Trade finder</h3>
+      <p class="cardDesc">Searches every one-for-one swap in the league for trades that improve
+        both sides’ expected categories won per week.</p>
+      <a class="cardGo" href="tools/run.html?tool=find_trades">Open tool</a>
     </div>
     <div class="card">
-      <div class="cardHead"><span class="cardNum">04</span></div>
-      <div class="cardName">Buy Low / Sell High</div>
-      <div class="cardDesc">Diffs real in-season per-game performance against each player's
-        preseason projection, weighted the same way the model values categories.</div>
-      <a class="cardGo" href="tools/run.html?tool=buy_low_sell_high">Open tool &rarr;</a>
+      <span class="cardNum">04</span>
+      <h3 class="cardName">Buy low, sell high</h3>
+      <p class="cardDesc">Diffs real in-season per-game performance against each player’s
+        preseason projection, weighted the same way the model values categories.</p>
+      <a class="cardGo" href="tools/run.html?tool=buy_low_sell_high">Open tool</a>
     </div>
     <div class="card">
-      <div class="cardHead"><span class="cardNum">05</span></div>
-      <div class="cardName">Trade Analyzer</div>
-      <div class="cardDesc">Full per-category before/after breakdown for one proposed trade —
-        expected categories won per week, both sides, against the league field.</div>
-      <a class="cardGo" href="tools/run.html?tool=analyze_trade">Open tool &rarr;</a>
+      <span class="cardNum">05</span>
+      <h3 class="cardName">Trade analyzer</h3>
+      <p class="cardDesc">Full per-category before and after breakdown for one proposed trade,
+        expected categories won per week, both sides, against the league field.</p>
+      <a class="cardGo" href="tools/run.html?tool=analyze_trade">Open tool</a>
     </div>
     <div class="card">
-      <div class="cardHead"><span class="cardNum">06</span></div>
-      <div class="cardName">Schedule Strength</div>
-      <div class="cardDesc">Real games-per-team for any fantasy week — who to stream, who to
-        sit, straight from the live NBA schedule.</div>
-      <a class="cardGo" href="tools/run.html?tool=schedule_strength">Open tool &rarr;</a>
+      <span class="cardNum">06</span>
+      <h3 class="cardName">Schedule strength</h3>
+      <p class="cardDesc">Real games per team for any fantasy week: who to stream, who to
+        sit, straight from the live NBA schedule.</p>
+      <a class="cardGo" href="tools/run.html?tool=schedule_strength">Open tool</a>
     </div>
     <div class="card">
-      <div class="cardHead"><span class="cardNum">07</span></div>
-      <div class="cardName">Projected Standings</div>
-      <div class="cardDesc">Projects each team's final win-loss-tie record and league
-        rank from the real weekly schedule, blending real results already played with
-        simulated results for the weeks ahead.</div>
-      <a class="cardGo" href="tools/run.html?tool=projected_standings">Open tool &rarr;</a>
+      <span class="cardNum">07</span>
+      <h3 class="cardName">Projected standings</h3>
+      <p class="cardDesc">Projects each team’s final win-loss-tie record and league
+        rank from the real weekly schedule, blending results already played with
+        simulated results for the weeks ahead.</p>
+      <a class="cardGo" href="tools/run.html?tool=projected_standings">Open tool</a>
     </div>
     <div class="card">
-      <div class="cardHead"><span class="cardNum">08</span></div>
-      <div class="cardName">Championship Odds</div>
-      <div class="cardDesc">Monte Carlo odds of finishing 1st: each matchup's win probability
+      <span class="cardNum">08</span>
+      <h3 class="cardName">Championship odds</h3>
+      <p class="cardDesc">Monte Carlo odds of finishing first: each matchup’s win probability
         is simulated once, then the whole season is resampled thousands of times to see how
-        often each team comes out on top.</div>
-      <a class="cardGo" href="tools/run.html?tool=championship_odds">Open tool &rarr;</a>
+        often each team comes out on top.</p>
+      <a class="cardGo" href="tools/run.html?tool=championship_odds">Open tool</a>
     </div>
   </div>
 </div>
 
-<footer class="wrap">
-  <span class="footWordmark">DURANT</span>
-  <span class="footMeta">2026-27 season &middot; in-season tools need rosters.csv (copy rosters_example.csv) &middot; run <code>python scripts/serve_dashboard.py</code> once to use them from this page instead of the CLI</span>
+<div class="closeBand">
+  <div class="container">
+    <h2 id="closeStatus">No draft in progress yet.</h2>
+    <a class="btn btn--primary" href="draft_board_2026_27.html">Open draft board</a>
+  </div>
+</div>
+
+<footer>
+  <div class="container">
+    <span class="footWordmark">DURANT</span>
+    <span class="footMeta">2026-27 season.</span>
+    <span class="footMeta">The in-season tools need rosters.csv (copy rosters_example.csv to start).</span>
+    <span class="footMeta">Run <code>python scripts/serve_dashboard.py</code> once to use every tool from this page.</span>
+    <span class="footMeta">Photograph: <a href="https://commons.wikimedia.org/wiki/File:2011-06-07_Basketball_in_hoop_still_shot.jpg">Ildar Sagdejev (Specious)</a>, CC BY-SA 4.0 (stand-in, swap for your own).</span>
+  </div>
 </footer>
 
 <script>
@@ -258,16 +231,18 @@
     catch(e){ return []; }
   }
   var el = document.getElementById("navStatus");
+  var closeEl = document.getElementById("closeStatus");
   var drafted = loadSet("draftBoard2026_27_drafted");
   var mine = loadSet("draftBoard2026_27_mine");
   if (drafted.length){
     el.className = "navStatus live";
-    el.textContent = drafted.length + " drafted · " + mine.length + " on your team";
+    el.textContent = drafted.length + " drafted, " + mine.length + " on your team";
+    closeEl.textContent = drafted.length + " drafted so far, " + mine.length + " on your team.";
   } else {
     el.textContent = "no draft in progress";
   }
 
-  // Hero preview card -- a static top-5 taste of the real board, not live
+  // Hero preview plate -- a static top-5 taste of the real board, not live
   // data (no need to duplicate the model's CSV output here just for a
   // decorative hero widget).
   var TOP5 = [
@@ -277,11 +252,11 @@
     ["4", "Luka Dončić", "11.70"],
     ["5", "LeBron James", "11.60"]
   ];
-  document.getElementById("previewRows").innerHTML = TOP5.map(function(p){
-    return '<div class="previewRow"><span class="previewRank">' + p[0] + '</span>' +
-      '<span class="previewName">' + p[1] + '</span>' +
-      '<span class="previewVal">' + p[2] + '</span></div>';
-  }).join("");
+  document.getElementById("previewRows").innerHTML = "<table><tbody>" + TOP5.map(function(p){
+    return "<tr><td class=\"pRank\">" + p[0] + "</td>" +
+      "<td class=\"pName\">" + p[1] + "</td>" +
+      "<td class=\"pVal\">" + p[2] + "</td></tr>";
+  }).join("") + "</tbody></table>";
 })();
 </script>
 </body>

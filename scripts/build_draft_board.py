@@ -273,66 +273,68 @@ TEMPLATE = r"""<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DURANT Draft Board</title>
+<meta name="description" content="A live, fully offline draft-day board for a 14-category head-to-head fantasy basketball league: search, filter, sort, mark picks and track your own team’s category needs in real time.">
+<link href="https://fonts.googleapis.com/css2?family=Prata&family=Manrope:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
+/* Hallmark · shape: kept (app screen) · genre: editorial · theme: Hedgerow (custom pick, gold accent override) · redesign: full
+ * hero: none (app screen) · nav: kept · footer: kept (none) · imagery: none · signature: the per-player chart and tags as a field-guide's own index · hedgerow: hedge
+ * axes: dark/high-contrast-serif/chromatic-green · posture: drenched · contrast: pass · fold: n/a (app screen) · v2.0.0
+ * waive 28 (success/error strength-weakness semantics kept as this tool's own functional signal, reinforced by text labels, not decorative) */
+@import url("./tokens.css");
+@import url("./base.css");
 :root{
-  --bg:#0b0c10; --surface:#15171c; --surface-alt:#1b1e24; --surface-hover:rgba(255,255,255,.045);
-  --text:#eef0f4; --text-dim:#a7acb8; --text-faint:#838a97;
-  --accent:#ff7a33; --flag:#e0a83f; --drafted:#ff6b6b;
-  --pos-z:#3ddc97; --neg-z:#ff6b6b;
-  --strength:#3ddc97; --weakness:#ff6b6b;
-  --border:rgba(255,255,255,.08); --border-strong:rgba(255,255,255,.16);
-  --mono: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Helvetica, Arial, sans-serif;
-  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Helvetica, Arial, sans-serif;
+  --surface-hover: color-mix(in oklch, var(--color-accent) 12%, transparent);
+  --shadow-float: 0 8px 20px oklch(8% 0.01 158 / 0.4);
 }
 *{box-sizing:border-box;}
-html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:var(--sans);}
+html,body{margin:0;padding:0;background:var(--color-paper);color:var(--color-ink);font-family:var(--font-body);}
 body{-webkit-font-smoothing:antialiased;}
-::selection{background:var(--accent);color:#0a0c0f;}
-html{scrollbar-color:var(--border-strong) var(--bg);}
+::selection{background:color-mix(in oklab, var(--color-accent) 30%, transparent);color:var(--color-ink);}
+html{scrollbar-color:var(--color-rule) var(--color-paper);}
 ::-webkit-scrollbar{width:12px;height:12px;}
-::-webkit-scrollbar-track{background:var(--bg);}
-::-webkit-scrollbar-thumb{background:var(--border-strong);border:3px solid var(--bg);border-radius:6px;}
-::-webkit-scrollbar-thumb:hover{background:var(--text-faint);}
+::-webkit-scrollbar-track{background:var(--color-paper);}
+::-webkit-scrollbar-thumb{background:var(--color-rule);border:3px solid var(--color-paper);}
+::-webkit-scrollbar-thumb:hover{background:var(--color-muted);}
 
 /* ---------- header / controls ---------- */
-.topbar{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--border-strong);padding:0 14px;}
-.tabs{display:flex;gap:22px;margin-bottom:0;border-bottom:1px solid var(--border);}
+.topbar{position:sticky;top:0;z-index:var(--z-sticky-nav);background:var(--color-paper);border-bottom:1px solid var(--color-rule);padding:0 var(--space-md);}
+.tabs{display:flex;gap:var(--space-lg);margin-bottom:0;border-bottom:1px solid var(--color-rule);}
 .tab{
-  font-family:var(--sans);font-weight:700;font-size:12px;letter-spacing:.1em;text-transform:uppercase;
-  color:var(--text-dim);background:none;border:none;border-bottom:2px solid transparent;
-  padding:12px 2px 10px;cursor:pointer;margin-top:8px;
+  font-family:var(--font-body);font-weight:500;font-size:var(--text-sm);
+  color:var(--color-muted);background:none;border:none;border-bottom:2px solid transparent;
+  padding:var(--space-sm) var(--space-3xs) var(--space-sm);cursor:pointer;margin-top:var(--space-xs);
 }
-.tab.active{color:var(--accent);border-bottom-color:var(--accent);}
-.tab .count{font-family:var(--mono);font-weight:400;color:var(--text-faint);margin-left:6px;}
-.tab.active .count{color:var(--text-dim);}
+.tab.active{color:var(--color-accent);border-bottom-color:var(--color-accent);}
+.tab .count{font-family:var(--font-body);font-weight:400;color:var(--color-muted);margin-left:var(--space-2xs);}
+.tab.active .count{color:var(--color-ink-2);}
 
-.searchRow{display:flex;align-items:center;gap:10px;padding:10px 0 0;}
-.controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--border);}
+.searchRow{display:flex;align-items:center;gap:var(--space-sm);padding:var(--space-sm) 0 0;}
+.controls{display:flex;align-items:center;gap:var(--space-sm);flex-wrap:wrap;padding:var(--space-sm) 0;border-bottom:1px solid var(--color-rule);}
 .search{
-  font-family:var(--sans);font-size:14px;color:var(--text);background:var(--surface);
-  border:1px solid var(--border-strong);border-radius:8px;padding:7px 10px;width:220px;
+  font-family:var(--font-body);font-size:var(--text-sm);color:var(--color-ink);background:var(--color-paper-3);
+  border:1px solid var(--color-muted);padding:var(--space-xs) var(--space-sm);width:220px;
 }
-.search::placeholder{color:var(--text-faint);}
-.search:focus{outline:1px solid var(--accent);outline-offset:0;border-color:var(--accent);}
+.search::placeholder{color:var(--color-muted);}
+.search:focus-visible{outline:2px solid var(--color-focus);outline-offset:0;}
 
-.chips{display:flex;gap:1px;}
+.chips{display:flex;gap:var(--space-2xs);}
 .chip{
-  font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--text-dim);
-  background:var(--surface);border:1px solid var(--border-strong);border-radius:7px;
-  padding:6px 10px;cursor:pointer;user-select:none;
+  font-family:var(--font-body);font-size:var(--text-sm);font-weight:700;color:var(--color-muted);
+  background:transparent;border:1.5px solid var(--color-accent);border-radius:999px;
+  padding:var(--space-xs) var(--space-sm);cursor:pointer;user-select:none;
 }
-.chip.on{color:var(--bg);background:var(--accent);border-color:var(--accent);}
-.chip:focus-visible{outline:1px solid var(--accent);outline-offset:0;}
+.chip.on{color:var(--color-accent-ink);background:var(--color-accent);border-color:var(--color-accent);}
+.chip:focus-visible{outline:2px solid var(--color-focus);outline-offset:0;}
 
 .sortSelect{
-  font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.02em;color:var(--text-dim);
-  background:var(--surface);border:1px solid var(--border-strong);border-radius:7px;
-  padding:6px 9px;cursor:pointer;
+  font-family:var(--font-body);font-size:var(--text-sm);font-weight:500;color:var(--color-muted);
+  background:var(--color-paper-3);border:1px solid var(--color-muted);
+  padding:var(--space-xs) var(--space-sm);cursor:pointer;
 }
 
-.stats{margin-left:auto;font-family:var(--mono);font-size:13px;color:var(--text-dim);white-space:nowrap;}
-.stats b{color:var(--text);font-weight:700;}
-.stats .flagged{color:var(--flag);}
+.stats{margin-left:auto;font-family:var(--font-body);font-size:var(--text-sm);color:var(--color-muted);white-space:nowrap;}
+.stats b{color:var(--color-ink);font-weight:700;}
+.stats .flagged{color:var(--color-accent-2);}
 
 /* undo/confirmation toast -- fires on every drafted-toggle (keyboard or
    click) so a fast multi-letter search-and-Enter always confirms WHO got
@@ -340,47 +342,47 @@ html{scrollbar-color:var(--border-strong) var(--bg);}
    vanishes instantly with no other visual trace. */
 .toast{
   position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(8px);
-  background:var(--surface-alt);border:1px solid var(--border-strong);color:var(--text);
-  font-family:var(--mono);font-size:13px;padding:9px 16px;border-radius:10px;cursor:pointer;
-  opacity:0;pointer-events:none;transition:opacity .15s,transform .15s;z-index:50;
+  background:var(--color-ink);border:1px solid var(--color-ink);color:var(--color-paper);
+  font-family:var(--font-body);font-size:var(--text-sm);padding:var(--space-sm) var(--space-md);cursor:pointer;border-radius:999px;
+  opacity:0;pointer-events:none;transition:opacity var(--dur-short) var(--ease-out),transform var(--dur-short) var(--ease-out);z-index:var(--z-toast);
 }
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0);pointer-events:auto;}
-.toast .hint{color:var(--text-faint);margin-left:8px;}
+.toast .hint{color:var(--color-paper-2);margin-left:var(--space-xs);}
 
 /* ---------- table ---------- */
-.wrap{padding:0 14px 40px;}
-table{width:100%;border-collapse:collapse;font-family:var(--sans);}
+.wrap{padding:0 var(--space-md) var(--space-xl);}
+table{width:100%;border-collapse:collapse;font-family:var(--font-body);}
 thead th{
-  position:sticky;top:var(--topbar-h,87px);z-index:10;background:var(--bg);
-  text-align:left;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.08em;
-  text-transform:uppercase;color:var(--text-faint);padding:9px 8px 7px;border-bottom:1px solid var(--border-strong);
+  position:sticky;top:var(--topbar-h,87px);z-index:var(--z-sticky);background:var(--color-paper);
+  text-align:left;font-family:var(--font-body);font-size:var(--text-sm);font-weight:500;
+  color:var(--color-muted);padding:var(--space-sm) var(--space-xs) var(--space-xs);border-bottom:1.5px solid var(--color-accent);
 }
 th.num,td.num{text-align:right;}
-tbody tr{border-bottom:1px solid var(--border);cursor:pointer;}
-tbody tr[tabindex]:focus-visible{outline:1px solid var(--accent);outline-offset:-1px;}
-tbody tr:nth-child(even){background:var(--surface);}
+tbody tr{border-bottom:1px solid var(--color-rule);cursor:pointer;}
+tbody tr[tabindex]:focus-visible{outline:2px solid var(--color-focus);outline-offset:-2px;}
+tbody tr:nth-child(even){background:var(--color-paper-2);}
 tbody tr:hover{background:var(--surface-hover);}
 tbody tr.hidden{display:none;}
-td{padding:7px 8px;vertical-align:middle;font-size:13px;font-variant-numeric:tabular-nums;}
-.rank{font-family:var(--mono);color:var(--text-dim);font-size:12px;font-weight:700;width:1%;font-variant-numeric:tabular-nums;cursor:pointer;padding:4px 10px;border-radius:6px;text-align:center;user-select:none;}
-.rankNum{display:block;padding:3px 0;}
-.rank:hover,.rank:focus-visible{background:var(--surface-hover);color:var(--accent);}
-.rank:focus-visible{outline:1px solid var(--accent);outline-offset:-1px;}
-.rankHint{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--text-faint);margin-top:2px;white-space:nowrap;}
+td{padding:var(--space-xs) var(--space-xs);vertical-align:middle;font-size:var(--text-sm);font-variant-numeric:tabular-nums;}
+.rank{font-family:var(--font-body);color:var(--color-muted);font-size:var(--text-xs);font-weight:700;width:1%;font-variant-numeric:tabular-nums;cursor:pointer;padding:var(--space-2xs) var(--space-sm);text-align:center;user-select:none;}
+.rankNum{display:block;padding:var(--space-3xs) 0;}
+.rank:hover,.rank:focus-visible{background:var(--surface-hover);color:var(--color-accent);}
+.rank:focus-visible{outline:2px solid var(--color-focus);outline-offset:-2px;}
+.rankHint{font-family:var(--font-body);font-size:var(--text-xs);font-weight:500;color:var(--color-muted);margin-top:var(--space-3xs);white-space:nowrap;}
 .name-cell{min-width:170px;}
-.name{font-weight:700;font-size:13.5px;color:var(--text);}
-.meta{font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-left:6px;}
-.val{font-weight:700;font-size:14px;color:var(--text);font-variant-numeric:tabular-nums;border-left:2px solid var(--accent);padding-left:8px;}
+.name{font-family:var(--font-display);font-weight:400;font-size:var(--text-lg);color:var(--color-ink);}
+.meta{font-family:var(--font-body);font-size:var(--text-xs);color:var(--color-ink-2);margin-left:var(--space-xs);}
+.val{font-family:var(--font-display);font-weight:400;font-size:var(--text-xl);color:var(--color-accent-2);font-variant-numeric:tabular-nums;border-left:1.5px solid var(--color-accent);padding-left:var(--space-xs);}
 
 /* drafted state -- the signature: an executed order, not a fade.
    ">> FILLED" reads like a terminal confirming a trade went through. */
-tr.drafted{background:var(--bg) !important;}
-tr.drafted:hover{background:var(--surface) !important;}
+tr.drafted{background:var(--color-paper) !important;}
+tr.drafted:hover{background:var(--color-paper-2) !important;}
 tr.drafted .name{
-  color:var(--text-faint);
-  text-decoration:line-through;text-decoration-color:var(--drafted);text-decoration-thickness:1px;
+  color:var(--color-muted);
+  text-decoration:line-through;text-decoration-color:var(--color-error);text-decoration-thickness:1px;
 }
-tr.drafted .meta,tr.drafted .val{color:var(--text-faint);border-left-color:var(--border-strong);}
+tr.drafted .meta,tr.drafted .val{color:var(--color-muted);border-left-color:var(--color-rule);}
 tr.drafted .tags{opacity:.25;}
 tr.chart-row.dim .chart{opacity:.25;}
 tr.drafted .noteInline{opacity:.35;}
@@ -392,127 +394,127 @@ tr.drafted .injuryInline{opacity:.35;}
 /* availability flag -- readable at a glance, no click required (only 13/130
    rows carry one, so it doesn't add noise). Full note text lives in the
    expanded chart row (.chartNote below). */
-.noteInline{font-family:var(--mono);font-size:11px;color:var(--flag);margin-left:6px;}
+.noteInline{font-family:var(--font-body);font-size:var(--text-xs);color:var(--color-accent-deep);margin-left:var(--space-xs);}
 
 /* confirmed severe-injury flag (real NBA injury-report text, see
-   main.py's RECENT_SEVERE_INJURY) -- distinct color from .noteInline since
+   main.py's RECENT_SEVERE_INJURY) -- distinct colour from .noteInline since
    it's a different, more serious signal (a real diagnosed injury, not a
    data-coverage gap). A custom CSS tooltip on hover, not the native
    title attribute -- title tooltips turned out unreliable in practice
    (inconsistent show delay/positioning), so this renders its own
    always-the-same popup from a data-tip attribute instead. */
-.injuryInline{position:relative;font-family:var(--mono);font-size:11px;color:var(--weakness);margin-left:6px;cursor:help;}
+.injuryInline{position:relative;font-family:var(--font-body);font-size:var(--text-xs);color:var(--color-error);margin-left:var(--space-xs);cursor:help;}
 .injuryInline:hover::after{
   content:attr(data-tip);
-  position:absolute;left:0;top:calc(100% + 6px);z-index:100;
+  position:absolute;left:0;top:calc(100% + 6px);z-index:var(--z-tooltip);
   display:block;width:max-content;max-width:280px;
-  background:var(--surface-alt);border:1px solid var(--border-strong);
-  color:var(--text);font-weight:400;font-size:11px;letter-spacing:0;
-  text-transform:none;white-space:normal;line-height:1.4;
-  padding:7px 10px;box-shadow:0 8px 20px rgba(0,0,0,.5);
+  background:var(--color-ink);border:1px solid var(--color-ink);
+  color:var(--color-paper);font-weight:400;font-size:var(--text-xs);letter-spacing:0;
+  white-space:normal;line-height:1.4;
+  padding:var(--space-xs) var(--space-sm);box-shadow:var(--shadow-float);
 }
 
-/* balance strip: 12 threshold-colored cells (same centered/scaled z the
-   tags use, same ±0.75σ cutoff -- a cell colors if and only if that
+/* balance strip: 12 threshold-coloured cells (same centered/scaled z the
+   tags use, same ±0.75σ cutoff -- a cell colours if and only if that
    category would qualify as a tag, by construction). Blank/border means
    "typical" -- this is deliberately not a continuous heatmap, it shows
    only where a player is UNUSUAL. Fills the space right of tags. */
 .rowRight{display:flex;align-items:center;width:100%;}
-.rowMid{display:flex;align-items:center;gap:10px;margin-left:28px;white-space:nowrap;}
-.posRank{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent);}
-.rowGp{font-family:var(--mono);font-size:11.5px;color:var(--text-dim);}
-.rowGp b{color:var(--text);font-weight:700;font-variant-numeric:tabular-nums;}
+.rowMid{display:flex;align-items:center;gap:var(--space-sm);margin-left:28px;white-space:nowrap;}
+.posRank{font-family:var(--font-body);font-size:var(--text-xs);font-weight:700;color:var(--color-accent);}
+.rowGp{font-family:var(--font-body);font-size:var(--text-xs);color:var(--color-ink-2);}
+.rowGp b{color:var(--color-ink);font-weight:700;font-variant-numeric:tabular-nums;}
 
 /* tier-cliff marker: a thin rule where the VAL gap to the previous
    undrafted player (in Value order) exceeds CLIFF_THRESHOLD -- live among
    undrafted players, Value-sort only (a category sort's row order isn't
    VAL order, so a VAL-gap marker there would land on arbitrary rows). */
-tr.cliff{border-top:2px dashed var(--accent);}
+tr.cliff{border-top:1.5px dashed var(--color-accent);}
 .balanceStrip{display:flex;gap:1px;width:250px;margin-left:auto;flex:none;}
 .balanceCell{flex:1;display:flex;flex-direction:column;align-items:center;}
-.balanceCell .sw{width:100%;height:15px;border-radius:2px;}
-.balanceCell .l{font-family:var(--mono);font-size:8px;color:var(--text-faint);margin-top:2px;letter-spacing:-.03em;overflow:hidden;white-space:nowrap;}
+.balanceCell .sw{width:100%;height:15px;}
+.balanceCell .l{font-family:var(--font-body);font-size:8px;color:var(--color-muted);margin-top:var(--space-3xs);letter-spacing:-.03em;overflow:hidden;white-space:nowrap;}
 
 /* strength/weakness tags: up to 2 green + 2 red pills per row, category
    name only -- click the row to see all 12 categories in the expanded
    chart below it. TD/TECH/TO are excluded from tag generation (see
    TAG_EXCLUDE in build_draft_board.py) but still appear in that chart. */
-.tags{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:26px;}
+.tags{display:flex;align-items:center;gap:var(--space-xs);flex-wrap:wrap;min-height:26px;}
 .tag{
-  font-family:var(--mono);font-size:14px;font-weight:700;letter-spacing:.02em;
-  border-radius:5px;padding:4px 9px;border:1px solid currentColor;
+  font-family:var(--font-body);font-size:var(--text-sm);font-weight:700;letter-spacing:.02em;
+  padding:var(--space-2xs) var(--space-sm);border:1px solid currentColor;border-radius:999px;
 }
-.tag.pos{color:var(--strength);background:color-mix(in srgb, var(--strength) 18%, transparent);}
-.tag.neg{color:var(--weakness);background:color-mix(in srgb, var(--weakness) 18%, transparent);}
-.tagLegend{display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:11px;font-weight:400;color:var(--text-dim);white-space:nowrap;text-transform:none;letter-spacing:0;}
-.tagLegend .sw{display:inline-block;width:9px;height:9px;border-radius:1px;margin-right:5px;vertical-align:-1px;}
-.tagLegend .sw.pos{background:var(--strength);}
-.tagLegend .sw.neg{background:var(--weakness);}
+.tag.pos{color:var(--color-success);background:color-mix(in oklch, var(--color-success) 18%, transparent);}
+.tag.neg{color:var(--color-error);background:color-mix(in oklch, var(--color-error) 18%, transparent);}
+.tagLegend{display:flex;align-items:center;gap:var(--space-md);font-family:var(--font-body);font-size:var(--text-xs);font-weight:400;color:var(--color-ink-2);white-space:nowrap;}
+.tagLegend .sw{display:inline-block;width:var(--space-xs);height:var(--space-xs);border-radius:50%;margin-right:var(--space-2xs);vertical-align:-1px;}
+.tagLegend .sw.pos{background:var(--color-success);}
+.tagLegend .sw.neg{background:var(--color-error);}
 
 /* live category-need panel: sum of z-scores across rows marked "mine"
    (shift+click a rank), weakest category first -- see updateMineSummary */
-.mineSummary{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 0;
-  border-bottom:1px solid var(--border);min-height:34px;}
-.mineLabel{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--text-dim);white-space:nowrap;}
-.mineHint{font-family:var(--mono);font-size:11px;color:var(--text-faint);font-style:italic;}
-.mineCat{font-family:var(--mono);font-size:11px;font-weight:700;padding:2px 6px;border:1px solid currentColor;border-radius:5px;white-space:nowrap;}
-.mineCat.pos{color:var(--strength);}
-.mineCat.neg{color:var(--weakness);}
-.mineCat.flat{color:var(--text-faint);}
-.mineStar{display:block;color:var(--text-faint);cursor:pointer;font-size:11px;font-weight:600;
-  letter-spacing:.03em;text-transform:uppercase;user-select:none;padding:4px 0 2px;
-  border-top:1px solid var(--border);}
-.mineStar:hover{color:var(--accent);}
-tr.mine .mineStar{color:var(--accent);font-weight:800;}
-tr.mine .rank{color:var(--accent);}
-tr.mine .name{text-decoration:underline;text-decoration-color:var(--accent);text-decoration-thickness:2px;}
+.mineSummary{display:flex;align-items:center;gap:var(--space-xs);flex-wrap:wrap;padding:var(--space-xs) 0;
+  border-bottom:1px solid var(--color-rule);min-height:34px;}
+.mineLabel{font-family:var(--font-body);font-size:var(--text-xs);font-weight:500;color:var(--color-ink-2);white-space:nowrap;}
+.mineHint{font-family:var(--font-body);font-size:var(--text-xs);color:var(--color-muted);}
+.mineCat{font-family:var(--font-body);font-size:var(--text-xs);font-weight:700;padding:var(--space-3xs) var(--space-xs);border:1px solid currentColor;border-radius:999px;white-space:nowrap;}
+.mineCat.pos{color:var(--color-success);}
+.mineCat.neg{color:var(--color-error);}
+.mineCat.flat{color:var(--color-muted);}
+.mineStar{display:block;color:var(--color-muted);cursor:pointer;font-size:var(--text-xs);font-weight:500;
+  user-select:none;padding:var(--space-2xs) 0 var(--space-3xs);
+  border-top:1px solid var(--color-rule);}
+.mineStar:hover{color:var(--color-accent);}
+tr.mine .mineStar{color:var(--color-accent);font-weight:800;}
+tr.mine .rank{color:var(--color-accent);}
+tr.mine .name{text-decoration:underline;text-decoration-color:var(--color-accent);text-decoration-thickness:2px;}
 
 /* expanded row: projected/actual per-game stat cards, then the category chart */
-tr.chart-row td{padding:10px 8px 12px 34px;background:var(--surface);}
+tr.chart-row td{padding:var(--space-sm) var(--space-xs) var(--space-sm) var(--space-xl);background:var(--color-paper-2);}
 tr.chart-row.hidden{display:none;}
 tr.chart-row:not(.open){display:none;}
 .statBlockLabel,.chartLabel{
-  font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.05em;
-  text-transform:uppercase;color:var(--text-faint);margin:2px 0 6px;
+  font-family:var(--font-body);font-size:var(--text-xs);font-weight:500;
+  color:var(--color-muted);margin:var(--space-3xs) 0 var(--space-xs);
 }
-.chartNote{font-family:var(--mono);font-size:12px;color:var(--flag);margin-bottom:14px;}
-.statRow{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;}
+.chartNote{font-family:var(--font-body);font-size:var(--text-sm);color:var(--color-accent-deep);margin-bottom:var(--space-md);}
+.statRow{display:flex;gap:var(--space-xs);flex-wrap:wrap;margin-bottom:var(--space-md);}
 .statCard{
   display:flex;flex-direction:column;align-items:center;justify-content:center;
-  min-width:44px;background:var(--surface-alt);border-radius:0;border:1px solid var(--border);padding:6px 4px;
+  min-width:44px;background:var(--color-paper-3);border:1px solid var(--color-rule);padding:var(--space-xs) var(--space-2xs);color:var(--color-ink);
 }
-.statCard .v{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums;}
-.statCard .l{font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-top:2px;letter-spacing:.03em;}
-.statEmpty{font-family:var(--mono);font-size:12px;color:var(--text-faint);font-style:italic;margin-bottom:14px;}
+.statCard .v{font-family:var(--font-body);font-size:var(--text-sm);font-weight:700;color:var(--color-ink);font-variant-numeric:tabular-nums;}
+.statCard .l{font-family:var(--font-body);font-size:9px;color:var(--color-ink-2);margin-top:var(--space-3xs);letter-spacing:.03em;}
+.statEmpty{font-family:var(--font-body);font-size:var(--text-sm);color:var(--color-muted);margin-bottom:var(--space-md);}
 
 /* per-player category chart: all 12 categories, one shared 0-baseline,
    per-column z-score normalization (same values as the tags), category
    label + numeric value under each bar, bar height clamped at ±3σ
    (the printed value is never clamped, only the bar). */
-.chart{position:relative;display:flex;gap:2px;height:100px;}
-.chart .baseline{position:absolute;left:0;right:0;top:32px;height:1px;background:var(--border-strong);}
+.chart{position:relative;display:flex;gap:var(--space-3xs);height:100px;}
+.chart .baseline{position:absolute;left:0;right:0;top:32px;height:1px;background:var(--color-rule);}
 .chart .col{position:relative;width:48px;flex:none;display:flex;flex-direction:column;align-items:center;}
 .chart .barTrack{position:relative;width:100%;height:64px;}
-.chart .bar{position:absolute;left:10px;right:10px;border-radius:0;}
-.chart .bar.pos{background:var(--pos-z);bottom:50%;border-radius:2px 2px 0 0;}
-.chart .bar.neg{background:var(--neg-z);top:50%;border-radius:0 0 2px 2px;}
-.chart .label{font-family:var(--mono);font-size:10px;font-weight:700;color:var(--text-dim);margin-top:4px;}
-.chart .value{font-family:var(--mono);font-size:9.5px;color:var(--text-faint);}
+.chart .bar{position:absolute;left:10px;right:10px;}
+.chart .bar.pos{background:var(--color-success);bottom:50%;}
+.chart .bar.neg{background:var(--color-error);top:50%;}
+.chart .label{font-family:var(--font-body);font-size:var(--text-xs);font-weight:500;color:var(--color-ink-2);margin-top:var(--space-2xs);}
+.chart .value{font-family:var(--font-body);font-size:9.5px;color:var(--color-muted);}
 
 /* ---------- rookies ---------- */
 .disclaimer{
-  background:var(--surface-alt);border:1px solid var(--border-strong);
-  color:var(--flag);font-family:var(--mono);font-size:12.5px;padding:10px 14px;margin:12px 0;border-radius:8px;
+  background:var(--color-paper-3);border:1.5px solid var(--color-accent);
+  color:var(--color-ink);font-family:var(--font-body);font-size:var(--text-sm);padding:var(--space-sm) var(--space-md);margin:var(--space-sm) 0;
 }
-.disclaimer::before{content:"[!] ";font-weight:700;}
-.tier-block{margin:18px 0 8px;}
+.disclaimer::before{content:"Note: ";font-weight:700;color:var(--color-accent-2);}
+.tier-block{margin:var(--space-lg) 0 var(--space-xs);}
 .tier-title{
-  font-family:var(--sans);font-weight:800;font-size:13px;letter-spacing:.08em;text-transform:uppercase;
-  color:var(--accent);border-bottom:1px solid var(--border-strong);padding-bottom:5px;margin-bottom:2px;
+  font-family:var(--font-display);font-weight:400;font-size:var(--text-lg);
+  color:var(--color-ink);border-bottom:1.5px solid var(--color-accent);padding-bottom:var(--space-2xs);margin-bottom:var(--space-3xs);
 }
-.tier-title .n{color:var(--text-faint);font-weight:400;font-family:var(--mono);margin-left:8px;}
+.tier-title .n{color:var(--color-muted);font-weight:400;font-family:var(--font-body);font-size:var(--text-sm);margin-left:var(--space-xs);}
 
-.empty{padding:30px 8px;color:var(--text-faint);font-family:var(--mono);font-size:13px;}
+.empty{padding:var(--space-xl) var(--space-xs);color:var(--color-muted);font-family:var(--font-body);font-size:var(--text-sm);}
 
 @media (max-width:640px){
   .search{width:150px;}
@@ -527,6 +529,8 @@ tr.chart-row:not(.open){display:none;}
   .meta{display:block;margin-left:0;}
   .tagLegend{white-space:normal;}
 }
+.chip:active,.mineStar:active{opacity:.7;}
+button:disabled,input:disabled,select:disabled{opacity:.55;cursor:not-allowed;}
 </style>
 </head>
 <body>
@@ -563,10 +567,9 @@ tr.chart-row:not(.open){display:none;}
           <th class="num">Val</th>
           <th>
             <div class="tagLegend">
-              <span class="sw pos"></span>strength ≥ +0.75σ
-              <span class="sw neg"></span>weakness ≤ -0.75σ
-              &nbsp;&nbsp;· click a row to see all 12 categories
-              &nbsp;&nbsp;· click &#9733; for "mine"
+              <span class="sw pos"></span>strength ≥ +0.75σ,
+              <span class="sw neg"></span>weakness ≤ -0.75σ.
+              Click a row for all 12 categories, click &#9733; for “mine.”
             </div>
           </th>
         </tr>

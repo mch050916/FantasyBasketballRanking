@@ -1,0 +1,77 @@
+[
+ {
+  "shape": "Poster hero (index.html), kept shells (draft board + tool pages)",
+  "theme": "hedgerow",
+  "axes": "dark/high-contrast-serif/chromatic-green",
+  "hero": "Poster",
+  "nav": "edge-aligned",
+  "footer": "mast",
+  "imagery": "photographs, library 1 (stand-in forest photo)",
+  "photos": [
+   "hedgerow-forest-trail"
+  ],
+  "entry": "full redesign landed: Hedgerow with a gold accent override replacing Wayfind, across index.html, draft_board_2026_27.html and tools/run.html",
+  "fingerprint": "fantasy-basketball-ranking-model-0697",
+  "sections": [
+   "hero-poster",
+   "index-board",
+   "figures",
+   "grid",
+   "band",
+   "footer"
+  ],
+  "signature": "the live top-of-board table and per-player chart as a field-guide index, gold accent in place of Hedgerows stock chartreuse",
+  "waived": [
+   "28 (success/error strength-weakness semantics kept as functional signal, reinforced by text labels)"
+  ],
+  "prompt": "user picked Hedgerow deep-green ground from prototypes, requested a non-neon accent, chose gold (option A)",
+  "date": "2026-11-11",
+  "mode": "build"
+ },
+ {
+  "shape": "kept shell (app screen, shared by 7 tool pages)",
+  "theme": "wayfind",
+  "axes": "dark/mono/cool",
+  "hero": "none",
+  "nav": "kept",
+  "footer": "none",
+  "imagery": "none",
+  "photos": [],
+  "entry": "redesign follow-up: tools/run.html shared shell + contrast/close-band fixes, Wayfind night",
+  "fingerprint": "fantasy-basketball-ranking-model-0697",
+  "sections": [],
+  "signature": "the verdict badge and table as ink plates, shared across every tool",
+  "waived": [
+   "28 (success/error colour pairing kept as functional signal, reinforced by text labels)"
+  ],
+  "prompt": "tool pages need a redesign too; grey text sometimes hard to read; close band feels out of place",
+  "date": "2026-11-11",
+  "mode": "build"
+ },
+ {
+  "shape": "Index-first (index.html), kept shell (draft_board_2026_27.html, app screen)",
+  "theme": "wayfind",
+  "axes": "dark/mono/cool",
+  "hero": "Index",
+  "nav": "edge-aligned",
+  "footer": "mast",
+  "imagery": "none (data-led)",
+  "photos": [],
+  "entry": "redesign: DURANT dashboard + draft board, Wayfind night",
+  "fingerprint": "fantasy-basketball-ranking-model-0697",
+  "sections": [
+   "hero-index",
+   "figures",
+   "grid",
+   "band",
+   "footer"
+  ],
+  "signature": "the live top-of-board table as the heros own visual; the balance strip and category chart as ink plates",
+  "waived": [
+   "28 (red/green strength-weakness kept as functional signal, reinforced by text labels)"
+  ],
+  "prompt": "a fantasy basketball ranking model dashboard and live draft board for a private 10-team mini league",
+  "date": "2026-11-11",
+  "mode": "build"
+ }
+]
