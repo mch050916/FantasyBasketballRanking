@@ -115,9 +115,6 @@
   .cardGo{display:inline-flex;align-items:center;gap:6px;font-weight:600;font-size:13.5px;color:var(--ember);
     text-decoration:none;}
   .cardGo:hover{text-decoration:underline;}
-  .cardCmd{display:block;background:rgba(0,0,0,.35);border:1px solid var(--border);border-radius:7px;
-    font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:12.5px;color:var(--ink-dim);
-    padding:9px 11px;overflow-x:auto;white-space:pre;}
   .cardHint{font-size:12px;color:var(--ink-faint);line-height:1.5;margin:10px 0 0;}
   .cardHint code{font-family:ui-monospace,"SF Mono",Menlo,monospace;color:var(--ink-dim);}
 
@@ -197,7 +194,6 @@
       <div class="cardDesc">Ranks which categories a roster is already losing most, and re-ranks
         the full player pool with one category's weight zeroed.</div>
       <a class="cardGo" href="tools/run.html?tool=punt_planner">Open tool &rarr;</a>
-      <code class="cardCmd">python scripts/punt_planner.py --team "YourTeam"</code>
     </div>
     <div class="card">
       <div class="cardHead"><span class="cardNum">03</span></div>
@@ -205,7 +201,6 @@
       <div class="cardDesc">Searches every 1-for-1 swap in the league for trades that improve
         both sides' expected categories won per week.</div>
       <a class="cardGo" href="tools/run.html?tool=find_trades">Open tool &rarr;</a>
-      <code class="cardCmd">python scripts/find_trades.py --team "YourTeam"</code>
     </div>
     <div class="card">
       <div class="cardHead"><span class="cardNum">04</span></div>
@@ -213,7 +208,6 @@
       <div class="cardDesc">Diffs real in-season per-game performance against each player's
         preseason projection, weighted the same way the model values categories.</div>
       <a class="cardGo" href="tools/run.html?tool=buy_low_sell_high">Open tool &rarr;</a>
-      <code class="cardCmd">python scripts/buy_low_sell_high.py</code>
     </div>
     <div class="card">
       <div class="cardHead"><span class="cardNum">05</span></div>
@@ -221,8 +215,6 @@
       <div class="cardDesc">Full per-category before/after breakdown for one proposed trade —
         expected categories won per week, both sides, against the league field.</div>
       <a class="cardGo" href="tools/run.html?tool=analyze_trade">Open tool &rarr;</a>
-      <code class="cardCmd">python scripts/analyze_trade.py --team "You" --partner "Them" \
-  --give "Player A,Player B" --get "Player C"</code>
     </div>
     <div class="card">
       <div class="cardHead"><span class="cardNum">06</span></div>
@@ -230,7 +222,6 @@
       <div class="cardDesc">Real games-per-team for any fantasy week — who to stream, who to
         sit, straight from the live NBA schedule.</div>
       <a class="cardGo" href="tools/run.html?tool=schedule_strength">Open tool &rarr;</a>
-      <code class="cardCmd">python scripts/schedule_strength.py --team "YourTeam"</code>
     </div>
     <div class="card">
       <div class="cardHead"><span class="cardNum">07</span></div>
@@ -239,7 +230,6 @@
         rank from the real weekly schedule, blending real results already played with
         simulated results for the weeks ahead.</div>
       <a class="cardGo" href="tools/run.html?tool=projected_standings">Open tool &rarr;</a>
-      <code class="cardCmd">python scripts/projected_standings.py --team "YourTeam"</code>
     </div>
     <div class="card">
       <div class="cardHead"><span class="cardNum">08</span></div>
@@ -248,7 +238,6 @@
         is simulated once, then the whole season is resampled thousands of times to see how
         often each team comes out on top.</div>
       <a class="cardGo" href="tools/run.html?tool=championship_odds">Open tool &rarr;</a>
-      <code class="cardCmd">python scripts/championship_odds.py --team "YourTeam"</code>
     </div>
   </div>
 </div>
