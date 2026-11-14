@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1794532624745,
+  "lastScanned": 1794634199250,
   "projectRoot": "/Users/chesterman/FantasyBasketballRanking",
   "techStack": {
     "languages": [
@@ -48,28 +48,28 @@
     "__pycache__": {
       "path": "__pycache__",
       "purpose": null,
-      "fileCount": 16,
-      "lastAccessed": 1794532624725,
+      "fileCount": 18,
+      "lastAccessed": 1794634199237,
       "keyFiles": [
+        "backtest.cpython-312.pyc",
         "benchmark_ingest.cpython-312.pyc",
         "causes.cpython-312.pyc",
         "compare_baselines.cpython-312.pyc",
-        "config.cpython-312.pyc",
-        "dashboard_server.cpython-312.pyc"
+        "config.cpython-312.pyc"
       ]
     },
     "benchmarks": {
       "path": "benchmarks",
       "purpose": null,
       "fileCount": 0,
-      "lastAccessed": 1794532624729,
+      "lastAccessed": 1794634199238,
       "keyFiles": []
     },
     "diagnostics": {
       "path": "diagnostics",
       "purpose": null,
       "fileCount": 5,
-      "lastAccessed": 1794532624729,
+      "lastAccessed": 1794634199238,
       "keyFiles": [
         "availability_labeled_set.csv",
         "availability_labeled_set.md",
@@ -81,14 +81,14 @@
       "path": "docs",
       "purpose": "Documentation",
       "fileCount": 1,
-      "lastAccessed": 1794532624730,
+      "lastAccessed": 1794634199238,
       "keyFiles": []
     },
     "images": {
       "path": "images",
       "purpose": null,
       "fileCount": 1,
-      "lastAccessed": 1794532624730,
+      "lastAccessed": 1794634199238,
       "keyFiles": [
         "hero-basketball.jpg"
       ]
@@ -97,7 +97,7 @@
       "path": "openspec",
       "purpose": null,
       "fileCount": 2,
-      "lastAccessed": 1794532624732,
+      "lastAccessed": 1794634199239,
       "keyFiles": [
         "config.yaml"
       ]
@@ -106,7 +106,7 @@
       "path": "prototypes",
       "purpose": null,
       "fileCount": 3,
-      "lastAccessed": 1794532624733,
+      "lastAccessed": 1794634199239,
       "keyFiles": [
         "scouting-card.html",
         "split-flap.html",
@@ -117,7 +117,7 @@
       "path": "scripts",
       "purpose": "Build/utility scripts",
       "fileCount": 12,
-      "lastAccessed": 1794532624733,
+      "lastAccessed": 1794634199239,
       "keyFiles": [
         "analyze_trade.py",
         "build_draft_board.py",
@@ -129,21 +129,21 @@
     "tests": {
       "path": "tests",
       "purpose": "Test files",
-      "fileCount": 14,
-      "lastAccessed": 1794532624733,
+      "fileCount": 17,
+      "lastAccessed": 1794634199240,
       "keyFiles": [
         "test_analyze_trade.py",
+        "test_backtest.py",
         "test_benchmark_ingest.py",
         "test_causes.py",
-        "test_compare_baselines.py",
-        "test_dashboard_server.py"
+        "test_compare_baselines.py"
       ]
     },
     "tools": {
       "path": "tools",
       "purpose": null,
       "fileCount": 2,
-      "lastAccessed": 1794532624734,
+      "lastAccessed": 1794634199240,
       "keyFiles": [
         "run.html",
         "run.js"
@@ -153,14 +153,14 @@
   "hotPaths": [
     {
       "path": "model.py",
-      "accessCount": 24.501358636003598,
-      "lastAccessed": 1794618539047,
+      "accessCount": 29.824683528571605,
+      "lastAccessed": 1794649898721,
       "type": "file"
     },
     {
       "path": "config.py",
-      "accessCount": 5.010312058351817,
-      "lastAccessed": 1794618528049,
+      "accessCount": 9.364594347586463,
+      "lastAccessed": 1794634729219,
       "type": "file"
     },
     {
@@ -183,8 +183,8 @@
     },
     {
       "path": "main.py",
-      "accessCount": 12.81393818796667,
-      "lastAccessed": 1794614505851,
+      "accessCount": 13.39622290969331,
+      "lastAccessed": 1794649907893,
       "type": "file"
     },
     {
@@ -207,14 +207,14 @@
     },
     {
       "path": "backtest.py",
-      "accessCount": 42.533486171980734,
-      "lastAccessed": 1794618297993,
+      "accessCount": 40.29792315960314,
+      "lastAccessed": 1794634602851,
       "type": "file"
     },
     {
       "path": "tests/test_backtest.py",
-      "accessCount": 5.666330874929622,
-      "lastAccessed": 1794618355845,
+      "accessCount": 6.024421744606285,
+      "lastAccessed": 1794633342554,
       "type": "file"
     },
     {
@@ -249,8 +249,8 @@
     },
     {
       "path": "docs/superpowers/specs/2026-11-14-category-balance-h2h-design.md",
-      "accessCount": 1,
-      "lastAccessed": 1794632238219,
+      "accessCount": 6.957024587897977,
+      "lastAccessed": 1794634519419,
       "type": "file"
     },
     {
@@ -275,6 +275,30 @@
       "path": "yahoo_24_25_adp_hashtag.csv",
       "accessCount": 1,
       "lastAccessed": 1794632315037,
+      "type": "file"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-11-14-minutes-split-projection.md",
+      "accessCount": 3.9862909013306838,
+      "lastAccessed": 1794634744950,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_model.py",
+      "accessCount": 5.502091351173991,
+      "lastAccessed": 1794649916965,
+      "type": "file"
+    },
+    {
+      "path": "h2h_sim.py",
+      "accessCount": 1,
+      "lastAccessed": 1794634028888,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_h2h_sim.py",
+      "accessCount": 1,
+      "lastAccessed": 1794634044122,
       "type": "file"
     }
   ],

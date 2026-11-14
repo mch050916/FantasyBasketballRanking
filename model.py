@@ -846,7 +846,8 @@ def project_stats(season_dfs: list[pd.DataFrame],
                 continue
 
             wt        = sum(wts)
-            projected = sum(v * w for v, w in zip(vals, wts)) / wt * age_mult
+            blended   = sum(v * w for v, w in zip(vals, wts)) / wt
+            projected = blended * age_mult
             # `{cat}` stays the GP/decline-adjusted value everything else in
             # the pipeline (G-scores, the draft board's headline numbers)
             # already depends on -- not touched here. `{cat}_RATE` is the

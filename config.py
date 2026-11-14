@@ -117,6 +117,7 @@ LEAGUE_CONFIG = {
     # ADR-0001 2026-11-14). Injury discounts still apply.
     "per_game_regression": {"minutes_k": 0.0, "gp_shrink": 1.0},
 
+
     # Age curve on counting-stat rates: clip(1 + slope*(pivot - age), lo, hi).
     # Read off the 2023-24..2025-26 folds, tested on 2021-22 and 2022-23 -- see
     # docs/superpowers/specs/2026-11-14-age-curve-design.md. Remove to switch off.

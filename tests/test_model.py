@@ -100,6 +100,7 @@ class ProjectStatsTests(unittest.TestCase):
         self.assertGreaterEqual(fg_pct, 0.0)
         self.assertLessEqual(fg_pct, 1.0)
 
+
     def test_composite_trend_weights_react_to_non_points_growth(self) -> None:
         player_season_stats = {
             "2024-25": pd.Series(
