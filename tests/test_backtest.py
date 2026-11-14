@@ -176,3 +176,30 @@ class TestTotalValueTarget:
         ba30 = _actuals_frame[_actuals_frame["PLAYER_NAME"] == "Below Avg Less GP"]
         # Fewer games should not help a below-average player (higher rank = worse)
         assert ba30.iloc[0]["ACTUAL_TOTAL_RANK"] >= ba70.iloc[0]["ACTUAL_TOTAL_RANK"]
+
+
+class TestCompareRuns:
+    """compare_runs self-comparison must show delta=0 everywhere."""
+
+    def test_self_compare_delta_zero(self, tmp_path, monkeypatch, capsys):
+        from backtest import compare_runs, OUTPUT_DIR
+        monkeypatch.setattr("backtest.OUTPUT_DIR", tmp_path)
+
+        run_dir = tmp_path / "selftest"
+        run_dir.mkdir()
+        rows = []
+        for i in range(30):
+            rows.append({
+                "PLAYER_KEY": f"player_{i}",
+                "RANK": i + 1,
+                "ACTUAL_PG_RANK": float(i + 1) if i < 25 else float("nan"),
+                "ACTUAL_TOTAL_RANK": float(i + 1),
+            })
+        df = pd.DataFrame(rows)
+        df.to_csv(run_dir / "fold_2021_22.csv", index=False)
+        df.to_csv(run_dir / "fold_2022_23.csv", index=False)
+
+        compare_runs("selftest", "selftest", n_resamples=100, seed=42)
+        out = capsys.readouterr().out
+        assert "+0.0000" in out
+        assert "100.0% > 0" not in out

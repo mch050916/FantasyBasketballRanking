@@ -965,34 +965,123 @@ def save_fold_results(fold_results: list[dict], name: str) -> None:
     print(f"\n  Saved to {out_dir}/")
 
 
-def compare_runs(before_name: str, after_name: str) -> None:
-    before_path = OUTPUT_DIR / before_name / "summary.csv"
-    after_path = OUTPUT_DIR / after_name / "summary.csv"
-    if not before_path.exists() or not after_path.exists():
-        print(f"Missing summary: {before_path} or {after_path}")
+def compare_runs(before_name: str, after_name: str,
+                  n_resamples: int = 5000, seed: int = 42) -> None:
+    """Paired bootstrap comparison per the ADR procedure."""
+    before_dir = OUTPUT_DIR / before_name
+    after_dir = OUTPUT_DIR / after_name
+    if not before_dir.exists() or not after_dir.exists():
+        print(f"Missing run directory: {before_dir} or {after_dir}")
         return
 
-    before = pd.read_csv(before_path)
-    after = pd.read_csv(after_path)
+    fold_targets = [t for t in FOLDS if not FOLDS[t].get("holdout")]
+    rng = np.random.default_rng(seed)
 
-    merged = before.merge(after, on=["target", "method"], suffixes=("_before", "_after"))
+    fold_deltas_pg: list[tuple[str, bool, float]] = []
+    fold_deltas_total: list[tuple[str, bool, float]] = []
 
-    print(f"\n{'='*60}")
-    print(f"Compare: {before_name} → {after_name}")
-    print(f"{'='*60}")
+    for target in fold_targets:
+        slug = target.replace("-", "_")
+        bf = before_dir / f"fold_{slug}.csv"
+        af = after_dir / f"fold_{slug}.csv"
+        if not bf.exists() or not af.exists():
+            continue
+        b = pd.read_csv(bf)
+        a = pd.read_csv(af)
+        m = b.merge(a, on="PLAYER_KEY", suffixes=("_b", "_a"))
+        tuned = FOLDS[target].get("tuned", False)
 
-    for _, row in merged.iterrows():
-        parts = [f"{row['target']} {row['method']:<14s}"]
-        for metric in ("spearman_total", "spearman_per_game", "gp_mae", "top50_capture"):
-            b_col = f"{metric}_before"
-            a_col = f"{metric}_after"
-            if b_col in row.index and a_col in row.index:
-                b, a = row[b_col], row[a_col]
-                if pd.notna(b) and pd.notna(a):
-                    delta = a - b
-                    sign = "+" if delta >= 0 else ""
-                    parts.append(f"{metric}={sign}{delta:.3f}")
-        print("  " + "  ".join(parts))
+        pg_mask = m["ACTUAL_PG_RANK_b"].notna() & m["ACTUAL_PG_RANK_a"].notna()
+        pg = m[pg_mask]
+        if len(pg) >= 10:
+            rho_b = spearmanr(pg["RANK_b"], pg["ACTUAL_PG_RANK_b"]).statistic
+            rho_a = spearmanr(pg["RANK_a"], pg["ACTUAL_PG_RANK_a"]).statistic
+            fold_deltas_pg.append((target, tuned, rho_a - rho_b))
+
+        total = m[m["ACTUAL_TOTAL_RANK_b"].notna() & m["ACTUAL_TOTAL_RANK_a"].notna()]
+        if len(total) >= 10:
+            rho_b = spearmanr(total["RANK_b"], total["ACTUAL_TOTAL_RANK_b"]).statistic
+            rho_a = spearmanr(total["RANK_a"], total["ACTUAL_TOTAL_RANK_a"]).statistic
+            fold_deltas_total.append((target, tuned, rho_a - rho_b))
+
+    # Bootstrap: resample players within each fold, recompute per-fold delta, average
+    def _bootstrap_mean_delta(fold_target: str, actual_col: str) -> np.ndarray:
+        slug = fold_target.replace("-", "_")
+        b = pd.read_csv(before_dir / f"fold_{slug}.csv")
+        a = pd.read_csv(after_dir / f"fold_{slug}.csv")
+        m = b.merge(a, on="PLAYER_KEY", suffixes=("_b", "_a"))
+        mask = m[f"{actual_col}_b"].notna() & m[f"{actual_col}_a"].notna()
+        m = m[mask].reset_index(drop=True)
+        n = len(m)
+        rank_b = m["RANK_b"].values
+        rank_a = m["RANK_a"].values
+        actual_b = m[f"{actual_col}_b"].values
+        actual_a = m[f"{actual_col}_a"].values
+        deltas = np.empty(n_resamples)
+        for i in range(n_resamples):
+            idx = rng.integers(0, n, size=n)
+            rho_b = spearmanr(rank_b[idx], actual_b[idx]).statistic
+            rho_a = spearmanr(rank_a[idx], actual_a[idx]).statistic
+            deltas[i] = rho_a - rho_b
+        return deltas
+
+    # Collect bootstrap distributions per fold for both targets
+    fold_boot_pg: dict[str, np.ndarray] = {}
+    fold_boot_total: dict[str, np.ndarray] = {}
+    for target in fold_targets:
+        slug = target.replace("-", "_")
+        if not (before_dir / f"fold_{slug}.csv").exists():
+            continue
+        fold_boot_pg[target] = _bootstrap_mean_delta(target, "ACTUAL_PG_RANK")
+        fold_boot_total[target] = _bootstrap_mean_delta(target, "ACTUAL_TOTAL_RANK")
+
+    def _report(label: str, fold_deltas: list[tuple[str, bool, float]],
+                fold_boot: dict[str, np.ndarray],
+                subset_filter=None) -> None:
+        targets_in = [t for t, tu, d in fold_deltas
+                      if subset_filter is None or subset_filter(tu)]
+        if not targets_in:
+            return
+        point_deltas = [d for t, tu, d in fold_deltas
+                        if subset_filter is None or subset_filter(tu)]
+        mean_delta = np.mean(point_deltas)
+
+        boot_means = np.zeros(n_resamples)
+        for t in targets_in:
+            if t in fold_boot:
+                boot_means += fold_boot[t]
+        boot_means /= len(targets_in)
+
+        lo, hi = np.percentile(boot_means, [2.5, 97.5])
+        pct_above = np.mean(boot_means > 0) * 100
+        print(f"  {label}: {mean_delta:+.4f} [{lo:+.4f}, {hi:+.4f}] "
+              f"({pct_above:.1f}% > 0)")
+
+    print(f"\nCompare: {before_name} → {after_name} "
+          f"(paired bootstrap, {n_resamples} resamples, seed {seed})")
+    print(f"{'='*70}")
+
+    print("\nPer-fold deltas (after − before):")
+    for t, tu, d in fold_deltas_pg:
+        pg_lo, pg_hi = np.percentile(fold_boot_pg[t], [2.5, 97.5])
+        print(f"  {t} {'[tuned]' if tu else '[untouched]':<12s} "
+              f"per-game {d:+.4f} [{pg_lo:+.4f}, {pg_hi:+.4f}]")
+    for t, tu, d in fold_deltas_total:
+        tot_lo, tot_hi = np.percentile(fold_boot_total[t], [2.5, 97.5])
+        print(f"  {t} {'[tuned]' if tu else '[untouched]':<12s} "
+              f"total    {d:+.4f} [{tot_lo:+.4f}, {tot_hi:+.4f}]")
+
+    print("\nAll folds:")
+    _report("per-game", fold_deltas_pg, fold_boot_pg)
+    _report("total   ", fold_deltas_total, fold_boot_total)
+
+    print("\nUntouched folds only:")
+    _report("per-game", fold_deltas_pg, fold_boot_pg, lambda tu: not tu)
+    _report("total   ", fold_deltas_total, fold_boot_total, lambda tu: not tu)
+
+    print("\nTuned-era folds only:")
+    _report("per-game", fold_deltas_pg, fold_boot_pg, lambda tu: tu)
+    _report("total   ", fold_deltas_total, fold_boot_total, lambda tu: tu)
 
 
 # ── Holdout guard ─────────────────────────────────────────────────────────────

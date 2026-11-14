@@ -104,6 +104,18 @@ First two changes accepted under this gate:
 
 Ablation of the first change: the GP_FACTOR half alone gives +0.041 per-game and +0.007 total; the rate half alone gives -0.058 per-game and -0.020 total (compressing rates while leaving GP_FACTOR unshrunk lets the noisy availability term dominate the ranking). With the GP half in place, adding the rate half costs 0.010 per-game (95% CI -0.018, -0.003) and adds 0.005 total (CI includes zero). Both halves shipped because the combined change met its declared threshold; whether the rate half stays depends on whether the board is ranked for per-game or total value.
 
+Follow-ups the same day, each with its threshold written first:
+
+| Change | Baseline | Per-game delta, five folds (95% CI) | Total delta, five folds (95% CI) | Outcome |
+|---|---|---|---|---|
+| Remove the rate half (`minutes_k: 0`) | regression + age curve | +0.015 (+0.008, +0.022) | -0.004 (-0.013, +0.005) | Accepted (non-inferiority: per-game >= 0, total >= -0.010). It also compressed star lines to implausible values (Jokic 23.5 PTS). |
+| Scale GP shrink by seasons observed (own weight = 0.5 x seasons / 3) | above | +0.000 (-0.004, +0.004) | -0.003 (-0.009, +0.002) | Rejected: total delta negative in four of five folds. One-season players' GP history is not measurably less informative than three-season players'. |
+| `--per-game` board (pool-mean GP_FACTOR for everyone) | regression + age curve | +0.019 (+0.002, +0.035) | -0.025 (-0.046, -0.003) | Shipped as a second board, not the default. |
+
+Shipped model versus the unchanged model (run `before`): per-game +0.063 (+0.045, +0.082), total +0.018 (-0.003, +0.038), over five folds.
+
+Market blend (same day, threshold in `docs/superpowers/specs/2026-11-14-market-blend-design.md`): Yahoo preseason average draft position is now on disk for 2021-22 through 2026-27. Within the pool, a 50/50 average of model rank and market rank (no ADP = tied last), against the model alone, over the four folds with clean preseason data (2021-22, 2022-23, 2023-24, 2025-26): total-value Spearman +0.066 (95% CI +0.038, +0.097), per-game +0.035 (+0.021, +0.052). Accepted; shipped as `BLEND_RANK` / `MARKET_RANK` / `MARKET_GAP` columns (`main.add_market_blend`), with `RANK` left as the model's own rank. Market alone versus model: total +0.081 (+0.032, +0.131), per-game +0.019 (-0.007, +0.046). So on total value the market alone is at least as good as the blend (mean Spearman 0.698 market, 0.683 blend, 0.617 model); the model's contribution is on per-game value (0.876 blend, 0.861 market, 0.841 model). The 2024-25 market file is from a page dated April 2025 and is excluded from these figures.
+
 Limits: five folds are a finite resource in the same way the three snapshots were. Every comparison run against them spends some of their independence, and constants must not be re-fitted to them. The 2026-27 season stays sealed (`--unseal-holdout`, logged) and is the only season nothing has been fitted to.
 
 ## Consequences

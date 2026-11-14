@@ -907,6 +907,7 @@ def _regress_to_pool_mean(df: pd.DataFrame, counting_cats: list[str], *,
     minutes; rate' = reliability * rate + (1 - reliability) * pool mean.
     GP_FACTOR: (1 - gp_shrink) * own + gp_shrink * pool mean -- next-season
     GP is only weakly predicted by past GP (walk-forward slope 0.1-0.5).
+    minutes_k = 0 switches the rate regression off.
     DD/TD/TECH rates and FG% are left alone (FG% has its own shrinkage).
     """
     df = df.copy()

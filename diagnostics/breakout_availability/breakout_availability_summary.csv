@@ -1,6 +1,6 @@
 BREAKOUT_AVAILABILITY_LABEL,PRIMARY_HITS,PRIMARY_BENCHMARKS,SECONDARY_HITS,EVIDENCE_LEVEL,AVG_ABS_DELTA,REPRESENTATIVE_PLAYERS,REPRESENTATIVE_REASONS
-availability undertrust,14,3,10,repeat_exact_league,65.54285714285714,"Christian Braun, Keegan Murray, Ivica Zubac",availability=low; GP_FACTOR=0.77 | availability=low; GP_FACTOR=0.69
-unclear,6,3,14,repeat_exact_league,63.773148148148145,"Jaylen Brown, Deni Avdija, Donovan Clingan",mixed or weak evidence; unclassified (healthy overrate) | mixed or weak evidence; trend overprojection
-role-growth underreaction,5,3,3,repeat_exact_league,56.53333333333334,"Chris Paul, Jaden McDaniels, OG Anunoby",role_score=2.0; MIN=28.0 | role_score=3.0; MIN=31.7
-breakout underreaction,4,2,2,repeat_exact_league,60.333333333333336,"Royce O'Neale, Neemias Queta, Max Christie",upside miss; breakout/role growth
-availability overtrust,1,1,1,single_exact_league,53.5,Joel Embiid,availability=low; GP_FACTOR=0.64
+availability undertrust,12,3,8,repeat_exact_league,57.23809523809523,"Christian Braun, Ivica Zubac, Keegan Murray",availability=low; GP_FACTOR=0.77 | availability=low; GP_FACTOR=0.78
+role-growth underreaction,7,3,5,repeat_exact_league,61.81666666666666,"Neemias Queta, Kel'el Ware, Chris Paul",role_score=2.0; MIN=25.3 | role_score=2.0; MIN=22.1
+unclear,6,3,12,repeat_exact_league,59.875,"Jaylen Brown, Deni Avdija, Donovan Clingan",mixed or weak evidence; unclassified (healthy overrate) | mixed or weak evidence; trend overprojection
+breakout underreaction,3,2,2,repeat_exact_league,57.333333333333336,"Royce O'Neale, Collin Gillespie, Max Christie",upside miss; breakout/role growth
+availability overtrust,2,2,3,repeat_exact_league,63.875,"Joel Embiid, Keyonte George",availability=low; GP_FACTOR=0.64 | availability=low; GP_FACTOR=0.75

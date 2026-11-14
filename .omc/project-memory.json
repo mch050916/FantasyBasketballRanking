@@ -153,14 +153,14 @@
   "hotPaths": [
     {
       "path": "model.py",
-      "accessCount": 17.98695311312943,
-      "lastAccessed": 1794615140850,
+      "accessCount": 24.501358636003598,
+      "lastAccessed": 1794618539047,
       "type": "file"
     },
     {
       "path": "config.py",
-      "accessCount": 2.064609238119955,
-      "lastAccessed": 1794615212008,
+      "accessCount": 5.010312058351817,
+      "lastAccessed": 1794618528049,
       "type": "file"
     },
     {
@@ -171,8 +171,8 @@
     },
     {
       "path": "docs/adr/0001-aggregate-acceptance-criterion.md",
-      "accessCount": 1.5170605118025455,
-      "lastAccessed": 1794616476119,
+      "accessCount": 4.112373586528895,
+      "lastAccessed": 1794632594553,
       "type": "file"
     },
     {
@@ -207,14 +207,14 @@
     },
     {
       "path": "backtest.py",
-      "accessCount": 46.55288652350647,
-      "lastAccessed": 1794588095260,
+      "accessCount": 42.533486171980734,
+      "lastAccessed": 1794618297993,
       "type": "file"
     },
     {
       "path": "tests/test_backtest.py",
-      "accessCount": 4.679290547617418,
-      "lastAccessed": 1794587949670,
+      "accessCount": 5.666330874929622,
+      "lastAccessed": 1794618355845,
       "type": "file"
     },
     {
@@ -239,6 +239,42 @@
       "path": "docs/superpowers/specs/2026-11-14-regression-to-mean-design.md",
       "accessCount": 1,
       "lastAccessed": 1794615206281,
+      "type": "file"
+    },
+    {
+      "path": "yahoo_26_27_market_export.csv",
+      "accessCount": 1,
+      "lastAccessed": 1794632201585,
+      "type": "file"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-11-14-category-balance-h2h-design.md",
+      "accessCount": 1,
+      "lastAccessed": 1794632238219,
+      "type": "file"
+    },
+    {
+      "path": "yahoo_21_22_adp_hashtag.csv",
+      "accessCount": 1,
+      "lastAccessed": 1794632259203,
+      "type": "file"
+    },
+    {
+      "path": "yahoo_22_23_adp_hashtag.csv",
+      "accessCount": 1,
+      "lastAccessed": 1794632275505,
+      "type": "file"
+    },
+    {
+      "path": "yahoo_23_24_adp_hashtag.csv",
+      "accessCount": 1,
+      "lastAccessed": 1794632294487,
+      "type": "file"
+    },
+    {
+      "path": "yahoo_24_25_adp_hashtag.csv",
+      "accessCount": 1,
+      "lastAccessed": 1794632315037,
       "type": "file"
     }
   ],

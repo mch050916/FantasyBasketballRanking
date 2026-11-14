@@ -103,11 +103,13 @@ LEAGUE_CONFIG = {
     # With 3 BBR files: all three weights are used as-is then renormalised.
     "season_weights": [0.5, 0.3, 0.2],
 
-    # Regression to the draft-pool mean (model._regress_to_pool_mean).
-    # Fixed in advance, not tuned -- see
-    # docs/superpowers/specs/2026-11-14-regression-to-mean-design.md.
-    # Remove this key to switch it off.
-    "regression": {"minutes_k": 1000.0, "gp_shrink": 0.5},
+    # Regression to the draft-pool mean (model._regress_to_pool_mean) -- see
+    # ADR-0001 2026-11-14. Remove this key to switch it off.
+    # minutes_k 0 = no rate regression (dropped 2026-11-14: it compressed
+    # star lines and cost per-game accuracy). gp_shrink 0.5 = a three-season
+    # player's GP_FACTOR is averaged 50/50 with the pool mean. Scaling the
+    # shrink by seasons observed was tested and rejected (total value -0.003).
+    "regression": {"minutes_k": 0.0, "gp_shrink": 0.5},
 
     # `python main.py --per-game` swaps the line above for this one: every
     # player gets the pool-mean GP_FACTOR (availability history ignored) and

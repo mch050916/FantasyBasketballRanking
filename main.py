@@ -131,6 +131,36 @@ def derive_pool_size(config: dict, qualified_pool: pd.DataFrame,
     return max(floor, deepest_rank + buffer)
 
 
+def add_market_blend(rankings: pd.DataFrame, market_file: str) -> pd.DataFrame:
+    """
+    Add MARKET_ADP, MARKET_RANK, BLEND_RANK and MARKET_GAP from a Yahoo
+    draft-position file, if one exists for the projected season.
+
+    BLEND_RANK ranks 0.5 * RANK + 0.5 * MARKET_RANK; a player with no ADP is
+    tied for last in MARKET_RANK. Walk-forward (ADR-0001, 2026-11-14): the
+    blend beats the model alone by +0.066 total-value and +0.035 per-game
+    Spearman. MARKET_GAP = RANK - MARKET_RANK: negative means the model likes
+    the player more than the market does.
+    """
+    if not Path(market_file).exists():
+        return rankings
+    market = pd.read_csv(market_file)
+    if "Player" not in market:
+        market["Player"] = market["First Name"] + " " + market["Last Name"]
+    adp_col = next(c for c in ("Preseason ADP", "Avg. Pick", "Yahoo ADP") if c in market)
+    adp = (
+        market.assign(key=market["Player"].map(canonical_player_key),
+                      adp=pd.to_numeric(market[adp_col], errors="coerce"))
+        .dropna(subset=["adp"]).drop_duplicates("key").set_index("key")["adp"]
+    )
+    out = rankings.copy()
+    out["MARKET_ADP"] = out["PLAYER_NAME"].map(canonical_player_key).map(adp)
+    out["MARKET_RANK"] = out["MARKET_ADP"].fillna(float("inf")).rank(method="average")
+    out["BLEND_RANK"] = (0.5 * out["RANK"] + 0.5 * out["MARKET_RANK"]).rank(method="min").astype(int)
+    out["MARKET_GAP"] = out["RANK"] - out["MARKET_RANK"]
+    return out
+
+
 def build_extra_rows(projected: pd.DataFrame, pool_size: int,
                      rosters_file: str = "rosters.csv") -> pd.DataFrame:
     """
@@ -776,6 +806,9 @@ def main() -> None:
           f"{config['roster_size']} roster spots)")
     print(format_rankings(rankings, config, top_n=30))
 
+    rankings = add_market_blend(
+        rankings, f"yahoo_{PROJECTION_SEASON_SLUG[2:]}_market_export.csv",
+    )
     save_rankings(rankings, OUTPUT_FILE)
 
     # ── Data availability notes ─────────────────────────────────────────────
