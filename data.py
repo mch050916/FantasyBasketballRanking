@@ -359,9 +359,17 @@ def _missing_game_log_pairs(game_logs: dict[str, dict[str, pd.DataFrame]],
                             player_names: list[str],
                             seasons: list[str]) -> list[tuple[str, str]]:
     missing: list[tuple[str, str]] = []
+    # Build canonical-key index per season so accented BBR names
+    # match ASCII cache names (e.g. "Alperen Şengün" → "Alperen Sengun").
+    canon_index: dict[str, set[str]] = {}
+    for season in seasons:
+        canon_index[season] = {
+            canonical_player_key(n) for n in game_logs.get(season, {})
+        }
     for player_name in player_names:
+        key = canonical_player_key(player_name)
         for season in seasons:
-            if player_name not in game_logs.get(season, {}):
+            if player_name not in game_logs.get(season, {}) and key not in canon_index.get(season, set()):
                 missing.append((player_name, season))
     return missing
 
@@ -1266,6 +1274,8 @@ INJURY_REPORT_SEASON_WINDOWS = {
     "2025-26": ("2025-10-20", "2026-04-13"),
     "2024-25": ("2024-10-21", "2025-04-14"),
     "2023-24": ("2023-10-23", "2024-04-15"),
+    "2022-23": ("2022-10-18", "2023-04-09"),
+    "2021-22": ("2021-10-19", "2022-04-10"),
 }
 
 INJURY_SEVERE_KEYWORDS = [

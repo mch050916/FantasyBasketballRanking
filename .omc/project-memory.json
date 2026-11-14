@@ -1,0 +1,246 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1794532624745,
+  "projectRoot": "/Users/chesterman/FantasyBasketballRanking",
+  "techStack": {
+    "languages": [
+      {
+        "name": "Python",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "requirements.txt"
+        ]
+      }
+    ],
+    "frameworks": [],
+    "packageManager": "pip",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": null,
+    "lintCommand": null,
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "docs",
+      "scripts",
+      "tests"
+    ],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "__pycache__": {
+      "path": "__pycache__",
+      "purpose": null,
+      "fileCount": 16,
+      "lastAccessed": 1794532624725,
+      "keyFiles": [
+        "benchmark_ingest.cpython-312.pyc",
+        "causes.cpython-312.pyc",
+        "compare_baselines.cpython-312.pyc",
+        "config.cpython-312.pyc",
+        "dashboard_server.cpython-312.pyc"
+      ]
+    },
+    "benchmarks": {
+      "path": "benchmarks",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1794532624729,
+      "keyFiles": []
+    },
+    "diagnostics": {
+      "path": "diagnostics",
+      "purpose": null,
+      "fileCount": 5,
+      "lastAccessed": 1794532624729,
+      "keyFiles": [
+        "availability_labeled_set.csv",
+        "availability_labeled_set.md",
+        "benchmark_history.csv",
+        "non_actionable_suppression_maintenance.md"
+      ]
+    },
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 1,
+      "lastAccessed": 1794532624730,
+      "keyFiles": []
+    },
+    "images": {
+      "path": "images",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1794532624730,
+      "keyFiles": [
+        "hero-basketball.jpg"
+      ]
+    },
+    "openspec": {
+      "path": "openspec",
+      "purpose": null,
+      "fileCount": 2,
+      "lastAccessed": 1794532624732,
+      "keyFiles": [
+        "config.yaml"
+      ]
+    },
+    "prototypes": {
+      "path": "prototypes",
+      "purpose": null,
+      "fileCount": 3,
+      "lastAccessed": 1794532624733,
+      "keyFiles": [
+        "scouting-card.html",
+        "split-flap.html",
+        "trading-terminal.html"
+      ]
+    },
+    "scripts": {
+      "path": "scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 12,
+      "lastAccessed": 1794532624733,
+      "keyFiles": [
+        "analyze_trade.py",
+        "build_draft_board.py",
+        "build_rookie_baseline.py",
+        "buy_low_sell_high.py",
+        "championship_odds.py"
+      ]
+    },
+    "tests": {
+      "path": "tests",
+      "purpose": "Test files",
+      "fileCount": 14,
+      "lastAccessed": 1794532624733,
+      "keyFiles": [
+        "test_analyze_trade.py",
+        "test_benchmark_ingest.py",
+        "test_causes.py",
+        "test_compare_baselines.py",
+        "test_dashboard_server.py"
+      ]
+    },
+    "tools": {
+      "path": "tools",
+      "purpose": null,
+      "fileCount": 2,
+      "lastAccessed": 1794532624734,
+      "keyFiles": [
+        "run.html",
+        "run.js"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "model.py",
+      "accessCount": 17.98695311312943,
+      "lastAccessed": 1794615140850,
+      "type": "file"
+    },
+    {
+      "path": "config.py",
+      "accessCount": 2.064609238119955,
+      "lastAccessed": 1794615212008,
+      "type": "file"
+    },
+    {
+      "path": "causes.py",
+      "accessCount": 5.257165695345957,
+      "lastAccessed": 1794614421101,
+      "type": "file"
+    },
+    {
+      "path": "docs/adr/0001-aggregate-acceptance-criterion.md",
+      "accessCount": 1,
+      "lastAccessed": 1794534258314,
+      "type": "file"
+    },
+    {
+      "path": "compare_baselines.py",
+      "accessCount": 1,
+      "lastAccessed": 1794534261232,
+      "type": "file"
+    },
+    {
+      "path": "main.py",
+      "accessCount": 12.81393818796667,
+      "lastAccessed": 1794614505851,
+      "type": "file"
+    },
+    {
+      "path": "data.py",
+      "accessCount": 9.43493153922078,
+      "lastAccessed": 1794614773447,
+      "type": "file"
+    },
+    {
+      "path": "validate.py",
+      "accessCount": 1.9999948334996396,
+      "lastAccessed": 1794534273299,
+      "type": "file"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-11-13-walk-forward-harness-design.md",
+      "accessCount": 6.946669279600399,
+      "lastAccessed": 1794540394511,
+      "type": "file"
+    },
+    {
+      "path": "backtest.py",
+      "accessCount": 46.55288652350647,
+      "lastAccessed": 1794588095260,
+      "type": "file"
+    },
+    {
+      "path": "tests/test_backtest.py",
+      "accessCount": 4.679290547617418,
+      "lastAccessed": 1794587949670,
+      "type": "file"
+    },
+    {
+      "path": "identity.py",
+      "accessCount": 1,
+      "lastAccessed": 1794567211821,
+      "type": "file"
+    },
+    {
+      "path": "durant_rankings_2026_27.csv",
+      "accessCount": 1,
+      "lastAccessed": 1794614291027,
+      "type": "file"
+    },
+    {
+      "path": "durant_rankings_2026_27_before_roster_fix.csv",
+      "accessCount": 1,
+      "lastAccessed": 1794614291686,
+      "type": "file"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-11-14-regression-to-mean-design.md",
+      "accessCount": 1,
+      "lastAccessed": 1794615206281,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

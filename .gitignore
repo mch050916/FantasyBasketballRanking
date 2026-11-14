@@ -14,6 +14,7 @@ buy_low_sell_high_cache.pkl
 injury_reports_cache.pkl
 combine_stats_cache.pkl
 season_schedule_cache.pkl
+*_cache_20*.pkl
 
 # Generated output — not source, reproduced by running main.py
 durant_rankings_*.csv

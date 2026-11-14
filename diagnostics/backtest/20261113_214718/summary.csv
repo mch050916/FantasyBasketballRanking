@@ -1,0 +1,4 @@
+target,tuned,method,n_players,n_per_game,gp_mae,gp_slope,spearman_per_game,spearman_total,top50_capture
+2024-25,True,model,128,126,12.38,0.458,0.756,0.7328,0.66
+2024-25,True,persistence,126,124,14.22,0.266,0.7046,0.6897,0.7
+2024-25,True,marcel_lite,128,126,14.96,1.441,0.5799,0.5689,0.6

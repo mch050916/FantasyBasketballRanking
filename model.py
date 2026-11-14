@@ -319,10 +319,17 @@ def calibrate_category_values(raw: np.ndarray,
 
 MIN_REMAINING_SEASONS_AFTER_EXCLUSION = 2
 
+
+def _resolve_season_games(full_season_games: int | dict[str, int], season: str) -> int:
+    if isinstance(full_season_games, dict):
+        return full_season_games.get(season, 82)
+    return full_season_games
+
+
 def compute_gp_factor(player_season_stats: dict[str, pd.Series],
                        available_seasons: list[str],
                        weights: list[float],
-                       full_season_games: int = 82,
+                       full_season_games: int | dict[str, int] = 82,
                        season_causes: dict[str, str] | None = None) -> float:
     """
     Compute a games-played availability factor for a player.
@@ -385,7 +392,7 @@ def compute_gp_factor(player_season_stats: dict[str, pd.Series],
         if remaining < MIN_REMAINING_SEASONS_AFTER_EXCLUSION:
             apply_injury_exclusion = False
 
-    gp_vals, gp_wts = [], []
+    avail_vals, avail_wts = [], []
     for season, w in zip(available_seasons, weights):
         if apply_injury_exclusion and season_causes.get(season) == "injury_confirmed":
             continue
@@ -395,15 +402,15 @@ def compute_gp_factor(player_season_stats: dict[str, pd.Series],
         # and a `> 0` check would silently drop it, the same blind spot
         # this whole mechanism exists to close.
         if pd.notna(gp) and gp >= 0:
-            gp_vals.append(gp)
-            gp_wts.append(w)
+            sg = _resolve_season_games(full_season_games, season)
+            avail_vals.append(gp / sg if sg > 0 else 0.0)
+            avail_wts.append(w)
 
-    if not gp_vals:
+    if not avail_vals:
         return 1.0
 
-    total_w      = sum(gp_wts)
-    weighted_gp  = sum(g * w for g, w in zip(gp_vals, gp_wts)) / total_w
-    availability = weighted_gp / full_season_games
+    total_w      = sum(avail_wts)
+    availability = sum(a * w for a, w in zip(avail_vals, avail_wts)) / total_w
 
     return float(np.clip(availability, 0.50, 1.0))
 
@@ -466,7 +473,7 @@ def compute_weighted_fg_pct(player_season_stats: dict[str, pd.Series],
 def _gp_weighted_blend_weights(final_weights: list[float],
                                player_season_stats: dict[str, pd.Series],
                                available_seasons: list[str],
-                               full_season_games: int = 82) -> list[float]:
+                               full_season_games: int | dict[str, int] = 82) -> list[float]:
     """
     Dampen each season's trend-adjusted blend weight by how much of that
     season the player actually played (GP / full_season_games, capped at
@@ -485,7 +492,8 @@ def _gp_weighted_blend_weights(final_weights: list[float],
     sample_weights = []
     for season, w in zip(available_seasons, final_weights):
         gp = player_season_stats[season].get("GP", np.nan)
-        confidence = min(float(gp) / full_season_games, 1.0) if pd.notna(gp) and gp > 0 else 0.0
+        sg = _resolve_season_games(full_season_games, season)
+        confidence = min(float(gp) / sg, 1.0) if pd.notna(gp) and gp > 0 and sg > 0 else 0.0
         sample_weights.append(w * confidence)
 
     total = sum(sample_weights)
@@ -559,9 +567,15 @@ def project_stats(season_dfs: list[pd.DataFrame],
                   raw_player_sets: list[set[str]] | None = None,
                   raw_gp_by_season: list[dict[str, int]] | None = None,
                   injury_discount_by_player: dict[str, float] | None = None,
-                  player_cause_profile: dict[str, dict[str, str]] | None = None) -> pd.DataFrame:
+                  player_cause_profile: dict[str, dict[str, str]] | None = None,
+                  full_season_games: int | dict[str, int] = 82,
+                  regression: dict | None = None) -> pd.DataFrame:
     """
     Compute GP-adjusted, trend-aware per-game projections for each player.
+
+    `regression` (optional, config["regression"]) shrinks counting-stat
+    rates and GP_FACTOR toward the draft pool's mean -- see
+    _regress_to_pool_mean. None (default) leaves the projection untouched.
 
     Two improvements over a flat weighted average:
 
@@ -605,6 +619,10 @@ def project_stats(season_dfs: list[pd.DataFrame],
 
     counting_cats = ["FGM", "FGA", "3PTM", "FTM", "PTS", "REB",
                      "AST", "ST", "BLK", "TO", "PF"]
+
+    derived_stats_by_key = {
+        canonical_player_key(n): v for n, v in derived_stats.items()
+    }
 
     # League-wide shooting-efficiency prior for FG% shrinkage (see
     # compute_weighted_fg_pct) -- the newest loaded season's own
@@ -720,6 +738,7 @@ def project_stats(season_dfs: list[pd.DataFrame],
             player_season_stats=gp_season_stats,
             available_seasons=gp_seasons,
             weights=gp_weights,
+            full_season_games=full_season_games,
             season_causes=player_cause_profile.get(player) if player_cause_profile else None,
         )
 
@@ -730,6 +749,7 @@ def project_stats(season_dfs: list[pd.DataFrame],
         # below, not for gp_factor/decline_factor above.
         rate_weights = _gp_weighted_blend_weights(
             final_weights, player_season_stats, available_seasons,
+            full_season_games=full_season_games,
         )
 
         first = available_seasons[0]
@@ -776,7 +796,7 @@ def project_stats(season_dfs: list[pd.DataFrame],
         # be true for both at once (e.g. Chris Paul: thin-but-real 2025-26
         # BBR season AND zero game logs anywhere), so both are recorded
         # rather than one overwriting the other. See CLAUDE.md 2026-08-15.
-        player_derived = derived_stats.get(player, {})
+        player_derived = derived_stats_by_key.get(canonical_player_key(player), {})
         defaulted_fields = [f for f in ("DD", "TD") if f not in player_derived]
         defaulted_fields_note = (
             f"{'/'.join(defaulted_fields)} not available -- defaulted to zero"
@@ -825,6 +845,7 @@ def project_stats(season_dfs: list[pd.DataFrame],
             # instead of GP_FACTOR/DECLINE_FACTOR's effect being invisible.
             row[f"{cat}_RATE"] = projected
             row[cat] = projected * gp_factor * decline_factor_by_cat[cat] * injury_factor
+            row[f"_F_{cat}"] = decline_factor_by_cat[cat] * injury_factor
 
         # ── FG% — volume-weighted, no GP adjustment ──────────────────────
         row["FG%"] = compute_weighted_fg_pct(
@@ -843,6 +864,14 @@ def project_stats(season_dfs: list[pd.DataFrame],
         # ── TECH — GP-adjusted ───────────────────────────────────────────
         row["TECH_RATE"] = tech_per_game.get(player, 0.05)
         row["TECH"] = row["TECH_RATE"] * gp_factor * decline_factor_by_cat["TECH"] * injury_factor
+        for cat in ("DD", "TD", "TECH"):
+            row[f"_F_{cat}"] = decline_factor_by_cat[cat] * injury_factor
+        row["_GPF"] = gp_factor
+        # Season-weighted total minutes: the sample size behind the rates.
+        row["_WMIN"] = sum(
+            w * player_season_stats[s].get("MIN", 0.0) * player_season_stats[s].get("GP", 0.0)
+            for s, w in zip(available_seasons, norm_weights)
+        )
 
         # ── GP and MIN — raw, for filtering and display ──────────────────
         row["GP"]  = player_season_stats[first].get("GP", np.nan)
@@ -850,7 +879,37 @@ def project_stats(season_dfs: list[pd.DataFrame],
 
         rows.append(row)
 
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+    if regression and not df.empty:
+        df = _regress_to_pool_mean(df, counting_cats, **regression)
+    return df.drop(columns=[c for c in df.columns if c.startswith("_")])
+
+
+def _regress_to_pool_mean(df: pd.DataFrame, counting_cats: list[str], *,
+                          minutes_k: float, gp_shrink: float,
+                          pool_size: int) -> pd.DataFrame:
+    """
+    Regress projections toward the draft pool's mean (top `pool_size` by MIN).
+
+    Rates: reliability = M / (M + minutes_k), M = season-weighted total
+    minutes; rate' = reliability * rate + (1 - reliability) * pool mean.
+    GP_FACTOR: (1 - gp_shrink) * own + gp_shrink * pool mean -- next-season
+    GP is only weakly predicted by past GP (walk-forward slope 0.1-0.5).
+    DD/TD/TECH rates and FG% are left alone (FG% has its own shrinkage).
+    """
+    df = df.copy()
+    pool = df.nlargest(pool_size, "MIN")
+    wmin = df["_WMIN"].fillna(0.0)
+    rel = wmin / (wmin + minutes_k)
+    gpf = (1 - gp_shrink) * df["_GPF"] + gp_shrink * pool["_GPF"].mean()
+    for cat in counting_cats:
+        rate = rel * df[f"{cat}_RATE"] + (1 - rel) * pool[f"{cat}_RATE"].mean()
+        df[f"{cat}_RATE"] = rate
+        df[cat] = rate * gpf * df[f"_F_{cat}"]
+    for cat in ("DD", "TD", "TECH"):
+        df[cat] = df[f"{cat}_RATE"] * gpf * df[f"_F_{cat}"]
+    df["GP_FACTOR"] = gpf.round(3)
+    return df
 
 
 # ── Tau (weekly variance) ─────────────────────────────────────────────────────

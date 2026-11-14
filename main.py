@@ -491,16 +491,24 @@ def print_not_ready_benchmark(target: dict[str, object],
     print(f"{'='*60}")
 
 
-def main() -> None:
-    print("DURANT Fantasy Basketball Ranker")
-    print("=" * 60)
 
-    config = LEAGUE_CONFIG
+def run_projection(config: dict, *, use_rosters: bool = True,
+                   fetch_injuries: bool = True) -> dict:
+    """Run the projection pipeline (steps 1-5) and return results.
+
+    Reads seasons, BBR files and cache names only from ``config``,
+    never from module globals.  Returns a dict with keys: rankings,
+    projected, player_tau, league_tau, game_log_health,
+    position_by_player, weights, season_raw_team,
+    severe_injury_by_key, player_cause_profile.
+    """
+    bbr_files = config["bbr_files"]
+    seasons = config["game_log_seasons"]
 
     # ── 1. Load BBR season data ──────────────────────────────────────────
     print("\n[1/5] Loading Basketball Reference season data...")
 
-    raw_weights = config["season_weights"][:len(BBR_FILES)]
+    raw_weights = config["season_weights"][:len(bbr_files)]
     total_w     = sum(raw_weights)
     weights     = [w / total_w for w in raw_weights]   # renormalise to sum=1
 
@@ -509,16 +517,11 @@ def main() -> None:
     season_raw_gp: list[dict[str, int]] = []
     season_raw_team: list[dict[str, str]] = []
     position_by_player: dict[str, str] = {}
-    for path in BBR_FILES:
+    for path in bbr_files:
         raw_df = load_bbr_csv(path)
         season_player_sets.append(set(raw_df["PLAYER_NAME"]))
         season_raw_gp.append(dict(zip(raw_df["PLAYER_NAME"], raw_df["GP"])))
         season_raw_team.append(dict(zip(raw_df["PLAYER_NAME"], raw_df["BBR_TEAM"])))
-        # Newest season's position wins when a player appears in more than
-        # one (setdefault, processed newest-first) -- position rarely
-        # changes, but this also covers the issue #11 case where a player
-        # is entirely absent from the newest BBR file (no position to read
-        # there at all) by falling back to their last season with one.
         for name, position in zip(raw_df["PLAYER_NAME"], raw_df["POSITION"]):
             position_by_player.setdefault(name, position)
         df = filter_qualified(raw_df, config)
@@ -528,13 +531,9 @@ def main() -> None:
     # ── 2. Fetch game logs ───────────────────────────────────────────────
     print("\n[2/5] Fetching game logs (NBA API)...")
 
-    # Only fetch logs for the top N players by minutes — the draftable pool.
-    # Fetching all 400+ qualified players takes ~25 min and is unnecessary.
     limit      = config["game_log_player_limit"]
     top_recent = season_dfs[0].nlargest(limit, "MIN")["PLAYER_NAME"].tolist()
 
-    # Add up to 20 players from the older season who may have missed last year
-    # (e.g. injury returnees who are back for 2025-26)
     if len(season_dfs) > 1:
         older = season_dfs[1].nlargest(limit, "MIN")["PLAYER_NAME"].tolist()
         seen  = set(top_recent)
@@ -543,29 +542,43 @@ def main() -> None:
         extra = []
 
     game_log_players = top_recent + extra
+
+    # When rosters are in use, ensure every rostered player gets game logs
+    # so DD/TD are available for extra_rows players in the output.
+    if use_rosters:
+        from rosters import load_rosters
+        rosters_path = Path(config.get("rosters_file", "rosters.csv"))
+        if rosters_path.exists():
+            rostered_names = {
+                p for players in load_rosters(str(rosters_path)).values()
+                for p in players
+            }
+            seen_gl = set(game_log_players)
+            roster_extra = [n for n in sorted(rostered_names) if n not in seen_gl]
+            if roster_extra:
+                game_log_players = game_log_players + roster_extra
+                print(f"   Added {len(roster_extra)} rostered players to game-log fetch list")
+
     expected_missing_pairs: set[tuple[str, str]] = set()
     if season_player_sets:
         recent_player_set = season_player_sets[0]
-        for season, player_set in zip(config["game_log_seasons"][1:], season_player_sets[1:]):
+        for season, player_set in zip(seasons[1:], season_player_sets[1:]):
             for player_name in game_log_players:
                 if player_name in recent_player_set and player_name not in player_set:
                     expected_missing_pairs.add((player_name, season))
     print(f"   Fetching logs for {len(game_log_players)} players "
-          f"(top {limit} by MIN + {len(extra)} returnees)")
+          f"(top {limit} by MIN + {len(extra)} returnees"
+          + (f" + {len(game_log_players) - len(top_recent) - len(extra)} rostered"
+             if len(game_log_players) > len(top_recent) + len(extra) else "")
+          + ")")
 
     game_logs, game_log_health = fetch_game_logs(
         player_names=game_log_players,
-        seasons=config["game_log_seasons"],
+        seasons=seasons,
         cache_file=config["game_log_cache"],
         expected_missing_pairs=expected_missing_pairs,
         return_health=True,
     )
-    SUPPRESSION_MAINTENANCE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    SUPPRESSION_MAINTENANCE_FILE.write_text(
-        build_non_actionable_suppression_report(game_log_health),
-        encoding="utf-8",
-    )
-    game_log_health["suppression_maintenance_report"] = str(SUPPRESSION_MAINTENANCE_FILE)
 
     # ── 3. Derive DD and TD from game logs ───────────────────────────────
     print("\n[3/5] Deriving DD/TD from game logs...")
@@ -577,7 +590,7 @@ def main() -> None:
     print("\n[4/5] Fetching TECH stats + computing tau...")
 
     tech_per_game = fetch_tech_per_game(
-        seasons=config["game_log_seasons"],
+        seasons=seasons,
         cache_file=config["tech_cache"],
         season_weights=weights,
     )
@@ -590,63 +603,43 @@ def main() -> None:
     for cat, tau in sorted(league_tau.items()):
         print(f"     {cat:<6} {tau:.3f}")
 
-    # ── Recent severe injuries — fetched here, before projection, because
-    # a confirmed injury-type match now feeds a real discount into
-    # project_stats below (not just a display flag). Real NBA injury-report
-    # data (body part + mechanism) for the pool's most recent loaded season
-    # -- addresses the healthy-worker survivorship bias flagged around
-    # GitHub issue #11: GP_FACTOR can see THAT a season was thin, never WHY.
-    # Best-effort: needs a local Java runtime for nbainjuries' PDF parsing,
-    # which may not be installed everywhere this pipeline runs.
-    try:
-        injury_reports = fetch_injury_reports(
-            seasons=config["game_log_seasons"],
-            cache_file=config["injury_reports_cache"],
-        )
-        all_season_injuries = summarize_season_injuries(injury_reports)
-        season_injuries = all_season_injuries.get(config["game_log_seasons"][0], {})
-        severe_injury_by_key = {
-            canonical_player_key(reformat_lastfirst_name(name)): info["severe_reasons"]
-            for name, info in season_injuries.items()
-            if info["had_severe_injury"]
-        }
-        # One season back only -- a real diagnosis report (e.g. "ACL tear")
-        # sometimes only appears in the season the injury actually happened
-        # in, with the current season's own reports genericizing an ongoing
-        # absence as just "Surgery" (see classify_injury_tier_with_carryover
-        # in data.py). Used only to recover a tier when the current season's
-        # text alone doesn't name one, gated on matching body-part location.
-        prior_season_injuries = (
-            all_season_injuries.get(config["game_log_seasons"][1], {})
-            if len(config["game_log_seasons"]) > 1 else {}
-        )
-        prior_severe_by_key = {
-            canonical_player_key(reformat_lastfirst_name(name)): info["severe_reasons"]
-            for name, info in prior_season_injuries.items()
-            if info["had_severe_injury"]
-        }
-        # For causes.py's per-season cause attribution (all 3 loaded
-        # seasons, not just current+prior -- the data was already fetched
-        # above for all 3, this just reads the rest of what's there).
-        severe_reasons_by_season = {
-            season: {
+    severe_injury_by_key: dict[str, list[str]] = {}
+    prior_severe_by_key: dict[str, list[str]] = {}
+    severe_reasons_by_season: dict[str, dict[str, list[str]]] = {}
+
+    if fetch_injuries:
+        try:
+            injury_reports = fetch_injury_reports(
+                seasons=seasons,
+                cache_file=config["injury_reports_cache"],
+            )
+            all_season_injuries = summarize_season_injuries(injury_reports)
+            season_injuries = all_season_injuries.get(seasons[0], {})
+            severe_injury_by_key = {
                 canonical_player_key(reformat_lastfirst_name(name)): info["severe_reasons"]
-                for name, info in all_season_injuries.get(season, {}).items()
+                for name, info in season_injuries.items()
                 if info["had_severe_injury"]
             }
-            for season in config["game_log_seasons"]
-        }
-    except Exception as e:
-        print(f"   [warn] Injury-report fetch skipped: {e.__class__.__name__}: {e}")
-        severe_injury_by_key = {}
-        prior_severe_by_key = {}
-        severe_reasons_by_season = {}
+            prior_season_injuries = (
+                all_season_injuries.get(seasons[1], {})
+                if len(seasons) > 1 else {}
+            )
+            prior_severe_by_key = {
+                canonical_player_key(reformat_lastfirst_name(name)): info["severe_reasons"]
+                for name, info in prior_season_injuries.items()
+                if info["had_severe_injury"]
+            }
+            severe_reasons_by_season = {
+                season: {
+                    canonical_player_key(reformat_lastfirst_name(name)): info["severe_reasons"]
+                    for name, info in all_season_injuries.get(season, {}).items()
+                    if info["had_severe_injury"]
+                }
+                for season in seasons
+            }
+        except Exception as e:
+            print(f"   [warn] Injury-report fetch skipped: {e.__class__.__name__}: {e}")
 
-    # Only ACL/Achilles/meniscus carry a real NBA-outcome-study-backed
-    # discount (see data.py's INJURY_TIER_YEAR1_DISCOUNT for the full
-    # citations and reasoning) -- every other severe-injury match stays
-    # flagged on the board but doesn't move the projection, since no
-    # NBA-specific study was found to ground a number for it.
     injury_tier_by_key = {
         key: classify_injury_tier_with_carryover(reasons, prior_severe_by_key.get(key, []))
         for key, reasons in severe_injury_by_key.items()
@@ -657,11 +650,14 @@ def main() -> None:
         if tier is not None
     }
 
+    full_season_games = config.get("full_season_games", 82)
+
     player_cause_profile = causes.build_player_cause_profile(
-        seasons=config["game_log_seasons"],
-        gp_by_season=dict(zip(config["game_log_seasons"], season_raw_gp)),
-        team_by_season=dict(zip(config["game_log_seasons"], season_raw_team)),
+        seasons=seasons,
+        gp_by_season=dict(zip(seasons, season_raw_gp)),
+        team_by_season=dict(zip(seasons, season_raw_team)),
         severe_reasons_by_season=severe_reasons_by_season,
+        full_season_games=full_season_games,
     )
 
     # ── 5. Project stats and compute G-scores ────────────────────────────
@@ -669,39 +665,65 @@ def main() -> None:
 
     projected = project_stats(
         season_dfs, weights, derived_stats, tech_per_game,
-        seasons=config["game_log_seasons"],
+        seasons=seasons,
         raw_player_sets=season_player_sets,
         raw_gp_by_season=season_raw_gp,
         injury_discount_by_player=injury_discount_by_key,
         player_cause_profile=player_cause_profile,
+        full_season_games=full_season_games,
+        regression=(
+            {**config["regression"],
+             "pool_size": config["num_teams"] * config["roster_size"]}
+            if config.get("regression") else None
+        ),
     )
     projected = projected.dropna(subset=["PTS"])
     print(f"   {len(projected)} players with projections")
 
-    draft_history = fetch_draft_history(
-        draft_years=config["draft_years"],
-        cache_file=config["draft_history_cache"],
-    )
-    combine_stats = fetch_combine_stats(cache_file=config["combine_stats_cache"])
-    rookie_rows = build_rookie_rows(
-        draft_history, combine_stats, ROOKIE_FITTED_MODEL,
-        existing_players=set(projected["PLAYER_NAME"]),
-    )
-
-    # extra_rows: real rostered players outside the top pool_size (today's
-    # flat num_teams*roster_size) get a real TOTAL_VALUE scored against the
-    # pool's fixed normalization baseline, without widening that baseline
-    # itself -- see compute_g_scores' docstring and the 2026-10-21
-    # pool-size-widening final whole-branch review for why pool_size stays
-    # untouched here (widening it directly failed the ADR-0001 gate).
     flat_pool_size = config["num_teams"] * config["roster_size"]
-    extra_rows = build_extra_rows(projected, flat_pool_size)
+    if use_rosters:
+        extra_rows = build_extra_rows(projected, flat_pool_size)
+    else:
+        extra_rows = None
     rankings = compute_g_scores(projected, player_tau, league_tau, config, extra_rows=extra_rows)
 
-    # Positional scarcity — supplementary metric only, doesn't touch
-    # TOTAL_VALUE/RANK. Every pool player has a position here: position_by_player
-    # is built above from all 3 raw BBR seasons (setdefault, newest wins),
-    # the same source every pool player's row ultimately comes from.
+    return {
+        "rankings": rankings,
+        "projected": projected,
+        "player_tau": player_tau,
+        "league_tau": league_tau,
+        "game_log_health": game_log_health,
+        "position_by_player": position_by_player,
+        "weights": weights,
+        "season_raw_team": season_raw_team,
+        "severe_injury_by_key": severe_injury_by_key,
+        "player_cause_profile": player_cause_profile,
+    }
+
+
+def main() -> None:
+    print("DURANT Fantasy Basketball Ranker")
+    print("=" * 60)
+
+    config = LEAGUE_CONFIG
+    result = run_projection(config)
+
+    rankings = result["rankings"]
+    projected = result["projected"]
+    league_tau = result["league_tau"]
+    game_log_health = result["game_log_health"]
+    position_by_player = result["position_by_player"]
+    season_raw_team = result["season_raw_team"]
+    severe_injury_by_key = result["severe_injury_by_key"]
+    player_cause_profile = result["player_cause_profile"]
+
+    SUPPRESSION_MAINTENANCE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    SUPPRESSION_MAINTENANCE_FILE.write_text(
+        build_non_actionable_suppression_report(game_log_health),
+        encoding="utf-8",
+    )
+    game_log_health["suppression_maintenance_report"] = str(SUPPRESSION_MAINTENANCE_FILE)
+
     rankings["POSITION"] = rankings["PLAYER_NAME"].map(position_by_player)
     rankings = compute_positional_value(rankings, config)
 
@@ -777,6 +799,15 @@ def main() -> None:
     # now gives each rookie a genuinely distinct prediction (see
     # docs/superpowers/specs/2026-10-04-rookie-baseline-combine-regression-design.md),
     # unlike the old discrete draft-slot buckets this replaced.
+    draft_history = fetch_draft_history(
+        draft_years=config["draft_years"],
+        cache_file=config["draft_history_cache"],
+    )
+    combine_stats = fetch_combine_stats(cache_file=config["combine_stats_cache"])
+    rookie_rows = build_rookie_rows(
+        draft_history, combine_stats, ROOKIE_FITTED_MODEL,
+        existing_players=set(projected["PLAYER_NAME"]),
+    )
     if not rookie_rows.empty:
         rookie_rankings = compute_g_scores(rookie_rows, {}, league_tau, config)
         print(f"\n\nROOKIE WATCH LIST — {len(rookie_rankings)} incoming rookies, ranked separately")

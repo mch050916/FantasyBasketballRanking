@@ -103,6 +103,12 @@ LEAGUE_CONFIG = {
     # With 3 BBR files: all three weights are used as-is then renormalised.
     "season_weights": [0.5, 0.3, 0.2],
 
+    # Regression to the draft-pool mean (model._regress_to_pool_mean).
+    # Fixed in advance, not tuned -- see
+    # docs/superpowers/specs/2026-11-14-regression-to-mean-design.md.
+    # Remove this key to switch it off.
+    "regression": {"minutes_k": 1000.0, "gp_shrink": 0.5},
+
     # ── NBA API fetch settings ─────────────────────────────────────────────
     # Seasons to pull game logs for (most recent first).
     # Must match bbr_files below, position for position.

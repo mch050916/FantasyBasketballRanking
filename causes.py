@@ -53,7 +53,7 @@ def build_player_cause_profile(seasons: list[str],
                                gp_by_season: dict[str, dict[str, float]],
                                team_by_season: dict[str, dict[str, str]],
                                severe_reasons_by_season: dict[str, dict[str, list[str]]],
-                               full_season_games: int = 82) -> dict[str, dict[str, str]]:
+                               full_season_games: int | dict[str, int] = 82) -> dict[str, dict[str, str]]:
     """
     Build { player_name: { season: cause_label } } for every player with
     real GP data in at least one season.
@@ -83,7 +83,8 @@ def build_player_cause_profile(seasons: list[str],
                 continue
             severe_reasons = severe_map.get(canonical_player_key(player), [])
             bbr_team = team_map.get(player, "")
-            label = attribute_season_cause(gp, full_season_games, bbr_team, severe_reasons)
+            sg = full_season_games.get(season, 82) if isinstance(full_season_games, dict) else full_season_games
+            label = attribute_season_cause(gp, sg, bbr_team, severe_reasons)
             profile.setdefault(player, {})[season] = label
     return profile
 
