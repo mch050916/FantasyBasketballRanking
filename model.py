@@ -569,13 +569,18 @@ def project_stats(season_dfs: list[pd.DataFrame],
                   injury_discount_by_player: dict[str, float] | None = None,
                   player_cause_profile: dict[str, dict[str, str]] | None = None,
                   full_season_games: int | dict[str, int] = 82,
-                  regression: dict | None = None) -> pd.DataFrame:
+                  regression: dict | None = None,
+                  age_curve: dict | None = None) -> pd.DataFrame:
     """
     Compute GP-adjusted, trend-aware per-game projections for each player.
 
     `regression` (optional, config["regression"]) shrinks counting-stat
     rates and GP_FACTOR toward the draft pool's mean -- see
     _regress_to_pool_mean. None (default) leaves the projection untouched.
+
+    `age_curve` (optional, config["age_curve"]) multiplies each counting-stat
+    rate by clip(1 + slope * (pivot - age), lo, hi), age = projected-season
+    age: growth for young players, decline for older ones.
 
     Two improvements over a flat weighted average:
 
@@ -783,6 +788,13 @@ def project_stats(season_dfs: list[pd.DataFrame],
         # project_stats's docstring and data.py's INJURY_TIER_YEAR1_DISCOUNT.
         # 1.0 (no-op) for the vast majority of players who have no
         # discount-eligible injury on record.
+        age_mult = 1.0
+        if age_curve and pd.notna(projection_age):
+            age_mult = float(np.clip(
+                1 + age_curve["slope"] * (age_curve["pivot"] - projection_age),
+                age_curve["lo"], age_curve["hi"],
+            ))
+
         injury_factor = 1.0
         if injury_discount_by_player:
             injury_factor = injury_discount_by_player.get(canonical_player_key(player), 1.0)
@@ -834,7 +846,7 @@ def project_stats(season_dfs: list[pd.DataFrame],
                 continue
 
             wt        = sum(wts)
-            projected = sum(v * w for v, w in zip(vals, wts)) / wt
+            projected = sum(v * w for v, w in zip(vals, wts)) / wt * age_mult
             # `{cat}` stays the GP/decline-adjusted value everything else in
             # the pipeline (G-scores, the draft board's headline numbers)
             # already depends on -- not touched here. `{cat}_RATE` is the
@@ -900,7 +912,7 @@ def _regress_to_pool_mean(df: pd.DataFrame, counting_cats: list[str], *,
     df = df.copy()
     pool = df.nlargest(pool_size, "MIN")
     wmin = df["_WMIN"].fillna(0.0)
-    rel = wmin / (wmin + minutes_k)
+    rel = wmin / (wmin + minutes_k) if minutes_k > 0 else 1.0
     gpf = (1 - gp_shrink) * df["_GPF"] + gp_shrink * pool["_GPF"].mean()
     for cat in counting_cats:
         rate = rel * df[f"{cat}_RATE"] + (1 - rel) * pool[f"{cat}_RATE"].mean()

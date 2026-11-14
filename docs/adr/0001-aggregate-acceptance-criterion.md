@@ -78,6 +78,34 @@ Adding `basketball_reference_2025_26_total_stats.csv` to `BBR_FILES` (to roll th
 
 `VALIDATION_TARGETS` now carries a `2026-27` entry in the "not yet available" state (no snapshot file exists until that season completes) — that will be the first genuine out-of-sample test since this pipeline started tracking exact-league benchmarks. Until then, there is no held-out signal available at all; only the retrodictive fit above and the narrowly-scoped collateral-damage/rule-behavior checks this ADR's power-check section already prescribes for effects too small for aggregate metrics to see.
 
+## 2026-11-14: The gate moves to the walk-forward harness
+
+The 2026-08-15 note said a walk-forward test wasn't possible without historical GP data. That data (BBR season totals for 2018-19 through 2022-23) is now in the repo, and `backtest.py` runs it: for each target season 2021-22 through 2025-26 it projects from the prior three seasons only and scores the full 130-player pool against actuals built from BBR totals and game logs. No Yahoo snapshot is involved, so there is no top-125 censoring and no retrodiction.
+
+**From this date a model change is accepted on the harness, not on `compare_baselines.py --bootstrap` against the snapshots.** The snapshot comparison stays as a diagnostic only.
+
+Procedure:
+
+1. Write the change's constants and a numeric threshold in a spec before running the after-set. Constants read off some folds must be tested on the others and the spec must say which.
+2. `python backtest.py --save-as <before>`, apply the change, `python backtest.py --save-as <after>`.
+3. Compare the model's `RANK` in the two runs with a paired bootstrap (5000 resamples of players within each fold, pairing on `PLAYER_KEY`), delta = mean over folds of the Spearman difference, for both targets: per-game value (`ACTUAL_PG_RANK`, players with 20+ GP) and total value (`ACTUAL_TOTAL_RANK`, everyone, GP 0 included).
+4. Report the untouched folds (2021-22, 2022-23) separately from the tuned-era folds (2023-24 to 2025-26). The existing hand-set constants were tuned while looking at 2023-24 onward, so only the untouched folds are clean for them.
+
+Detectable effect size, from the first two accepted changes: a per-game delta of about +0.010 over five folds and about +0.015 over the two untouched folds clears a 95% interval; total-value deltas need about +0.012 over five folds and are not separable on the untouched folds alone below about +0.018. A threshold smaller than these cannot be met on evidence and should not be declared.
+
+Reference points for the unchanged model (run `before`, 2026-11-14): per-game Spearman 0.760 to 0.807, total-value 0.458 to 0.708. A change should also be read against the Marcel-lite baseline printed in every run (three-season weighted average with regression to the pool mean): a model that cannot beat it is the finding.
+
+First two changes accepted under this gate:
+
+| Change | Per-game delta, five folds (95% CI) | Total delta, five folds (95% CI) | Per-game delta, untouched | Total delta, untouched |
+|---|---|---|---|---|
+| Regression to the pool mean (rates by minutes/(minutes+1000), GP_FACTOR 50/50 with pool mean) | +0.030 (+0.020, +0.042) | +0.013 (+0.001, +0.024) | +0.027 | +0.009 |
+| Age curve, clip(1 + 0.015 x (26 - age), 0.90, 1.06) on counting-stat rates | +0.018 (+0.008, +0.028) | +0.013 (+0.001, +0.024) | +0.018 | +0.017 |
+
+Ablation of the first change: the GP_FACTOR half alone gives +0.041 per-game and +0.007 total; the rate half alone gives -0.058 per-game and -0.020 total (compressing rates while leaving GP_FACTOR unshrunk lets the noisy availability term dominate the ranking). With the GP half in place, adding the rate half costs 0.010 per-game (95% CI -0.018, -0.003) and adds 0.005 total (CI includes zero). Both halves shipped because the combined change met its declared threshold; whether the rate half stays depends on whether the board is ranked for per-game or total value.
+
+Limits: five folds are a finite resource in the same way the three snapshots were. Every comparison run against them spends some of their independence, and constants must not be re-fitted to them. The 2026-27 season stays sealed (`--unseal-holdout`, logged) and is the only season nothing has been fitted to.
+
 ## Consequences
 
 - No exact-league benchmark currently in `VALIDATION_TARGETS` is a genuine holdout — see 2026-08-15 above. All three (2025-26, 2024-25, 2023-24) are seasons the model's own input blend can see; the depleting-resource framing below still applies to how much they've each been *looked at* while making decisions, but that's a separate, smaller concern than not being held out in the first place.

@@ -18,6 +18,8 @@ Everything else is automatic.
 from pathlib import Path
 from datetime import datetime
 
+import sys
+
 import pandas as pd
 
 import causes
@@ -676,6 +678,7 @@ def run_projection(config: dict, *, use_rosters: bool = True,
              "pool_size": config["num_teams"] * config["roster_size"]}
             if config.get("regression") else None
         ),
+        age_curve=config.get("age_curve"),
     )
     projected = projected.dropna(subset=["PTS"])
     print(f"   {len(projected)} players with projections")
@@ -706,6 +709,20 @@ def main() -> None:
     print("=" * 60)
 
     config = LEAGUE_CONFIG
+    if "--per-game" in sys.argv:
+        # Second-opinion board: per-game value. Compared against the
+        # total-value board on disk; no rookies, validation or diagnostics.
+        config = {**config, "regression": config["per_game_regression"]}
+        rankings = run_projection(config)["rankings"]
+        if Path(OUTPUT_FILE).exists():
+            total_rank = pd.read_csv(OUTPUT_FILE).set_index("PLAYER_NAME")["RANK"]
+            rankings["TOTAL_MODE_RANK"] = rankings["PLAYER_NAME"].map(total_rank)
+            # Positive = ranked higher per game than on the total-value board,
+            # i.e. the total-value rank is held down by availability history.
+            rankings["AVAILABILITY_GAP"] = rankings["TOTAL_MODE_RANK"] - rankings["RANK"]
+        print(format_rankings(rankings, config))
+        save_rankings(rankings, OUTPUT_FILE.replace(".csv", "_per_game.csv"))
+        return
     result = run_projection(config)
 
     rankings = result["rankings"]

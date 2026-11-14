@@ -1,5 +1,5 @@
 DISTORTION_FAMILY,PRIMARY_HITS,PRIMARY_BENCHMARKS,PRIMARY_PLAYER_COUNT,SECONDARY_HITS,EVIDENCE_LEVEL,FOLLOW_UP_DECISION,AVG_ABS_DELTA,REPRESENTATIVE_PLAYERS
-unclassified (category-weight distortion),13,3,9,11,repeat_exact_league,not_prioritized,40.67777777777778,"Jaden McDaniels, Jaren Jackson Jr., Alperen Şengün"
-efficiency carry,6,3,4,4,repeat_exact_league,active_target,32.93333333333333,"Ivica Zubac, Walker Kessler, Zach Edey"
-concentrated scorer carry,4,3,4,1,repeat_exact_league,active_target,55.875,"Devin Booker, Jalen Brunson, De'Aaron Fox"
-big-man stat carry,1,1,1,1,single_exact_league,watch_supporting,18.0,Karl-Anthony Towns
+unclassified (category-weight distortion),12,3,8,9,repeat_exact_league,not_prioritized,36.97857142857143,"Jaden McDaniels, Jaren Jackson Jr., Alperen Şengün"
+efficiency carry,6,3,3,3,repeat_exact_league,active_target,32.2,"Ivica Zubac, Walker Kessler, Zach Edey"
+big-man stat carry,2,2,1,2,repeat_exact_league,monitor_narrow,39.0,Donovan Clingan
+concentrated scorer carry,2,2,2,1,repeat_exact_league,active_target,67.0,"Devin Booker, Jalen Brunson"

@@ -495,3 +495,9 @@ recorded_at,label,benchmark_class,trust_tier,status,matched_players,spearman,hit
 2026-11-14T11:16:34,yahoo_25_26_adp_proxy,direct_export_market,direct_export,ok,142,0.78296321598689,19.718309859154928,25.309859154929576
 2026-11-14T11:16:34,yahoo_25_26_live_snapshot,direct_export_live,direct_export,ok,100,0.7678487848784877,23.0,20.66
 2026-11-14T11:16:34,actual_9cat_24_25.csv,directional_legacy,legacy_directional,ok,30,0.7486095661846496,43.333333333333336,12.066666666666666
+2026-11-14T11:34:16,actual_14cat_25_26_snapshot.csv,historical_snapshot,snapshot_derived,ok,98,0.778653354500188,23.46938775510204,19.479591836734695
+2026-11-14T11:34:16,actual_14cat_24_25_snapshot.csv,historical_snapshot,snapshot_derived,ok,90,0.5252253364612915,11.11111111111111,31.933333333333334
+2026-11-14T11:34:16,actual_14cat_23_24_snapshot.csv,historical_snapshot,snapshot_derived,ok,101,0.6369598136284217,18.81188118811881,26.15841584158416
+2026-11-14T11:34:16,yahoo_25_26_adp_proxy,direct_export_market,direct_export,ok,142,0.7615378328593791,19.718309859154928,26.246478873239436
+2026-11-14T11:34:16,yahoo_25_26_live_snapshot,direct_export_live,direct_export,ok,100,0.7639603960396038,24.0,20.44
+2026-11-14T11:34:16,actual_9cat_24_25.csv,directional_legacy,legacy_directional,ok,30,0.6978865406006673,40.0,12.9

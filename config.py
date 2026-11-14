@@ -109,6 +109,17 @@ LEAGUE_CONFIG = {
     # Remove this key to switch it off.
     "regression": {"minutes_k": 1000.0, "gp_shrink": 0.5},
 
+    # `python main.py --per-game` swaps the line above for this one: every
+    # player gets the pool-mean GP_FACTOR (availability history ignored) and
+    # rates are not regressed (rate regression hurts the per-game target, see
+    # ADR-0001 2026-11-14). Injury discounts still apply.
+    "per_game_regression": {"minutes_k": 0.0, "gp_shrink": 1.0},
+
+    # Age curve on counting-stat rates: clip(1 + slope*(pivot - age), lo, hi).
+    # Read off the 2023-24..2025-26 folds, tested on 2021-22 and 2022-23 -- see
+    # docs/superpowers/specs/2026-11-14-age-curve-design.md. Remove to switch off.
+    "age_curve": {"pivot": 26.0, "slope": 0.015, "lo": 0.90, "hi": 1.06},
+
     # ── NBA API fetch settings ─────────────────────────────────────────────
     # Seasons to pull game logs for (most recent first).
     # Must match bbr_files below, position for position.
