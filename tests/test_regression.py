@@ -67,6 +67,9 @@ def test_rookie_scored_like_a_veteran_with_the_same_line():
     vets["MIN"] = [30.0 - i * 0.1 for i in range(n)]
     vets["GP_FACTOR"] = 0.8
     vets["PLAYER_NAME"] = [f"v{i}" for i in range(n)]
+    vets["DD"], vets["TD"] = vets["PTS"] * 0.1, vets["PTS"] * 0.01   # realistic (<1/game)
+    for c in cats:                   # per-game rates; DD/TD exactly linear in them,
+        vets[f"{c}_RATE"] = vets[c] / 0.8   # so estimate_milestones recovers the vet's DD/TD
     rookie = vets.iloc[[3]][cats + ["FG%", "MIN"]].copy()
     rookie["PLAYER_NAME"] = "rook"
     rookie["GP"] = 82 * 0.8          # own GP_FACTOR 0.8 = pool mean, so shrink is a no-op

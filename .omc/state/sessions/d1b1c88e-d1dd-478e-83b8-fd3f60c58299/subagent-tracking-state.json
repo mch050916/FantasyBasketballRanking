@@ -296,10 +296,30 @@
       "synthetic": true,
       "telemetry_status": "unmatched_stop",
       "telemetry_note": "SubagentStop arrived without a matching SubagentStart; native Agent/Task start telemetry was not observed."
+    },
+    {
+      "agent_id": "a436f6d7447119109",
+      "agent_type": "general-purpose",
+      "started_at": "2026-11-20T23:07:57.631Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-11-20T23:12:50.738Z",
+      "duration_ms": 293107
+    },
+    {
+      "agent_id": "a08a4def4dd35eb49",
+      "agent_type": "untracked-native-fork",
+      "started_at": "2026-11-20T23:26:15.867Z",
+      "parent_mode": "none",
+      "status": "completed",
+      "completed_at": "2026-11-20T23:26:15.867Z",
+      "synthetic": true,
+      "telemetry_status": "unmatched_stop",
+      "telemetry_note": "SubagentStop arrived without a matching SubagentStart; native Agent/Task start telemetry was not observed."
     }
   ],
-  "total_spawned": 0,
-  "total_completed": 27,
+  "total_spawned": 1,
+  "total_completed": 29,
   "total_failed": 0,
-  "last_updated": "2026-11-19T23:32:22.182Z"
+  "last_updated": "2026-11-20T23:26:15.871Z"
 }

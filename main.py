@@ -20,6 +20,7 @@ from datetime import datetime
 
 import sys
 
+import numpy as np
 import pandas as pd
 
 import causes
@@ -174,6 +175,30 @@ def add_market_blend(rankings: pd.DataFrame, market_file: str,
     return out
 
 
+MILESTONE_INPUTS = ["PTS", "REB", "AST", "BLK"]
+
+
+def estimate_milestones(rookie_rows: pd.DataFrame, projected: pd.DataFrame,
+                        pool_size: int) -> pd.DataFrame:
+    """
+    Rookie DD/TD per game from their projected line. The rookie model has no
+    DD/TD source and used to set both to 0, which cost the top picks (often
+    double-double bigs) the most. Fit DD_RATE and TD_RATE on PTS/REB/AST/BLK
+    per game over the veteran pool, then apply to the rookie lines.
+    ponytail: linear fit clipped to [0, 1]; binds at 0 for most picks past ~5
+    (2026 class: 53 of 60), harmless while their true rates are near 0. A
+    logistic fit is the upgrade if late-pick DD ever matters.
+    """
+    pool = projected.nlargest(pool_size, "MIN")
+    X = np.c_[np.ones(len(pool)), pool[[f"{c}_RATE" for c in MILESTONE_INPUTS]].to_numpy(float)]
+    Xr = np.c_[np.ones(len(rookie_rows)), rookie_rows[MILESTONE_INPUTS].to_numpy(float)]
+    rows = rookie_rows.copy()
+    for cat in ("DD", "TD"):
+        coef = np.linalg.lstsq(X, pool[f"{cat}_RATE"].to_numpy(float), rcond=None)[0]
+        rows[cat] = np.clip(Xr @ coef, 0.0, 1.0)
+    return rows
+
+
 ROOKIE_SCALED_CATS = ["FGM", "FGA", "3PTM", "FTM", "PTS", "REB", "AST", "ST",
                       "BLK", "TO", "PF", "DD", "TD", "TECH"]
 
@@ -189,12 +214,13 @@ def place_rookies(rookie_rows: pd.DataFrame, projected: pd.DataFrame,
     config["regression"]["gp_shrink"]. The rows then go through
     compute_g_scores as extra_rows -- scored against the veteran
     normalisation pool, never part of it -- so veteran values are untouched.
+    DD/TD come from estimate_milestones.
     Returns the rookie rows only, with RANK = order among rookies.
     """
     pool_size = config["num_teams"] * config["roster_size"]
     pool_gpf = projected.nlargest(pool_size, "MIN")["GP_FACTOR"].mean()
     shrink = (config.get("regression") or {}).get("gp_shrink", 0.0)
-    rows = rookie_rows.copy()
+    rows = estimate_milestones(rookie_rows, projected, pool_size)
     own_gpf = (rows["GP"] / 82.0).clip(upper=1.0)
     rows["GP_FACTOR"] = ((1 - shrink) * own_gpf + shrink * pool_gpf).round(3)
     for cat in ROOKIE_SCALED_CATS:

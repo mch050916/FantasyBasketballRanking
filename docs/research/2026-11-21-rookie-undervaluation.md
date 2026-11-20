@@ -1,0 +1,81 @@
+# Rookie under-placement: mechanisms, how other systems handle rookies, fix options
+
+Date: 2026-11-21. Research note. No code was changed.
+
+Labels used throughout:
+- **[Sourced]**: stated by the cited source. The URL is given.
+- **[Our data]**: computed by me from `diagnostics/rookie_measurement.csv` (the 800-row version written 2026-11-21 10:09: 650 veteran rows and 150 rookie rows over 5 folds, one 160-player board per fold) or from `diagnostics/backtest/final/fold_*.csv`.
+- **[Inference]**: my reasoning, not backed by a source or a measurement.
+
+## Summary
+
+1. **Most of the headline bias comes from the metric, not from rookies.** [Our data] Signed rank error (predicted minus actual) is mechanically positive for *anyone* placed near the bottom of a bounded board. Each fold ranks 160 players 1..160, and the actual ranks are taken over the same 160. A player placed at 150 can finish at most 10 places lower but up to 149 places higher. Veterans the model placed at ranks 120-140 have a mean signed error of **+17.2**, about the same as the rookies' +16. 135 of the 150 rookies are placed at rank 120 or lower, so the rookie headline mostly measures where rookies sit on the board. Regressing signed error on board rank plus a rookie dummy, over all 800 rows, gives a rookie coefficient of **-1.3 (HC1 SE 3.4)**: no detectable rookie-specific bias once placement is controlled for. (By construction, the mean signed error over the whole board is 0.0.)
+2. **One real signal survives: the top 5 picks.** [Our data] Residuals against the veteran error-by-rank line, by pick bucket:
+
+   | Picks | Residual (ranks) | SE | n |
+   |---|---|---|---|
+   | 1-5 | **+13.8** | 7.5 | 25 |
+   | 6-14 | -3.4 | 4.3 | 45 |
+   | 15-30 | -7.4 | 2.2 | 80 |
+
+   The picks 1-5 residual is positive in 4 of 5 folds (2024-25: -16.4). Picks 15-30 are, if anything, placed slightly *too high* compared with a veteran placed at the same rank. That comparison extrapolates the veteran line below rank 140, where there are almost no veterans, so treat the 15-30 figure loosely.
+3. **Young veterans: weak evidence of under-placement.** [Our data] With board rank controlled, veterans aged 22 or younger have +4.6 ranks of signed error on total value (SE 4.8) and +5.5 on per-game rank (SE 2.6). The sign is consistent but the effect is small and swings by fold (-10.7 to +18.0).
+4. **Recommended first fix: change the measurement before the model.** Report rookie bias as the residual against veterans placed at the same board rank (or as signed error in value space), not as raw signed rank error. Then make the one principled model change the data supports: **give rookies a DD/TD estimate instead of 0**, fitted from the same pick curve on rookie DD/TD rates. It is a known downward bias that is concentrated in top picks (bigs and high-usage guards), which is where the residual is. It needs no tuning constant. Do **not** add a constant rookie offset. The data says the bias is not uniform, and an offset would push picks 15-30 further in the direction where they are already slightly too high.
+
+## 1. Mechanisms, ranked by how well evidence supports them
+
+| Rank | Mechanism | Evidence | Verdict |
+|---|---|---|---|
+| 1 | **(g, new) Bounded-rank regression toward the middle.** In any noisy ranking, players placed at the bottom finish higher on average and players at the top finish lower. Signed rank error is therefore a function of placement. | [Our data] Veteran signed error rises steadily with board rank: -19 for ranks 1-40, +5 for 80-100, +17 for 120-140. The slope is 0.30 ranks per rank. Regression to the mean is a general statistical property ([Barnett et al. 2005, *Int J Epidemiol*](https://doi.org/10.1093/ije/dyh299)) [Sourced, general]. | **Explains most of the headline.** The rookie dummy is about 0. |
+| 2 | **(d) DD/TD set to 0 for rookies.** | [Inference] A guaranteed negative bias on two of the 14 categories, larger for players who actually produce double-doubles. Those are mostly top picks: Wembanyama, Mobley, Banchero and Flagg are all among the largest positive residuals. Not measured yet (see Open questions). | **Likely contributor to the top-5 residual.** Cheapest to fix. |
+| 3 | **(a) Development of young players (between seasons and within the season).** | [Sourced] Players improve through about age 27 (CARMELO, Pelton, BBR SPS, Marcel). Athleticism-driven stats such as blocks and offensive rebounds peak in the early twenties ([Brahme & Franks 2026](https://arxiv.org/abs/2609.33752)). [Not found] I found no published study of first-half versus second-half rookie production. The searches turned up only opinion pieces. | **Supported for veterans aged 22 or younger** (small, noisy). For rookies it is only partly relevant: the pick curve is fitted on actual rookie seasons, so average within-season growth is already in the target. Year-over-year growth does not apply to the rookie season itself. |
+| 4 | **(f) Pick-curve functional form** (linear in ln(pick)). | [Inference] A log curve fitted by OLS predicts the *conditional mean* rookie line. Top picks are right-skewed (a few stars, and some like Holmgren 2022-23 with 0 games), so the mean underweights stars, while the rank-of-mean is still the right input for a draft board. A curve that is too flat at picks 1-3 would under-place exactly the top bucket. | **Plausible for picks 1-5 only.** Testable (Fix E). |
+| 5 | **(c) Training target versus what is scored.** | [Our data] Signed error on per-game rank is about the same size as on total rank, and the GP rule variants (shrink 0, 0.5, 1) barely move it. Predicted GP is 50.8 against 52.6 actual. | **Weak.** Availability is not the driver. |
+| 6 | **(e) Veterans biased high** (age curve, survivor bias in multi-season averages). | [Our data] Veteran signed error by age, without controls, is -7 to +0.5, with no monotone pattern. With rank controlled, age carries -0.41 ranks per year (SE 0.25). [Sourced] The direction of survivor bias in delta-method aging curves is disputed in the baseball and hockey literature ([Schuckers et al., arXiv 2110.14017](https://arxiv.org/abs/2110.14017)). | **Not supported as a cross-group explanation.** At the same board rank, rookies and veterans finish about the same. |
+| 7 | **(b) Regression or season weighting compressing veterans' declines.** | [Inference] This would show up as old veterans having negative residuals at equal rank. Age over 33 gives -3.3 without controls; nothing stands out. | **Not supported.** |
+
+## 2. How established systems handle rookies and young players
+
+| System | Rookie or no-history handling | Age / development | Regression | Source |
+|---|---|---|---|---|
+| **Marcel** (Tango, baseball) | "A 2004 rookie with no MLB experience is projected at the league average." | Corrected formula: under 29, `(29 - age) * .006` (improvement); over 29, `(29 - age) * .003` (decline). Applied to projected totals. | Adds 1,200 PA of league average. Seasons weighted 5/4/3. | [Sourced] [tangotiger.net/archives/stud0346.shtml](http://www.tangotiger.net/archives/stud0346.shtml) (sign correction confirmed by Tango in the comments) |
+| **Basketball-Reference Simple Projection System** | No special rookie rule. The 1,000-minute league-average padding is the only thing that affects low-minute players. | Under 28, `(28 - age) * 0.004`; over 28, `(28 - age) * 0.002`. Applied as `(1 + adj)` to per-36 rates, with the sign reversed for negative stats (missed shots, turnovers, fouls). | 1,000 minutes of league average. Seasons weighted 6/3/1. | [Sourced] [basketball-reference.com/about/projections.html](https://www.basketball-reference.com/about/projections.html) |
+| **FiveThirtyEight CARMELO / RAPTOR projections** | Rookie projections are "similar in spirit" but use adjusted college statistics and compare rookies with other rookies. The predictive version uses height, age and **draft position**. | Players improve "through about age 27". Age is "the most important attribute"; earlier draft picks have "a higher ceiling, even once we control for other variables". | Similar-player (comparables) method. | [Sourced, via search snippets only] The original pages ([CARMELO](https://fivethirtyeight.com/features/how-were-predicting-nba-player-career/), [RAPTOR](https://fivethirtyeight.com/methodology/how-our-raptor-metric-works/)) now redirect to abcnews.com, and the Wayback Machine was not reachable from here. Verify before relying on exact wording. |
+| **Kevin Pelton (ESPN) draft / WARP projections** | Translates 14 college stats to NBA equivalents with a strength-of-schedule adjustment. Regresses toward **positional** averages for college players and toward replacement level for international players. Blends in draft slot or ESPN top-100 rank. | Development "through around age 27". Each extra year of age at the draft is worth about -0.5 WARP per season. | Positional regression. | [Sourced] [ESPN: explaining Pelton's draft projection system](https://africa.espn.com/nba/story/_/id/16235135/explaining-kevin-pelton-nba-draft-projection-system). Peak just before 27: [Pelton on LeBron and the aging curve](https://africa.espn.com/nba/story/_/id/21735830/kevin-pelton-lebron-james-breaking-aging-curve-nba) |
+| **ZiPS** (Szymborski, baseball) | Minor-league translations ("zMLEs"). With no minor-league, college or major international data, ZiPS has "nothing to go on". Notes selection bias: under-performing rookies get demoted. | Age relative to the level matters. | Stronger regression for less MLB service time. | [Sourced, via search snippets from FanGraphs posts] [ZiPS intro 2021](https://blogs.fangraphs.com/the-2021-zips-projections-an-introduction), [MLB glossary](https://www.mlb.com/glossary/projection-systems/szymborski-projection-system) |
+| **DARKO** (Medvedovsky) | Not found: no primary methodology page surfaced. Secondary descriptions say Kalman filter plus exponential decay. | Unknown. | Unknown. | [Secondary only] [macsenhiggs.github.io](https://macsenhiggs.github.io/qbepaprogression.html); not cited for any claim here. |
+| **Academic aging curves** | Not applicable. | Vaci et al. 2019: separate latent *development* and *aging* factors; players who are better early decline less. Brahme & Franks 2026: performance "tends to increase through early career"; blocks and offensive rebounds peak in the early twenties, shooting in the mid-twenties or later. | Not applicable. | [Sourced] [Vaci et al. 2019, PMC6690864](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6690864/); [Brahme & Franks, arXiv 2609.33752](https://arxiv.org/abs/2609.33752) |
+| **Fantasy sites** (Hashtag Basketball, Basketball Monster) | No documented method found. | | | Not used. |
+
+**Takeaways:**
+- [Sourced] Every documented system applies a **positive age adjustment to young players** that grows as players get younger: BBR +0.4% per year below 28, Marcel +0.6% per year below 29. Our veteran multiplier, `clip(1 + 0.015*(26 - age), 0.90, 1.06)`, is steeper (1.5% per year) but capped at +6%, which a 22-year-old already reaches.
+- [Sourced] No system projects a rookie from a draft-pick curve alone. The NBA systems use college or international translation plus draft slot. [Inference] Our pick curve is closest to Marcel's "league average for no-history players", conditioned on pick.
+
+## 3. Fix options
+
+All fits use leave-one-fold-out (LOFO): fit on 4 folds, score the 5th, rotate, and report the mean and the spread of the held-out results. The test metric is **the rookie residual against veterans at the same board rank**, plus Spearman of the rookies' predicted rank against actual rank. Raw signed rank error is not the metric (see Summary item 1). 2024-25 is contaminated by its ADP file, so report results with and without that fold.
+
+| # | Fix | What it changes | Mechanism addressed | Fitting without overfitting | Expected effect |
+|---|---|---|---|---|---|
+| 0 | **Fix the metric** | `scripts/rookie_measurement.py` reporting: add the residual against veterans' error-by-rank line, or signed error in value space (`TOTAL_VALUE` minus actual value). | (g) | No fitted parameters. | Headline rookie bias goes from about +17 to about -1. The real problem shrinks to the top 5 picks. |
+| A | **Constant rookie rank or value offset** | Adds a constant to every rookie's value. | None specific. | One parameter, LOFO. | **Not recommended.** The bias is not uniform. An offset helps picks 1-5 and hurts picks 15-30 (residual already -7.4). |
+| B | **Rookie DD/TD estimate** | Fit DD and TD rates per game on ln(pick) like the other stats, or derive them from the projected PTS/REB/AST line. | (d) | Same three-class training as the other stats; no new tuning constant. | Raises top picks the most (bigs, high-usage players). Points at the top-5 residual. **Recommended first model fix.** |
+| C | **Growth multiplier for players aged 22 or younger and second- or third-year players** | Raise or remove the +6% cap for young players, or add an experience-year term (year 2 and year 3). | (a) | One parameter (growth per year below 23), LOFO on veteran residuals by age. Prior from BBR/Marcel: +0.4 to +0.6% per year. | Small. [Our data] The young-veteran residual is +4.6 ± 4.8 ranks. Only worth doing if it survives LOFO. |
+| D | **Pick curve on a different target** (second half or post-All-Star) | Training target becomes a rookie's late-season per-game line. | (a) within-season, (c) | Same fit, different target. Compare LOFO residual and rookie Spearman. | [Inference] Up for rookies who earn minutes late. Risky: second-half samples are smaller and minutes-confounded (tanking teams play rookies late). No published evidence found that within-season growth is large. |
+| E | **Pick-curve shape for the top picks** | Add a top-3 or top-5 indicator, or a quadratic in ln(pick), or fit on more than three draft classes. | (f) | At most one extra parameter. Each training window has only about 15 top-5 picks (3 classes x 5), so widen the window to 5 or more classes before adding terms. | Up for picks 1-5 only. Overfit risk is high with 3 classes. |
+| F | **Test whether veterans are biased high** | No model change; a diagnostic. | (e), (b) | Regress veteran signed error on board rank plus age bins (done here: age carries -0.41 ranks per year, SE 0.25), per fold. | [Our data] No cross-group gap at equal rank (rookie dummy -1.3 ± 3.4), so veterans are not the side that is wrong. Rerun each season. |
+
+How to tell which side is wrong (F, expanded): rookies and veterans share one ranking, so a rookie bias cannot be separated from a veteran bias by signed rank error alone. Compare the two groups *at the same predicted rank* or the same projected value. If rookies placed at rank r finish higher than veterans placed at rank r, the rookie projection is low relative to veterans. Today they finish about the same, except for picks 1-5.
+
+## 4. Young veterans (years 2-3)
+
+- [Sourced] Development through about age 27 is consistent across CARMELO, Pelton, BBR SPS and Marcel. The early-career increase is documented in Brahme & Franks 2026 and Vaci et al. 2019.
+- [Our data] Veterans aged 22 or younger, with board rank controlled: +4.6 ranks on total value (SE 4.8) and +5.5 on per-game rank (SE 2.6). Ages 23-24: about 0 on total value, +3.8 on per-game rank. Per fold, the 22-and-younger effect ranges from -10.7 to +18.0. [Inference] The direction matches an age or development fix rather than a rookie-only fix, but the evidence is too weak to act on alone. It is at most a small second step (Fix C) after Fix B.
+
+## Open questions
+
+1. How much rookie value does DD/TD = 0 actually remove? Compute the actual DD/TD G-score contribution of picks 1-5 in their rookie seasons. If it explains most of the +13.8 residual, Fix B is enough.
+2. Does the conclusion hold in value space? Signed rank error is bounded; a value-space residual would remove the extrapolation below rank 140, where there are almost no veterans to compare against.
+3. Is the top-5 residual stable with 25 players? 2024-25 (Risacher, Sheppard, Holland) went the other way. A 2026-27 rerun is the first out-of-sample check.
+4. Confirm the CARMELO/RAPTOR quotes against an archived copy; the live pages redirect.
+5. DARKO's rookie prior is undocumented in sources reachable from here.

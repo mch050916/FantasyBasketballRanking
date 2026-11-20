@@ -162,6 +162,16 @@ def scorable_folds() -> list[str]:
 
 # ── Actuals ───────────────────────────────────────────────────────────────────
 
+def _score_everyone(rows: pd.DataFrame, league_tau: dict, config: dict) -> pd.DataFrame:
+    """compute_g_scores keeps only the top num_teams*roster_size by MIN; score
+    anyone beyond that as extra_rows against the same baseline. A no-op for
+    the normal backtest (<= pool_size players); matters once rookies are added
+    (scripts/rookie_measurement.py)."""
+    pool_size = config["num_teams"] * config["roster_size"]
+    pool = rows.dropna(subset=["PTS"]).nlargest(pool_size, "MIN")
+    return compute_g_scores(rows, {}, league_tau, config, extra_rows=rows.drop(pool.index))
+
+
 def build_actuals(target: str, projected_players: list[str],
                   league_tau: dict[str, float], config: dict) -> pd.DataFrame:
     """Build the actual-outcome frame for season T from BBR + game logs."""
@@ -267,9 +277,7 @@ def build_actuals(target: str, projected_players: list[str],
 
     if actual_projected_rows:
         actual_proj_df = pd.DataFrame(actual_projected_rows)
-        actual_rankings = compute_g_scores(
-            actual_proj_df, {}, league_tau, config,
-        )
+        actual_rankings = _score_everyone(actual_proj_df, league_tau, config)
         df = df.merge(
             actual_rankings[["PLAYER_NAME", "TOTAL_VALUE", "RANK"]].rename(
                 columns={"TOTAL_VALUE": "ACTUAL_PG_VALUE", "RANK": "ACTUAL_PG_RANK"}
@@ -312,7 +320,7 @@ def build_actuals(target: str, projected_players: list[str],
 
     if total_rows:
         total_proj_df = pd.DataFrame(total_rows)
-        total_rankings = compute_g_scores(total_proj_df, {}, league_tau, config)
+        total_rankings = _score_everyone(total_proj_df, league_tau, config)
         df = df.merge(
             total_rankings[["PLAYER_NAME", "TOTAL_VALUE", "RANK"]].rename(
                 columns={"TOTAL_VALUE": "ACTUAL_TOTAL_VALUE", "RANK": "ACTUAL_TOTAL_RANK"}
@@ -323,7 +331,7 @@ def build_actuals(target: str, projected_players: list[str],
         df["ACTUAL_TOTAL_VALUE"] = np.nan
         df["ACTUAL_TOTAL_RANK"] = np.nan
 
-    assert df["ACTUAL_TOTAL_RANK"].notna().all(), "NaN in ACTUAL_TOTAL_RANK"
+    assert df["ACTUAL_TOTAL_RANK"].notna().all(), f"NaN in ACTUAL_TOTAL_RANK: {df.loc[df['ACTUAL_TOTAL_RANK'].isna(), ['PLAYER_NAME', 'ACTUAL_GP']].to_dict('records')}"
 
     return df
 

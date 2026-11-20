@@ -318,6 +318,12 @@
       "accessCount": 6.973779663257756,
       "lastAccessed": 1794744768790,
       "type": "file"
+    },
+    {
+      "path": "scripts/rookie_measurement.py",
+      "accessCount": 1.9999155102117587,
+      "lastAccessed": 1795215561185,
+      "type": "file"
     }
   ],
   "userDirectives": []

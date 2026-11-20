@@ -1,1 +1,5 @@
 {"t":0,"agent":"ac251bf","agent_type":"untracked-native-fork","event":"agent_stop","success":true,"synthetic":true,"telemetry_status":"unmatched_stop","reason":"SubagentStop arrived without a matching SubagentStart; native Agent/Task start telemetry was not observed."}
+{"t":0,"agent":"system","event":"skill_invoked","skill_name":"mattpocock-skills:research"}
+{"t":0,"agent":"a436f6d","agent_type":"general-purpose","event":"agent_start","parent_mode":"none"}
+{"t":0,"agent":"a436f6d","agent_type":"general-purpose","event":"agent_stop","success":true,"duration_ms":293107}
+{"t":0,"agent":"a08a4de","agent_type":"untracked-native-fork","event":"agent_stop","success":true,"synthetic":true,"telemetry_status":"unmatched_stop","reason":"SubagentStop arrived without a matching SubagentStart; native Agent/Task start telemetry was not observed."}

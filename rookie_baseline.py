@@ -200,6 +200,22 @@ def run_leave_one_class_out_cv(rows_by_class: dict[str, list[dict]],
     return report
 
 
+def fit_final_model(rows_by_class: dict[str, list[dict]],
+                    cv_report: dict[str, dict]) -> tuple[dict, dict]:
+    """Stage 1 on every class pooled, plus Stage 2 for the categories (and
+    at the lambda) run_leave_one_class_out_cv selected."""
+    all_rows = [r for rows in rows_by_class.values() for r in rows]
+    stage1 = fit_stage1_curve(all_rows)
+    stage2: dict = {}
+    for category in CATEGORIES:
+        if not cv_report[category]["stage2_included"]:
+            continue
+        params = fit_stage2_ridge(all_rows, stage1, cv_report[category]["chosen_lambda"])
+        if category in params:
+            stage2[category] = params[category]
+    return stage1, stage2
+
+
 def predict_rookie_stats(fitted_model: dict, overall_pick: int,
                          combine_features: dict[str, float] | None) -> dict[str, float]:
     """

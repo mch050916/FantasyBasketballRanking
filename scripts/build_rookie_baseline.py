@@ -29,8 +29,7 @@ from rookie_baseline import (
     CATEGORIES,
     LAMBDA_GRID,
     extract_combine_features,
-    fit_stage1_curve,
-    fit_stage2_ridge,
+    fit_final_model,
     run_leave_one_class_out_cv,
 )
 
@@ -122,16 +121,7 @@ def main() -> None:
         lam = f"{r['chosen_lambda']:.0f}" if r["chosen_lambda"] is not None else "-"
         print(f"{category:<8} {r['stage1_only_mae']:>12.3f} {combined:>20} {str(r['stage2_included']):>18} {lam:>8}")
 
-    all_rows = [r for rows in rows_by_class.values() for r in rows]
-    final_stage1 = fit_stage1_curve(all_rows)
-    final_stage2: dict = {}
-    for category in CATEGORIES:
-        if not cv_report[category]["stage2_included"]:
-            continue
-        lam = cv_report[category]["chosen_lambda"]
-        stage2_for_lambda = fit_stage2_ridge(all_rows, final_stage1, lam)
-        if category in stage2_for_lambda:
-            final_stage2[category] = stage2_for_lambda[category]
+    final_stage1, final_stage2 = fit_final_model(rows_by_class, cv_report)
 
     for year, rows in rows_by_class.items():
         if len(rows) < MIN_ROWS_PER_CLASS:
