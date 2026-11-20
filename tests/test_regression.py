@@ -41,3 +41,39 @@ def test_market_blend(tmp_path):
     assert out["BLEND_RANK"].tolist() == [1, 1, 3]
     assert out["MARKET_GAP"].tolist() == [-1.0, 1.0, 0.0]
     assert add_market_blend(r, str(tmp_path / "missing.csv")) is r
+
+
+def test_market_first_rows_skip_the_blend(tmp_path):
+    from main import add_market_blend
+    f = tmp_path / "m.csv"
+    f.write_text("Player,Preseason ADP\nR One,1.0\nV One,2.0\n")
+    board = pd.DataFrame({"PLAYER_NAME": ["V One", "V Two", "R One", "R Two"],
+                          "BOARD_RANK": [1, 2, 3, 4]})
+    out = add_market_blend(board, str(f), rank_col="BOARD_RANK",
+                           market_first=pd.Series([False, False, True, True]))
+    # market ranks: R One 1, V One 2, V Two and R Two tied last at 3.5.
+    # scores: V One 1.5, V Two 2.75, R One 1 (market alone), R Two 4 (board alone)
+    assert out["BLEND_RANK"].tolist() == [2, 3, 1, 4]
+
+
+def test_rookie_scored_like_a_veteran_with_the_same_line():
+    from config import LEAGUE_CONFIG
+    from main import place_rookies
+    from model import compute_g_scores
+    cats = ["FGM", "FGA", "3PTM", "FTM", "PTS", "REB", "AST", "ST", "BLK", "TO", "PF", "DD", "TD", "TECH"]
+    n = 140
+    vets = pd.DataFrame({c: [1.0 + (i % 7) * 0.3 for i in range(n)] for c in cats})
+    vets["FG%"] = 0.47
+    vets["MIN"] = [30.0 - i * 0.1 for i in range(n)]
+    vets["GP_FACTOR"] = 0.8
+    vets["PLAYER_NAME"] = [f"v{i}" for i in range(n)]
+    rookie = vets.iloc[[3]][cats + ["FG%", "MIN"]].copy()
+    rookie["PLAYER_NAME"] = "rook"
+    rookie["GP"] = 82 * 0.8          # own GP_FACTOR 0.8 = pool mean, so shrink is a no-op
+    rookie["OVERALL_PICK"] = 1
+    for c in cats:                   # rookie rows carry per-game rates
+        rookie[c] = rookie[c] / 0.8
+    placed = place_rookies(rookie, vets, {}, {}, LEAGUE_CONFIG)
+    vet = compute_g_scores(vets, {}, {}, LEAGUE_CONFIG).set_index("PLAYER_NAME").loc["v3"]
+    assert abs(placed.loc[0, "TOTAL_VALUE"] - vet["TOTAL_VALUE"]) < 1e-9
+    assert placed.loc[0, "GP_FACTOR"] == 0.8

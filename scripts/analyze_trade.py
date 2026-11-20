@@ -133,12 +133,9 @@ def build_replacement_bank(projections, rosters, league_tau, games_pool, trade_c
     """
     Replacement level = the lowest-ranked VETERAN in the projection pool.
 
-    Veteran and rookie TOTAL_VALUE are not comparable (rookies are scored
-    against the rookie population, veterans against the veteran pool -- see
-    rosters.load_projections). Sorting the concatenated frame would land on
-    a rookie, materially understating true replacement level. The pool is a
-    veteran-ranked population, so replacement level is the pool_size-th
-    ranked veteran, full stop.
+    Rookies are valued on the veteran scale (main.place_rookies), but the
+    pool is a veteran-ranked population, so replacement level is the
+    pool_size-th ranked veteran.
     """
     pool_size = LEAGUE_CONFIG["num_teams"] * LEAGUE_CONFIG["roster_size"]
     veterans = projections[projections["SOURCE"] == "veteran"]

@@ -1,0 +1,79 @@
+{
+  "updatedAt": "2026-11-15T12:18:45.871Z",
+  "missions": [
+    {
+      "id": "session:e9a97047-58c1-4c1d-9297-9b4071fb2884:none",
+      "source": "session",
+      "name": "none",
+      "objective": "Session mission",
+      "createdAt": "2026-11-15T12:16:36.864Z",
+      "updatedAt": "2026-11-15T12:18:45.871Z",
+      "status": "running",
+      "workerCount": 2,
+      "taskCounts": {
+        "total": 2,
+        "pending": 0,
+        "blocked": 0,
+        "inProgress": 1,
+        "completed": 1,
+        "failed": 0
+      },
+      "agents": [
+        {
+          "name": "fork:a944bc5",
+          "role": "fork",
+          "ownership": "a944bc56283e08585",
+          "status": "done",
+          "currentStep": null,
+          "latestUpdate": "completed",
+          "completedSummary": null,
+          "updatedAt": "2026-11-15T12:18:45.871Z"
+        },
+        {
+          "name": "rookie-impl:arookie",
+          "role": "rookie-impl",
+          "ownership": "arookie-impl-d7cb06e6868c9394",
+          "status": "running",
+          "currentStep": null,
+          "latestUpdate": null,
+          "completedSummary": null,
+          "updatedAt": "2026-11-15T12:18:41.356Z"
+        }
+      ],
+      "timeline": [
+        {
+          "id": "session-start:a944bc56283e08585:2026-11-15T12:16:36.864Z",
+          "at": "2026-11-15T12:16:36.864Z",
+          "kind": "update",
+          "agent": "fork:a944bc5",
+          "detail": "started fork:a944bc5",
+          "sourceKey": "session-start:a944bc56283e08585"
+        },
+        {
+          "id": "session-stop:aa57daf72dbf87b09:2026-11-15T12:17:40.620Z",
+          "at": "2026-11-15T12:17:40.620Z",
+          "kind": "completion",
+          "agent": "fork:a944bc5",
+          "detail": "completed",
+          "sourceKey": "session-stop:aa57daf72dbf87b09"
+        },
+        {
+          "id": "session-start:arookie-impl-d7cb06e6868c9394:2026-11-15T12:18:41.356Z",
+          "at": "2026-11-15T12:18:41.356Z",
+          "kind": "update",
+          "agent": "rookie-impl:arookie",
+          "detail": "started rookie-impl:arookie",
+          "sourceKey": "session-start:arookie-impl-d7cb06e6868c9394"
+        },
+        {
+          "id": "session-stop:a944bc56283e08585:2026-11-15T12:18:45.871Z",
+          "at": "2026-11-15T12:18:45.871Z",
+          "kind": "completion",
+          "agent": "fork:a944bc5",
+          "detail": "completed",
+          "sourceKey": "session-stop:a944bc56283e08585"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "entries": {
+    "445ed27a3872b681d98190bae61ccb84954e1bc4e140df5370be958dee776b3a": {
+      "last_emitted_at_ms": 1794745175368,
+      "message": "Verify changes work after editing. Test functionality before marking complete."
+    },
+    "79a93d4a2f8f50b95f852280616242fee1855dc99a3c75211917f55e72e95fae": {
+      "last_emitted_at_ms": 1794745136370,
+      "message": "Use parallel execution for independent tasks. Use run_in_background for long operations (npm install, builds, tests)."
+    },
+    "466399dafa2d20f60587180bad0a07358eb7f2bce724df0ff682f038ad33f5ad": {
+      "last_emitted_at_ms": 1794745125029,
+      "message": "Read multiple files in parallel when possible for faster analysis."
+    },
+    "f1e839c1b6fec7829feaad712671e1d56f3e960170bb93bbd9ed7f8f360cb7e2": {
+      "last_emitted_at_ms": 1794745121025,
+      "message": "Spawning agent: oh-my-claudecode:executor (opus) | Task: Implement rookie board integration"
+    },
+    "50fcb5e078d399195b9ab80e5af82dd7e401c1cbbdd0bbdcfc4978fd62710cf3": {
+      "last_emitted_at_ms": 1794744996539,
+      "message": "Spawning agent: fork (inherit) | Task: Implement rookie board integration"
+    }
+  },
+  "updated_at": "2026-11-15T12:19:35.368Z"
+}

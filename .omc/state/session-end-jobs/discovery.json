@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "cursor": 1,
+  "cursor": 0,
   "tickets": [
     {
       "sessionId": "2e4c93c3-0f51-42d1-89b4-deb83ed76a29",
@@ -13,6 +13,18 @@
       "attempts": 0,
       "retryAt": "2026-11-13T01:40:02.733Z",
       "acknowledgedAt": "2026-11-13T01:40:34.821Z"
+    },
+    {
+      "sessionId": "2eaa63e3-ce6a-4618-9824-dde9dc62e526",
+      "attempts": 0,
+      "retryAt": "2026-11-14T10:11:02.582Z",
+      "acknowledgedAt": "2026-11-14T10:11:34.839Z"
+    },
+    {
+      "sessionId": "e9a97047-58c1-4c1d-9297-9b4071fb2884",
+      "attempts": 0,
+      "retryAt": "2026-11-15T13:25:23.721Z",
+      "acknowledgedAt": "2026-11-15T13:25:55.876Z"
     }
   ]
 }

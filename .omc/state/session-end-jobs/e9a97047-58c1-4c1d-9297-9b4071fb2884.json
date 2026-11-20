@@ -1,0 +1,376 @@
+{
+  "version": 1,
+  "jobId": "f7f4ce0a-779a-4226-b5c8-a794e249ca2a",
+  "sessionId": "e9a97047-58c1-4c1d-9297-9b4071fb2884",
+  "scopeKey": "4d16b0cec232186b9b88aefc08c0af5321d538750541b5dc3ddd6396a8d25ed2",
+  "revision": 61,
+  "createdAt": "2026-11-15T13:25:23.707Z",
+  "updatedAt": "2026-11-15T13:25:55.865Z",
+  "producerGraceExpiresAt": "2026-11-15T13:25:53.707Z",
+  "bestEffortDeadlineAt": "2026-11-15T13:26:46.707Z",
+  "producers": {
+    "core": {
+      "state": "sealed",
+      "intentKey": "ab9b62d8532c47a4b3049e7266af656f4db500436a8185a69a25b9feb8b10fe6",
+      "payloadDigest": "ab9b62d8532c47a4b3049e7266af656f4db500436a8185a69a25b9feb8b10fe6",
+      "sealedAt": "2026-11-15T13:25:54.243Z",
+      "sealedBy": "recovery"
+    },
+    "wiki": {
+      "state": "no-op",
+      "sealedAt": "2026-11-15T13:25:23.720Z",
+      "sealedBy": "wiki-producer"
+    }
+  },
+  "actions": {
+    "foreground-cleanup": {
+      "class": "required",
+      "phase": "deferred-required",
+      "status": "completed",
+      "attempts": 1,
+      "idempotencyKey": "51ec8f2b872c9c36446dd03f846c6698a1dbb4aadd08d5b4b0d871fc022af82f",
+      "payload": {
+        "transcriptPath": "/Users/chesterman/.claude/projects/-Users-chesterman-FantasyBasketballRanking/e9a97047-58c1-4c1d-9297-9b4071fb2884.jsonl",
+        "cwd": "/Users/chesterman/FantasyBasketballRanking",
+        "reason": "other",
+        "input": {
+          "session_id": "e9a97047-58c1-4c1d-9297-9b4071fb2884",
+          "transcript_path": "/Users/chesterman/.claude/projects/-Users-chesterman-FantasyBasketballRanking/e9a97047-58c1-4c1d-9297-9b4071fb2884.jsonl",
+          "cwd": "/Users/chesterman/FantasyBasketballRanking",
+          "scratchpad_dir": "/private/tmp/claude-501/-Users-chesterman-FantasyBasketballRanking/e9a97047-58c1-4c1d-9297-9b4071fb2884/scratchpad",
+          "prompt_id": "822010d3-2c49-494a-9af2-a3f14310ece3",
+          "hook_event_name": "SessionEnd",
+          "reason": "other"
+        },
+        "initialTeamNames": [],
+        "openClawRouting": {},
+        "metrics": {
+          "session_id": "e9a97047-58c1-4c1d-9297-9b4071fb2884",
+          "ended_at": "2026-11-15T13:25:54.071Z",
+          "reason": "other",
+          "agents_spawned": 0,
+          "agents_completed": 0,
+          "modes_used": []
+        }
+      },
+      "budgetMs": 9000,
+      "claimedAt": "2026-11-15T13:25:53.812Z",
+      "runner": {
+        "attempt": 1,
+        "runnerNonce": "56b20bf3-f9d9-418d-a92b-3534bd1a8ce5",
+        "phase": "terminal",
+        "deadlineAt": "2026-11-15T13:26:03.693Z"
+      },
+      "lastOutcomeCode": "completed",
+      "completedAt": "2026-11-15T13:25:54.232Z"
+    },
+    "wiki-capture": {
+      "class": "required",
+      "phase": "deferred-required",
+      "status": "completed",
+      "attempts": 0,
+      "idempotencyKey": "83e976a8736bb3c463b0332776b56dee3f0880c6724e2ae7e4213b319c59c833",
+      "payload": {
+        "transcriptPath": "/Users/chesterman/.claude/projects/-Users-chesterman-FantasyBasketballRanking/e9a97047-58c1-4c1d-9297-9b4071fb2884.jsonl",
+        "cwd": "/Users/chesterman/FantasyBasketballRanking",
+        "reason": "other",
+        "input": {
+          "session_id": "e9a97047-58c1-4c1d-9297-9b4071fb2884",
+          "transcript_path": "/Users/chesterman/.claude/projects/-Users-chesterman-FantasyBasketballRanking/e9a97047-58c1-4c1d-9297-9b4071fb2884.jsonl",
+          "cwd": "/Users/chesterman/FantasyBasketballRanking",
+          "scratchpad_dir": "/private/tmp/claude-501/-Users-chesterman-FantasyBasketballRanking/e9a97047-58c1-4c1d-9297-9b4071fb2884/scratchpad",
+          "prompt_id": "822010d3-2c49-494a-9af2-a3f14310ece3",
+          "hook_event_name": "SessionEnd",
+          "reason": "other"
+        },
+        "initialTeamNames": [],
+        "openClawRouting": {}
+      },
+      "budgetMs": 9000,
+      "completedAt": "2026-11-15T13:25:23.720Z"
+    },
+    "team-cleanup": {
+      "class": "required",
+      "phase": "deferred-required",
+      "status": "completed",
+      "attempts": 1,
+      "idempotencyKey": "8fa81688709659fc1bd6550c518a4888b3e3c54cb19c4f8ecf7ffd2d5dde4c24",
+      "payload": {
+        "transcriptPath": "/Users/chesterman/.claude/projects/-Users-chesterman-FantasyBasketballRanking/e9a97047-58c1-4c1d-9297-9b4071fb2884.jsonl",
+        "cwd": "/Users/chesterman/FantasyBasketballRanking",
+        "reason": "other",
+        "input": {
+          "session_id": "e9a97047-58c1-4c1d-9297-9b4071fb2884",
+          "transcript_path": "/Users/chesterman/.claude/projects/-Users-chesterman-FantasyBasketballRanking/e9a97047-58c1-4c1d-9297-9b4071fb2884.jsonl",
+          "cwd": "/Users/chesterman/FantasyBasketballRanking",
+          "scratchpad_dir": "/private/tmp/claude-501/-Users-chesterman-FantasyBasketballRanking/e9a97047-58c1-4c1d-9297-9b4071fb2884/scratchpad",
+          "prompt_id": "822010d3-2c49-494a-9af2-a3f14310ece3",
+          "hook_event_name": "SessionEnd",
+          "reason": "other"
+        },
+        "initialTeamNames": [],
+        "openClawRouting": {},
+        "metrics": {
+          "session_id": "e9a97047-58c1-4c1d-9297-9b4071fb2884",
+          "ended_at": "2026-11-15T13:25:54.071Z",
+          "reason": "other",
+          "agents_spawned": 0,
+          "agents_completed": 0,
+          "modes_used": []
+        }
+      },
+      "budgetMs": 9000,
+      "claimedAt": "2026-11-15T13:25:54.269Z",
+      "runner": {
+        "attempt": 1,
+        "runnerNonce": "53be9f4e-6ce8-4427-b73a-d3a916ceb4b6",
+        "phase": "terminal",
+        "deadlineAt": "2026-11-15T13:26:03.693Z"
+      },
+      "lastOutcomeCode": "completed",
+      "completedAt": "2026-11-15T13:25:54.468Z"
+    },
+    "python-cleanup": {
+      "class": "required",
+      "phase": "deferred-required",
+      "status": "completed",
+      "attempts": 1,
+      "idempotencyKey": "454b555085dc7afe0b2cd8b2959dafe360b1c9808ffcb6cee019acfc143779c7",
+      "payload": {
+        "transcriptPath": "/Users/chesterman/.claude/projects/-Users-chesterman-FantasyBasketballRanking/e9a97047-58c1-4c1d-9297-9b4071fb2884.jsonl",
+        "cwd": "/Users/chesterman/FantasyBasketballRanking",
+        "reason": "other",
+        "input": {
+          "session_id": "e9a97047-58c1-4c1d-9297-9b4071fb2884",
+          "transcript_path": "/Users/chesterman/.claude/projects/-Users-chesterman-FantasyBasketballRanking/e9a97047-58c1-4c1d-9297-9b4071fb2884.jsonl",
+          "cwd": "/Users/chesterman/FantasyBasketballRanking",
+          "scratchpad_dir": "/private/tmp/claude-501/-Users-chesterman-FantasyBasketballRanking/e9a97047-58c1-4c1d-9297-9b4071fb2884/scratchpad",
+          "prompt_id": "822010d3-2c49-494a-9af2-a3f14310ece3",
+          "hook_event_name": "SessionEnd",
+          "reason": "other"
+        },
+        "initialTeamNames": [],
+        "openClawRouting": {},
+        "metrics": {
+          "session_id": "e9a97047-58c1-4c1d-9297-9b4071fb2884",
+          "ended_at": "2026-11-15T13:25:54.071Z",
+          "reason": "other",
+          "agents_spawned": 0,
+          "agents_completed": 0,
+          "modes_used": []
+        }
+      },
+      "budgetMs": 9000,
+      "claimedAt": "2026-11-15T13:25:54.489Z",
+      "runner": {
+        "attempt": 1,
+        "runnerNonce": "632f70c4-5397-4e48-bf62-40412af839cf",
+        "phase": "terminal",
+        "deadlineAt": "2026-11-15T13:26:03.693Z"
+      },
+      "lastOutcomeCode": "completed",
+      "completedAt": "2026-11-15T13:25:54.714Z"
+    },
+    "reply-cleanup": {
+      "class": "required",
+      "phase": "deferred-required",
+      "status": "completed",
+      "attempts": 1,
+      "idempotencyKey": "7bcdde0767c9565c536312f8f1c778f52c6df9acf540568af4e0f144887f87b9",
+      "payload": {
+        "transcriptPath": "/Users/chesterman/.claude/projects/-Users-chesterman-FantasyBasketballRanking/e9a97047-58c1-4c1d-9297-9b4071fb2884.jsonl",
+        "cwd": "/Users/chesterman/FantasyBasketballRanking",
+        "reason": "other",
+        "input": {
+          "session_id": "e9a97047-58c1-4c1d-9297-9b4071fb2884",
+          "transcript_path": "/Users/chesterman/.claude/projects/-Users-chesterman-FantasyBasketballRanking/e9a97047-58c1-4c1d-9297-9b4071fb2884.jsonl",
+          "cwd": "/Users/chesterman/FantasyBasketballRanking",
+          "scratchpad_dir": "/private/tmp/claude-501/-Users-chesterman-FantasyBasketballRanking/e9a97047-58c1-4c1d-9297-9b4071fb2884/scratchpad",
+          "prompt_id": "822010d3-2c49-494a-9af2-a3f14310ece3",
+          "hook_event_name": "SessionEnd",
+          "reason": "other"
+        },
+        "initialTeamNames": [],
+        "openClawRouting": {}
+      },
+      "budgetMs": 9000,
+      "claimedAt": "2026-11-15T13:25:54.737Z",
+      "runner": {
+        "attempt": 1,
+        "runnerNonce": "56a261e7-df17-4c24-897b-30baaffcb67e",
+        "phase": "terminal",
+        "deadlineAt": "2026-11-15T13:26:03.693Z"
+      },
+      "lastOutcomeCode": "completed",
+      "completedAt": "2026-11-15T13:25:54.935Z"
+    },
+    "callback": {
+      "class": "best-effort",
+      "phase": "deferred-best-effort",
+      "status": "completed",
+      "attempts": 1,
+      "idempotencyKey": "cb21349a21287b2ed226205ad90e09f16a3610f27a093e858d085dbfa344d4c7",
+      "payload": {
+        "transcriptPath": "/Users/chesterman/.claude/projects/-Users-chesterman-FantasyBasketballRanking/e9a97047-58c1-4c1d-9297-9b4071fb2884.jsonl",
+        "cwd": "/Users/chesterman/FantasyBasketballRanking",
+        "reason": "other",
+        "input": {
+          "session_id": "e9a97047-58c1-4c1d-9297-9b4071fb2884",
+          "transcript_path": "/Users/chesterman/.claude/projects/-Users-chesterman-FantasyBasketballRanking/e9a97047-58c1-4c1d-9297-9b4071fb2884.jsonl",
+          "cwd": "/Users/chesterman/FantasyBasketballRanking",
+          "scratchpad_dir": "/private/tmp/claude-501/-Users-chesterman-FantasyBasketballRanking/e9a97047-58c1-4c1d-9297-9b4071fb2884/scratchpad",
+          "prompt_id": "822010d3-2c49-494a-9af2-a3f14310ece3",
+          "hook_event_name": "SessionEnd",
+          "reason": "other"
+        },
+        "initialTeamNames": [],
+        "openClawRouting": {},
+        "metrics": {
+          "session_id": "e9a97047-58c1-4c1d-9297-9b4071fb2884",
+          "ended_at": "2026-11-15T13:25:54.071Z",
+          "reason": "other",
+          "agents_spawned": 0,
+          "agents_completed": 0,
+          "modes_used": []
+        }
+      },
+      "budgetMs": 2000,
+      "claimedAt": "2026-11-15T13:25:54.958Z",
+      "runner": {
+        "attempt": 1,
+        "runnerNonce": "80da5c3a-ee12-4976-b099-a5c95df6ef3d",
+        "phase": "terminal",
+        "deadlineAt": "2026-11-15T13:26:03.693Z"
+      },
+      "lastOutcomeCode": "completed",
+      "completedAt": "2026-11-15T13:25:55.160Z"
+    },
+    "notification": {
+      "class": "best-effort",
+      "phase": "deferred-best-effort",
+      "status": "completed",
+      "attempts": 1,
+      "idempotencyKey": "14a545e54cce52dc6f1f74a89bcb9ce910499732df9e3db2f6ed8e34340332f2",
+      "payload": {
+        "transcriptPath": "/Users/chesterman/.claude/projects/-Users-chesterman-FantasyBasketballRanking/e9a97047-58c1-4c1d-9297-9b4071fb2884.jsonl",
+        "cwd": "/Users/chesterman/FantasyBasketballRanking",
+        "reason": "other",
+        "input": {
+          "session_id": "e9a97047-58c1-4c1d-9297-9b4071fb2884",
+          "transcript_path": "/Users/chesterman/.claude/projects/-Users-chesterman-FantasyBasketballRanking/e9a97047-58c1-4c1d-9297-9b4071fb2884.jsonl",
+          "cwd": "/Users/chesterman/FantasyBasketballRanking",
+          "scratchpad_dir": "/private/tmp/claude-501/-Users-chesterman-FantasyBasketballRanking/e9a97047-58c1-4c1d-9297-9b4071fb2884/scratchpad",
+          "prompt_id": "822010d3-2c49-494a-9af2-a3f14310ece3",
+          "hook_event_name": "SessionEnd",
+          "reason": "other"
+        },
+        "initialTeamNames": [],
+        "openClawRouting": {},
+        "metrics": {
+          "session_id": "e9a97047-58c1-4c1d-9297-9b4071fb2884",
+          "ended_at": "2026-11-15T13:25:54.071Z",
+          "reason": "other",
+          "agents_spawned": 0,
+          "agents_completed": 0,
+          "modes_used": []
+        }
+      },
+      "budgetMs": 2000,
+      "claimedAt": "2026-11-15T13:25:55.182Z",
+      "runner": {
+        "attempt": 1,
+        "runnerNonce": "f625a436-701f-43e2-90f7-995c0d1e15b7",
+        "phase": "terminal",
+        "deadlineAt": "2026-11-15T13:26:03.693Z"
+      },
+      "lastOutcomeCode": "completed",
+      "completedAt": "2026-11-15T13:25:55.382Z"
+    },
+    "openclaw": {
+      "class": "best-effort",
+      "phase": "deferred-best-effort",
+      "status": "completed",
+      "attempts": 1,
+      "idempotencyKey": "3ccb6996b2c87d1221aca3c92e492a45824e0458bef98a7a9c7062f3009bae30",
+      "payload": {
+        "transcriptPath": "/Users/chesterman/.claude/projects/-Users-chesterman-FantasyBasketballRanking/e9a97047-58c1-4c1d-9297-9b4071fb2884.jsonl",
+        "cwd": "/Users/chesterman/FantasyBasketballRanking",
+        "reason": "other",
+        "input": {
+          "session_id": "e9a97047-58c1-4c1d-9297-9b4071fb2884",
+          "transcript_path": "/Users/chesterman/.claude/projects/-Users-chesterman-FantasyBasketballRanking/e9a97047-58c1-4c1d-9297-9b4071fb2884.jsonl",
+          "cwd": "/Users/chesterman/FantasyBasketballRanking",
+          "scratchpad_dir": "/private/tmp/claude-501/-Users-chesterman-FantasyBasketballRanking/e9a97047-58c1-4c1d-9297-9b4071fb2884/scratchpad",
+          "prompt_id": "822010d3-2c49-494a-9af2-a3f14310ece3",
+          "hook_event_name": "SessionEnd",
+          "reason": "other"
+        },
+        "initialTeamNames": [],
+        "openClawRouting": {},
+        "metrics": {
+          "session_id": "e9a97047-58c1-4c1d-9297-9b4071fb2884",
+          "ended_at": "2026-11-15T13:25:54.071Z",
+          "reason": "other",
+          "agents_spawned": 0,
+          "agents_completed": 0,
+          "modes_used": []
+        }
+      },
+      "budgetMs": 2000,
+      "claimedAt": "2026-11-15T13:25:55.406Z",
+      "runner": {
+        "attempt": 1,
+        "runnerNonce": "a606a63a-2566-421c-ba76-a1291cc95ead",
+        "phase": "terminal",
+        "deadlineAt": "2026-11-15T13:26:03.693Z"
+      },
+      "lastOutcomeCode": "completed",
+      "completedAt": "2026-11-15T13:25:55.593Z"
+    },
+    "spawn-next": {
+      "class": "best-effort",
+      "phase": "deferred-best-effort",
+      "status": "completed",
+      "attempts": 1,
+      "idempotencyKey": "b2edd5dcea7d6d1f306630a7c6a74cd9b71543985a70c77856dd0ea2a9bd3906",
+      "payload": {
+        "transcriptPath": "/Users/chesterman/.claude/projects/-Users-chesterman-FantasyBasketballRanking/e9a97047-58c1-4c1d-9297-9b4071fb2884.jsonl",
+        "cwd": "/Users/chesterman/FantasyBasketballRanking",
+        "reason": "other",
+        "input": {
+          "session_id": "e9a97047-58c1-4c1d-9297-9b4071fb2884",
+          "transcript_path": "/Users/chesterman/.claude/projects/-Users-chesterman-FantasyBasketballRanking/e9a97047-58c1-4c1d-9297-9b4071fb2884.jsonl",
+          "cwd": "/Users/chesterman/FantasyBasketballRanking",
+          "scratchpad_dir": "/private/tmp/claude-501/-Users-chesterman-FantasyBasketballRanking/e9a97047-58c1-4c1d-9297-9b4071fb2884/scratchpad",
+          "prompt_id": "822010d3-2c49-494a-9af2-a3f14310ece3",
+          "hook_event_name": "SessionEnd",
+          "reason": "other"
+        },
+        "initialTeamNames": [],
+        "openClawRouting": {}
+      },
+      "budgetMs": 2000,
+      "claimedAt": "2026-11-15T13:25:55.622Z",
+      "runner": {
+        "attempt": 1,
+        "runnerNonce": "f3215f67-e9e3-4529-a952-5a79ef80f929",
+        "phase": "terminal",
+        "deadlineAt": "2026-11-15T13:26:03.693Z"
+      },
+      "lastOutcomeCode": "completed",
+      "completedAt": "2026-11-15T13:25:55.821Z"
+    }
+  },
+  "owner": null,
+  "phase": "complete",
+  "recoverableFailure": {
+    "reason": "actions-settled",
+    "releasedAt": "2026-11-15T13:25:55.843Z",
+    "ownerNonce": "5aa30fc9-5f62-42ce-8cd6-1cf7332b2668"
+  },
+  "completion": {
+    "completedAt": "2026-11-15T13:25:55.843Z",
+    "terminalDigest": "bb81778aefa1ded985e7a64bcd1f6304ebf48529984b3375366146b355eec8f8",
+    "terminalRevision": 60
+  }
+}

@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1794634199250,
+  "lastScanned": 1795130943394,
   "projectRoot": "/Users/chesterman/FantasyBasketballRanking",
   "techStack": {
     "languages": [
@@ -49,7 +49,7 @@
       "path": "__pycache__",
       "purpose": null,
       "fileCount": 18,
-      "lastAccessed": 1794634199237,
+      "lastAccessed": 1795130943376,
       "keyFiles": [
         "backtest.cpython-312.pyc",
         "benchmark_ingest.cpython-312.pyc",
@@ -62,14 +62,14 @@
       "path": "benchmarks",
       "purpose": null,
       "fileCount": 0,
-      "lastAccessed": 1794634199238,
+      "lastAccessed": 1795130943376,
       "keyFiles": []
     },
     "diagnostics": {
       "path": "diagnostics",
       "purpose": null,
       "fileCount": 5,
-      "lastAccessed": 1794634199238,
+      "lastAccessed": 1795130943377,
       "keyFiles": [
         "availability_labeled_set.csv",
         "availability_labeled_set.md",
@@ -81,14 +81,14 @@
       "path": "docs",
       "purpose": "Documentation",
       "fileCount": 1,
-      "lastAccessed": 1794634199238,
+      "lastAccessed": 1795130943377,
       "keyFiles": []
     },
     "images": {
       "path": "images",
       "purpose": null,
       "fileCount": 1,
-      "lastAccessed": 1794634199238,
+      "lastAccessed": 1795130943378,
       "keyFiles": [
         "hero-basketball.jpg"
       ]
@@ -97,7 +97,7 @@
       "path": "openspec",
       "purpose": null,
       "fileCount": 2,
-      "lastAccessed": 1794634199239,
+      "lastAccessed": 1795130943378,
       "keyFiles": [
         "config.yaml"
       ]
@@ -106,7 +106,7 @@
       "path": "prototypes",
       "purpose": null,
       "fileCount": 3,
-      "lastAccessed": 1794634199239,
+      "lastAccessed": 1795130943378,
       "keyFiles": [
         "scouting-card.html",
         "split-flap.html",
@@ -117,7 +117,7 @@
       "path": "scripts",
       "purpose": "Build/utility scripts",
       "fileCount": 12,
-      "lastAccessed": 1794634199239,
+      "lastAccessed": 1795130943378,
       "keyFiles": [
         "analyze_trade.py",
         "build_draft_board.py",
@@ -130,7 +130,7 @@
       "path": "tests",
       "purpose": "Test files",
       "fileCount": 17,
-      "lastAccessed": 1794634199240,
+      "lastAccessed": 1795130943378,
       "keyFiles": [
         "test_analyze_trade.py",
         "test_backtest.py",
@@ -143,7 +143,7 @@
       "path": "tools",
       "purpose": null,
       "fileCount": 2,
-      "lastAccessed": 1794634199240,
+      "lastAccessed": 1795130943379,
       "keyFiles": [
         "run.html",
         "run.js"
@@ -153,14 +153,14 @@
   "hotPaths": [
     {
       "path": "model.py",
-      "accessCount": 29.824683528571605,
-      "lastAccessed": 1794649898721,
+      "accessCount": 17.880868080688998,
+      "lastAccessed": 1794745141575,
       "type": "file"
     },
     {
       "path": "config.py",
-      "accessCount": 9.364594347586463,
-      "lastAccessed": 1794634729219,
+      "accessCount": 5.845252508952916,
+      "lastAccessed": 1794745126494,
       "type": "file"
     },
     {
@@ -171,8 +171,8 @@
     },
     {
       "path": "docs/adr/0001-aggregate-acceptance-criterion.md",
-      "accessCount": 4.112373586528895,
-      "lastAccessed": 1794632594553,
+      "accessCount": 2.696397388426398,
+      "lastAccessed": 1794742970308,
       "type": "file"
     },
     {
@@ -183,8 +183,8 @@
     },
     {
       "path": "main.py",
-      "accessCount": 13.39622290969331,
-      "lastAccessed": 1794649907893,
+      "accessCount": 11.229950630818747,
+      "lastAccessed": 1794745125704,
       "type": "file"
     },
     {
@@ -207,8 +207,8 @@
     },
     {
       "path": "backtest.py",
-      "accessCount": 40.29792315960314,
-      "lastAccessed": 1794634602851,
+      "accessCount": 17.88726341151826,
+      "lastAccessed": 1794743014973,
       "type": "file"
     },
     {
@@ -299,6 +299,24 @@
       "path": "tests/test_h2h_sim.py",
       "accessCount": 1,
       "lastAccessed": 1794634044122,
+      "type": "file"
+    },
+    {
+      "path": "rookie_baseline.py",
+      "accessCount": 5.956630273247973,
+      "lastAccessed": 1794745126171,
+      "type": "file"
+    },
+    {
+      "path": "rookie_baseline_fitted.py",
+      "accessCount": 1,
+      "lastAccessed": 1794743082796,
+      "type": "file"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-11-15-rookies-on-the-draft-board.md",
+      "accessCount": 6.973779663257756,
+      "lastAccessed": 1794744768790,
       "type": "file"
     }
   ],

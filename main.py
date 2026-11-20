@@ -131,16 +131,24 @@ def derive_pool_size(config: dict, qualified_pool: pd.DataFrame,
     return max(floor, deepest_rank + buffer)
 
 
-def add_market_blend(rankings: pd.DataFrame, market_file: str) -> pd.DataFrame:
+def add_market_blend(rankings: pd.DataFrame, market_file: str,
+                     rank_col: str = "RANK",
+                     market_first: pd.Series | None = None) -> pd.DataFrame:
     """
     Add MARKET_ADP, MARKET_RANK, BLEND_RANK and MARKET_GAP from a Yahoo
     draft-position file, if one exists for the projected season.
 
-    BLEND_RANK ranks 0.5 * RANK + 0.5 * MARKET_RANK; a player with no ADP is
-    tied for last in MARKET_RANK. Walk-forward (ADR-0001, 2026-11-14): the
-    blend beats the model alone by +0.066 total-value and +0.035 per-game
-    Spearman. MARKET_GAP = RANK - MARKET_RANK: negative means the model likes
-    the player more than the market does.
+    BLEND_RANK ranks 0.5 * `rank_col` + 0.5 * MARKET_RANK; a player with no
+    ADP is tied for last in MARKET_RANK. Walk-forward (ADR-0001, 2026-11-14):
+    the blend beats the model alone by +0.066 total-value and +0.035
+    per-game Spearman. MARKET_GAP = rank_col - MARKET_RANK: negative means
+    the model likes the player more than the market does.
+
+    `market_first` (boolean, aligned with `rankings`) marks rows placed
+    "market first" instead of blended: by MARKET_RANK alone when they have
+    an ADP, by `rank_col` alone when they don't. Used for rookies -- on the
+    rookies the market prices, its rank error is lower than the rookie
+    model's (spec 2026-11-15-rookies-on-the-draft-board.md, M1/M2).
     """
     if not Path(market_file).exists():
         return rankings
@@ -156,9 +164,47 @@ def add_market_blend(rankings: pd.DataFrame, market_file: str) -> pd.DataFrame:
     out = rankings.copy()
     out["MARKET_ADP"] = out["PLAYER_NAME"].map(canonical_player_key).map(adp)
     out["MARKET_RANK"] = out["MARKET_ADP"].fillna(float("inf")).rank(method="average")
-    out["BLEND_RANK"] = (0.5 * out["RANK"] + 0.5 * out["MARKET_RANK"]).rank(method="min").astype(int)
-    out["MARKET_GAP"] = out["RANK"] - out["MARKET_RANK"]
+    score = 0.5 * out[rank_col] + 0.5 * out["MARKET_RANK"]
+    if market_first is not None:
+        has_adp = out["MARKET_ADP"].notna()
+        score = score.mask(market_first & has_adp, out["MARKET_RANK"])
+        score = score.mask(market_first & ~has_adp, out[rank_col])
+    out["BLEND_RANK"] = score.rank(method="min").astype(int)
+    out["MARKET_GAP"] = out[rank_col] - out["MARKET_RANK"]
     return out
+
+
+ROOKIE_SCALED_CATS = ["FGM", "FGA", "3PTM", "FTM", "PTS", "REB", "AST", "ST",
+                      "BLK", "TO", "PF", "DD", "TD", "TECH"]
+
+
+def place_rookies(rookie_rows: pd.DataFrame, projected: pd.DataFrame,
+                  player_tau: dict, league_tau: dict, config: dict) -> pd.DataFrame:
+    """
+    Value rookies on the veteran scale.
+
+    The rookie model predicts per-game lines plus GP. Counting stats are
+    multiplied by an availability factor built the same way as a veteran's:
+    GP/82, averaged with the veteran pool's mean GP_FACTOR by
+    config["regression"]["gp_shrink"]. The rows then go through
+    compute_g_scores as extra_rows -- scored against the veteran
+    normalisation pool, never part of it -- so veteran values are untouched.
+    Returns the rookie rows only, with RANK = order among rookies.
+    """
+    pool_size = config["num_teams"] * config["roster_size"]
+    pool_gpf = projected.nlargest(pool_size, "MIN")["GP_FACTOR"].mean()
+    shrink = (config.get("regression") or {}).get("gp_shrink", 0.0)
+    rows = rookie_rows.copy()
+    own_gpf = (rows["GP"] / 82.0).clip(upper=1.0)
+    rows["GP_FACTOR"] = ((1 - shrink) * own_gpf + shrink * pool_gpf).round(3)
+    for cat in ROOKIE_SCALED_CATS:
+        rows[f"{cat}_RATE"] = rows[cat]
+        rows[cat] = rows[cat] * rows["GP_FACTOR"]
+    scored = compute_g_scores(projected, player_tau, league_tau, config, extra_rows=rows)
+    scored = scored[scored["PLAYER_NAME"].isin(set(rows["PLAYER_NAME"]))]
+    scored = scored.sort_values("TOTAL_VALUE", ascending=False).reset_index(drop=True)
+    scored["RANK"] = range(1, len(scored) + 1)
+    return scored
 
 
 def build_extra_rows(projected: pd.DataFrame, pool_size: int,
@@ -204,6 +250,7 @@ def build_extra_rows(projected: pd.DataFrame, pool_size: int,
 
 OUTPUT_FILE     = f"durant_rankings_{PROJECTION_SEASON_SLUG}.csv"
 ROOKIE_OUTPUT_FILE = f"durant_rankings_rookies_{PROJECTION_SEASON_SLUG}.csv"
+BOARD_OUTPUT_FILE = f"durant_rankings_{PROJECTION_SEASON_SLUG}_board.csv"
 DIAGNOSTICS_DIR = Path("diagnostics")
 BENCHMARK_HISTORY_FILE = DIAGNOSTICS_DIR / "benchmark_history.csv"
 TOP_MISS_DIR = DIAGNOSTICS_DIR / "top_misses"
@@ -806,10 +853,42 @@ def main() -> None:
           f"{config['roster_size']} roster spots)")
     print(format_rankings(rankings, config, top_n=30))
 
-    rankings = add_market_blend(
-        rankings, f"yahoo_{PROJECTION_SEASON_SLUG[2:]}_market_export.csv",
+    # ── Rookies, on the veteran scale ───────────────────────────────────
+    # Valued against the veteran pool (place_rookies), so one BOARD_RANK
+    # covers everyone. Veteran RANK/TOTAL_VALUE/_G columns are unchanged.
+    # Rookies stay in their own file because the in-season tools read both
+    # files and concatenate them; the combined board is written separately.
+    draft_history = fetch_draft_history(
+        draft_years=config["draft_years"],
+        cache_file=config["draft_history_cache"],
     )
+    combine_stats = fetch_combine_stats(cache_file=config["combine_stats_cache"])
+    rookie_rows = build_rookie_rows(
+        draft_history, combine_stats, ROOKIE_FITTED_MODEL,
+        existing_players=set(projected["PLAYER_NAME"]),
+    )
+    rookie_rankings = (
+        place_rookies(rookie_rows, projected, result["player_tau"], league_tau, config)
+        if not rookie_rows.empty else pd.DataFrame()
+    )
+    # First-round picks only: the walk-forward evidence covers picks 1-30,
+    # and undrafted second-rounders would crowd the market's tied-last rank.
+    board_rookies = (rookie_rankings[rookie_rankings["OVERALL_PICK"] <= 30]
+                     if not rookie_rankings.empty else rookie_rankings)
+    board = pd.concat(
+        [rankings.assign(ROOKIE=False), board_rookies.assign(ROOKIE=True)],
+        ignore_index=True,
+    )
+    board["BOARD_RANK"] = board["TOTAL_VALUE"].rank(ascending=False, method="min").astype(int)
+    board = add_market_blend(
+        board, f"yahoo_{PROJECTION_SEASON_SLUG[2:]}_market_export.csv",
+        rank_col="BOARD_RANK", market_first=board["ROOKIE"],
+    )
+    rankings = board[~board["ROOKIE"]].drop(columns="ROOKIE").reset_index(drop=True)
+    rankings["GP"] = rankings["GP"].astype(int)
     save_rankings(rankings, OUTPUT_FILE)
+    board.sort_values("BLEND_RANK" if "BLEND_RANK" in board else "BOARD_RANK").to_csv(
+        BOARD_OUTPUT_FILE, index=False)
 
     # ── Data availability notes ─────────────────────────────────────────────
     # Players entirely absent from the newest BBR season (not just a low-GP
@@ -836,31 +915,12 @@ def main() -> None:
             print(f"  #{int(change_row['RANK']):<3d} {change_row['PLAYER_NAME']:<24s} "
                   f"{change_row['TEAM_CHANGED']}")
 
-    # ── Rookies — ranked separately, not mixed into the veteran pool ───────
-    # Rookies with no prior NBA history can't meaningfully compete for the
-    # main pool's MIN-based cutoff (a debut season's diluted per-game minutes
-    # will almost never clear an established-veteran floor). Instead of
-    # forcing them through that cutoff, rank them against each other using
-    # the same G-score machinery, scored against their own population's
-    # distribution, and save as a separate file. This is a speculative,
-    # lower-confidence list: rookies are projected from a two-stage pick-
-    # curve + combine-residual regression (see rookie_baseline.py), not
-    # real in-season data. Individually ranked, not tiered -- the model
-    # now gives each rookie a genuinely distinct prediction (see
-    # docs/superpowers/specs/2026-10-04-rookie-baseline-combine-regression-design.md),
-    # unlike the old discrete draft-slot buckets this replaced.
-    draft_history = fetch_draft_history(
-        draft_years=config["draft_years"],
-        cache_file=config["draft_history_cache"],
-    )
-    combine_stats = fetch_combine_stats(cache_file=config["combine_stats_cache"])
-    rookie_rows = build_rookie_rows(
-        draft_history, combine_stats, ROOKIE_FITTED_MODEL,
-        existing_players=set(projected["PLAYER_NAME"]),
-    )
-    if not rookie_rows.empty:
-        rookie_rankings = compute_g_scores(rookie_rows, {}, league_tau, config)
-        print(f"\n\nROOKIE WATCH LIST — {len(rookie_rankings)} incoming rookies, ranked separately")
+    if not rookie_rankings.empty:
+        rookie_rankings = rookie_rankings.merge(
+            board.loc[board["ROOKIE"], ["PLAYER_NAME"] + [c for c in
+                ("BOARD_RANK", "MARKET_ADP", "MARKET_RANK", "BLEND_RANK", "MARKET_GAP") if c in board]],
+            on="PLAYER_NAME", how="left")
+        print(f"\n\nROOKIES — {len(rookie_rankings)} incoming, valued on the veteran scale")
         print("(speculative: pick-curve + combine-residual regression, not real in-season data)")
         print(format_rankings(rookie_rankings, config, top_n=len(rookie_rankings)))
         save_rankings(rookie_rankings, ROOKIE_OUTPUT_FILE)
